@@ -29,6 +29,9 @@
     <!-- Notificaciones (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Actualizaciones online / instalación de APKs -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Almacenamiento: Import/Export JSON -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -43,7 +46,7 @@
     ═══════════════════════════════════════ -->
 
     <application
-        android:name=". GhostNexoraVPN"
+        android:name="GhostNexoraApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

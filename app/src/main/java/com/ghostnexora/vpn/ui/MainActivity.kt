@@ -17,10 +17,17 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ghostnexora.vpn.navigation.GhostNavigationDrawer
+import com.ghostnexora.vpn.ui.components.UpdateDialog
+import com.ghostnexora.vpn.update.UpdateViewModel
 import com.ghostnexora.vpn.navigation.GhostNavHost
 import com.ghostnexora.vpn.navigation.Screen
 import com.ghostnexora.vpn.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -53,6 +60,20 @@ private fun GhostNexoraApp() {
     val currentBackStack  by navController.currentBackStackEntryAsState()
     val currentRoute      = currentBackStack?.destination?.route
     val currentTitle      = screenTitle(currentRoute)
+    val updateViewModel: UpdateViewModel = hiltViewModel()
+    val updateState by updateViewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        updateViewModel.checkForUpdates()
+    }
+
+    if (updateState.available && !updateState.dismissed) {
+        UpdateDialog(
+            state = updateState,
+            onDismiss = { updateViewModel.dismissUpdatePrompt() },
+            onUpdateNow = { updateViewModel.downloadAndInstall() }
+        )
+    }
 
     GhostNavigationDrawer(
         navController = navController,

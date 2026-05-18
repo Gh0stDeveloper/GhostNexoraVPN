@@ -74,6 +74,13 @@ sealed class Screen(
         iconSelected = Icons.Filled.Settings
     )
 
+    object Documentation : Screen(
+        route = "documentation",
+        title = "Documentación",
+        icon = Icons.Outlined.Description,
+        iconSelected = Icons.Filled.Description
+    )
+
     object About : Screen(
         route = "about",
         title = "Acerca de",
@@ -104,6 +111,7 @@ sealed class Screen(
             History,
             Logs,
             Settings,
+            Documentation,
             About
         )
     }

@@ -23,6 +23,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.ghostnexora.vpn.ui.screens.about.AboutScreen
+import com.ghostnexora.vpn.ui.screens.documentation.DocumentationScreen
 import com.ghostnexora.vpn.ui.screens.dashboard.DashboardScreen
 import com.ghostnexora.vpn.ui.screens.importexport.ExportScreen
 import com.ghostnexora.vpn.ui.screens.importexport.ImportScreen
@@ -71,10 +72,9 @@ fun GhostNavHost(
         // ── Lista de perfiles ──────────────────────────────────────────────
         composable(Screen.Profiles.route) {
             ProfileListScreen(
-                onNavigateToCreate = {
-                    navController.navigate(Screen.CreateProfile.route)
-                },
-                onNavigateToEdit = { profileId ->
+                onBack = { navController.popBackStack() },
+                onCreateNew = { navController.navigate(Screen.CreateProfile.route) },
+                onEditProfile = { profileId ->
                     navController.navigate(Screen.EditProfile.createRoute(profileId))
                 }
             )
@@ -84,7 +84,6 @@ fun GhostNavHost(
         composable(Screen.CreateProfile.route) {
             CreateEditProfileScreen(
                 profileId = null,
-                onSaved = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -102,7 +101,6 @@ fun GhostNavHost(
                 ?.getString(Screen.EditProfile.ARG_PROFILE_ID)
             CreateEditProfileScreen(
                 profileId = profileId,
-                onSaved = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -124,12 +122,17 @@ fun GhostNavHost(
 
         // ── Logs ───────────────────────────────────────────────────────────
         composable(Screen.Logs.route) {
-            LogsScreen()
+            LogsScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Ajustes ────────────────────────────────────────────────────────
         composable(Screen.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Documentación ───────────────────────────────────────────────────
+        composable(Screen.Documentation.route) {
+            DocumentationScreen()
         }
 
         // ── Acerca de ──────────────────────────────────────────────────────

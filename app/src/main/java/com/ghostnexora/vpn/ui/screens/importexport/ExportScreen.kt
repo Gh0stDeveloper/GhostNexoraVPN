@@ -1,15 +1,49 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.ghostnexora.vpn.ui.screens.importexport
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOff
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,34 +52,49 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ghostnexora.vpn.data.model.VpnProfile
-import com.ghostnexora.vpn.ui.theme.*
+import com.ghostnexora.vpn.ui.theme.BackgroundDark
+import com.ghostnexora.vpn.ui.theme.BorderNormal
+import com.ghostnexora.vpn.ui.theme.BorderSubtle
+import com.ghostnexora.vpn.ui.theme.Dimens
+import com.ghostnexora.vpn.ui.theme.GhostButton
+import com.ghostnexora.vpn.ui.theme.GhostCard
+import com.ghostnexora.vpn.ui.theme.NeonAmber
+import com.ghostnexora.vpn.ui.theme.NeonCyan
+import com.ghostnexora.vpn.ui.theme.NeonGreen
+import com.ghostnexora.vpn.ui.theme.SurfaceElevated
+import com.ghostnexora.vpn.ui.theme.SurfaceVariant
+import com.ghostnexora.vpn.ui.theme.TextOnAccent
+import com.ghostnexora.vpn.ui.theme.TextPrimary
+import com.ghostnexora.vpn.ui.theme.TextSecondary
+import com.ghostnexora.vpn.ui.theme.TextTertiary
 
 @Composable
 fun ExportScreen(
     onBack: () -> Unit,
     viewModel: ImportExportViewModel = hiltViewModel()
 ) {
-    val state = viewModel.exportState.collectAsStateWithLifecycle().value
-    val profiles = viewModel.allProfiles.collectAsStateWithLifecycle().value
-
+    val state by viewModel.exportState.collectAsState()
+    val profiles by viewModel.allProfiles.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Mostrar mensajes de éxito
+    val manualSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportToUri(uri, profiles)
+        }
+    }
+
     LaunchedEffect(state.exportSuccess) {
         if (state.exportSuccess) {
-            snackbarHostState.showSnackbar(
-                message = "${state.exportedCount} perfil(es) exportado(s)"
-            )
+            snackbarHostState.showSnackbar("${state.exportedCount} perfil(es) exportado(s)")
             viewModel.clearExportMessage()
         }
     }
 
-    // Mostrar errores
     LaunchedEffect(state.error) {
-        state.error?.let { msg ->
-            snackbarHostState.showSnackbar(message = msg)
+        state.error?.let { message ->
+            snackbarHostState.showSnackbar(message)
             viewModel.clearExportMessage()
         }
     }
@@ -58,12 +107,10 @@ fun ExportScreen(
                 title = { Text("Exportar Perfiles") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.Filled.FileUpload, contentDescription = "Volver")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
     ) { padding ->
@@ -75,12 +122,11 @@ fun ExportScreen(
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXXL)
         ) {
-            // Header
             item {
                 GhostCard(
-                    backgroundColor = NeonAmber.copy(0.3f),
+                    backgroundColor = NeonAmber.copy(alpha = 0.14f),
                     borderColor = NeonAmber,
-                    contentColor = NeonAmber.copy(0.05f)
+                    contentPadding = PaddingValues(Dimens.SpaceMD)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -90,15 +136,10 @@ fun ExportScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(MaterialTheme.shapes.medium)
-                                .background(NeonAmber.copy(0.15f)),
+                                .background(NeonAmber.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Filled.FileUpload,
-                                null,
-                                tint = NeonAmber,
-                                modifier = Modifier.size(Dimens.IconLG)
-                            )
+                            Icon(Icons.Filled.FileUpload, null, tint = NeonAmber, modifier = Modifier.size(Dimens.IconLG))
                         }
                         Column {
                             Text(
@@ -130,27 +171,13 @@ fun ExportScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
                         ) {
-                            Icon(
-                                Icons.Filled.FolderOff,
-                                null,
-                                tint = TextTertiary,
-                                modifier = Modifier.size(Dimens.Space4XL)
-                            )
-                            Text(
-                                "No hay perfiles para exportar",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary
-                            )
-                            Text(
-                                "Crea o importa perfiles primero",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextTertiary
-                            )
+                            Icon(Icons.Filled.FolderOff, null, tint = TextTertiary, modifier = Modifier.size(Dimens.Space4XL))
+                            Text("No hay perfiles para exportar", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                            Text("Crea o importa perfiles primero", style = MaterialTheme.typography.bodySmall, color = TextTertiary)
                         }
                     }
                 }
             } else {
-                // Selector
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -169,9 +196,7 @@ fun ExportScreen(
 
                         TextButton(onClick = { viewModel.toggleSelectAll(profiles) }) {
                             Text(
-                                text = if (state.selectedIds.size == profiles.size) 
-                                    "Deseleccionar todo" 
-                                else "Seleccionar todo",
+                                text = if (state.selectedIds.size == profiles.size) "Deseleccionar todo" else "Seleccionar todo",
                                 color = NeonCyan,
                                 style = MaterialTheme.typography.labelMedium
                             )
@@ -179,67 +204,46 @@ fun ExportScreen(
                     }
                 }
 
-                // Lista de perfiles
-                items(
-                    items = profiles,
-                    key = { it.id }
-                ) { profile ->
+                items(items = profiles, key = { it.id }) { profile ->
                     val isSelected = profile.id in state.selectedIds
-
                     GhostCard(
-                        backgroundColor = if (isSelected) NeonCyan.copy(0.5f) else BorderSubtle,
-                        borderColor = null,
-                        contentColor = if (isSelected) NeonCyan.copy(0.05f) else SurfaceVariant,
-                        padding = PaddingValues(Dimens.SpaceMD),
-                        modifier = Modifier.clickable {
-                            viewModel.toggleProfileSelection(profile.id)
-                        }
+                        backgroundColor = if (isSelected) NeonCyan.copy(alpha = 0.08f) else SurfaceVariant,
+                        borderColor = if (isSelected) NeonCyan else BorderNormal,
+                        contentPadding = PaddingValues(Dimens.SpaceMD),
+                        modifier = Modifier.clickable { viewModel.toggleProfileSelection(profile.id) }
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
                         ) {
-                            // Checkbox
                             Box(
                                 modifier = Modifier
                                     .size(22.dp)
-                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(if (isSelected) NeonCyan else SurfaceElevated)
                                     .border(
                                         width = Dimens.BorderNormal,
                                         color = if (isSelected) NeonCyan else BorderNormal,
-                                        shape = MaterialTheme.shapes.extraSmall
+                                        shape = RoundedCornerShape(6.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isSelected) {
-                                    Icon(
-                                        Icons.Filled.Check,
-                                        null,
-                                        tint = TextOnAccent,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    Icon(Icons.Filled.Check, null, tint = TextOnAccent, modifier = Modifier.size(14.dp))
                                 }
                             }
 
-                            // Icono VPN
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(MaterialTheme.shapes.small)
-                                    .background(NeonCyan.copy(0.08f)),
+                                    .background(NeonCyan.copy(alpha = 0.08f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    Icons.Filled.VpnKey,
-                                    null,
-                                    tint = if (isSelected) NeonCyan else TextTertiary,
-                                    modifier = Modifier.size(Dimens.IconSM)
-                                )
+                                Icon(Icons.Filled.VpnKey, null, tint = if (isSelected) NeonCyan else TextTertiary, modifier = Modifier.size(Dimens.IconSM))
                             }
 
-                            // Información del perfil
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     text = profile.name.ifEmpty { "Sin nombre" },
@@ -251,40 +255,30 @@ fun ExportScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "\( {profile.host}: \){profile.port}  •  ${profile.method.uppercase()}",
-                                    style = MonoStyle.copy(fontSize = 11.sp, color = TextTertiary),
+                                    text = "${profile.host}:${profile.port} • ${profile.connectionModeLabel}",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = TextTertiary),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
 
-                            // Tags
                             if (profile.tags.isNotEmpty()) {
-                                Text(
-                                    text = "${profile.tags.size} tag(s)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextTertiary
-                                )
+                                Text(text = "${profile.tags.size} tag(s)", style = MaterialTheme.typography.labelSmall, color = TextTertiary)
                             }
                         }
                     }
                 }
 
-                // Botón de exportar
                 item {
                     val label = when {
-                        state.selectedIds.isEmpty() -> "Exportar todos (${profiles.size})"
-                        state.selectedIds.size == 1 -> "Exportar 1 perfil"
-                        else -> "Exportar ${state.selectedIds.size} perfiles"
+                        state.selectedIds.isEmpty() -> "Guardar todos en Descargas"
+                        state.selectedIds.size == 1 -> "Guardar 1 perfil en Descargas"
+                        else -> "Guardar ${state.selectedIds.size} perfiles en Descargas"
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                         if (state.isLoading) {
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NeonAmber,
-                                trackColor = SurfaceElevated
-                            )
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = NeonAmber)
                         }
 
                         GhostButton(
@@ -296,18 +290,25 @@ fun ExportScreen(
                             contentColor = TextOnAccent
                         )
 
+                        GhostButton(
+                            text = "Elegir ubicación manual",
+                            onClick = {
+                                val suggestedName = "ghost_nexora_export_${System.currentTimeMillis()}.json"
+                                manualSaveLauncher.launch(suggestedName)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !state.isLoading && profiles.isNotEmpty(),
+                            containerColor = NeonCyan,
+                            contentColor = TextOnAccent
+                        )
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
                         ) {
-                            Icon(
-                                Icons.Filled.Info,
-                                null,
-                                tint = TextTertiary,
-                                modifier = Modifier.size(Dimens.IconXS)
-                            )
+                            Icon(Icons.Filled.Info, null, tint = TextTertiary, modifier = Modifier.size(Dimens.IconXS))
                             Text(
-                                "El archivo JSON se compartirá mediante el sistema de Android",
+                                "Por defecto se guardará en Descargas/GhostNexoraVPN",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextTertiary
                             )

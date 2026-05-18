@@ -11,19 +11,31 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.ghostnexora.vpn.GhostNexoraApp
 import com.ghostnexora.vpn.R
+import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.tunnel.TunnelManager
+import com.jcraft.jsch.Session
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.ui.MainActivity
+import com.ghostnexora.vpn.util.PermissionHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.SSLParameters
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -37,7 +49,10 @@ class GhostVpnService : VpnService() {
     private var tunInterface: ParcelFileDescriptor? = null
     private var tunnelJob: Job? = null
     private var udpChannel: DatagramChannel? = null
+    private var controlSocket: Socket? = null
+    private var sshSession: Session? = null
     private var activeProfile: VpnProfile? = null
+    private val tunnelManager = TunnelManager()
 
     private val binder = GhostVpnBinder()
 
@@ -124,17 +139,20 @@ class GhostVpnService : VpnService() {
                 buildNotification(VpnConnectionState.Connecting(profile.name))
             )
             logSafe(LogLevel.INFO, "Iniciando conexión: ${profile.name}", profile.id)
+            logSafe(LogLevel.DEBUG, "Modo seleccionado: ${profile.connectionModeLabel}", profile.id)
 
-            connectTunnel(profile)
+            if (!profile.selectedMode.supported) {
+                val message = "El método ${profile.connectionModeLabel} todavía no está implementado"
+                updateState(VpnConnectionState.Error(message))
+                logSafe(LogLevel.ERROR, message, profile.id)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
 
-            val tun = buildTunInterface(profile)
-                ?: run {
-                    updateState(VpnConnectionState.Error("No se pudo crear la interfaz TUN"))
-                    logSafe(LogLevel.ERROR, "Fallo al crear TUN", profile.id)
-                    return
-                }
-
-            tunInterface = tun
+            val session = establishControlConnection(profile)
+            sshSession = session
+            controlSocket = null
             repository.markLastUsed(profile.id)
 
             val connectedState = VpnConnectionState.Connected(
@@ -144,14 +162,18 @@ class GhostVpnService : VpnService() {
             )
             updateState(connectedState)
             updateNotification(connectedState)
-            logSafe(LogLevel.SUCCESS, "VPN conectada: ${profile.host}:${profile.port}", profile.id)
+            logSafe(LogLevel.SUCCESS, "Sesión SSH establecida: ${profile.host}:${profile.port}", profile.id)
+            logSafe(LogLevel.INFO, "Modo activo: ${profile.connectionModeLabel}", profile.id)
+            if (profile.selectedMode.requiresPayload) {
+                logSafe(LogLevel.WARNING, "El modo con payload aún queda pendiente de un core de datos", profile.id)
+            }
 
-            startPacketForwarding(tun)
+            maybeStartFloatingWindow()
 
         } catch (e: Exception) {
-            val msg = e.message ?: "Error desconocido al conectar"
+            val msg = friendlyConnectionError(e, activeProfile)
             updateState(VpnConnectionState.Error(msg))
-            logSafe(LogLevel.ERROR, "Error de conexión: $msg")
+            logSafe(LogLevel.ERROR, "Error de conexión: $msg", activeProfile?.id)
             updateNotification(VpnConnectionState.Error(msg))
         }
     }
@@ -167,12 +189,19 @@ class GhostVpnService : VpnService() {
             udpChannel?.close()
             udpChannel = null
 
+            runCatching { controlSocket?.close() }
+            controlSocket = null
+            runCatching { tunnelManager.disconnect(sshSession) }
+            sshSession = null
+
             tunInterface?.close()
             tunInterface = null
 
             activeProfile = null
             updateState(VpnConnectionState.Disconnected)
             logSafe(LogLevel.INFO, "VPN desconectada correctamente")
+
+            stopService(Intent(this, FloatingWindowService::class.java))
 
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -194,6 +223,128 @@ class GhostVpnService : VpnService() {
         } else {
             stopSelf()
         }
+    }
+
+    private suspend fun establishControlConnection(profile: VpnProfile): Session {
+        val mode = profile.selectedMode
+        val endpointHost = profile.host.trim()
+        val endpointPort = profile.port
+
+        if (mode.requiresPayload && profile.payload.isNotBlank()) {
+            logSafe(
+                LogLevel.WARNING,
+                "El modo ${mode.label} requiere un core de payload aparte; por ahora se usará solo la sesión SSH/TLS",
+                profile.id
+            )
+        }
+
+        val client = tunnelManager.connect(profile)
+        logSafe(LogLevel.DEBUG, "SSH auth OK → $endpointHost:$endpointPort", profile.id)
+        if (mode.usesTls) {
+            logSafe(LogLevel.DEBUG, "SNI aplicado: ${profile.sni.ifBlank { endpointHost }}", profile.id)
+        }
+        if (mode.requiresProxy && profile.proxy.host.isNotBlank()) {
+            logSafe(LogLevel.DEBUG, "Proxy aplicado: ${profile.proxy.host}:${profile.proxy.port}", profile.id)
+        }
+        return client
+    }
+
+    private fun connectDirect(host: String, port: Int): Socket {
+        val socket = Socket()
+        socket.tcpNoDelay = true
+        socket.connect(InetSocketAddress(host, port), 10_000)
+        return socket
+    }
+
+    private fun connectThroughProxy(profile: VpnProfile, targetHost: String, targetPort: Int): Socket {
+        val proxyHost = profile.proxy.host.trim()
+        val proxyPort = profile.proxy.port.takeIf { it in 1..65535 } ?: 8080
+        val proxyType = profile.proxy.type.trim().lowercase()
+        val socket = connectDirect(proxyHost, proxyPort)
+
+        when (proxyType) {
+            "socks5" -> performSocks5Handshake(socket, targetHost, targetPort)
+            else -> performHttpConnectHandshake(socket, targetHost, targetPort)
+        }
+
+        return socket
+    }
+
+    private fun performHttpConnectHandshake(socket: Socket, host: String, port: Int) {
+        val request = buildString {
+            append("CONNECT ")
+            append(host)
+            append(":")
+            append(port)
+            append(" HTTP/1.1\r\n")
+            append("Host: ")
+            append(host)
+            append(":")
+            append(port)
+            append("\r\n")
+            append("Proxy-Connection: Keep-Alive\r\n\r\n")
+        }
+        socket.getOutputStream().write(request.toByteArray())
+        socket.getOutputStream().flush()
+
+        val response = BufferedReader(InputStreamReader(socket.getInputStream())).readLine() ?: ""
+        if (!response.contains("200")) {
+            throw IllegalStateException("HTTP proxy rechazó la conexión: $response")
+        }
+    }
+
+    private fun performSocks5Handshake(socket: Socket, host: String, port: Int) {
+        val out = socket.getOutputStream()
+        val input = socket.getInputStream()
+
+        out.write(byteArrayOf(0x05, 0x01, 0x00))
+        out.flush()
+        val methodResponse = ByteArray(2)
+        input.read(methodResponse)
+
+        val hostBytes = host.toByteArray()
+        val request = ByteArray(7 + hostBytes.size)
+        request[0] = 0x05
+        request[1] = 0x01
+        request[2] = 0x00
+        request[3] = 0x03
+        request[4] = hostBytes.size.toByte()
+        hostBytes.copyInto(request, destinationOffset = 5)
+        val portIndex = 5 + hostBytes.size
+        request[portIndex] = ((port shr 8) and 0xFF).toByte()
+        request[portIndex + 1] = (port and 0xFF).toByte()
+        out.write(request)
+        out.flush()
+
+        val response = ByteArray(10)
+        input.read(response)
+        if (response[1].toInt() != 0x00) {
+            throw IllegalStateException("SOCKS5 rechazó la conexión")
+        }
+    }
+
+    private fun wrapWithTls(socket: Socket, sniHost: String, targetPort: Int): SSLSocket {
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, null, null)
+        val factory = sslContext.socketFactory as SSLSocketFactory
+        val sslSocket = factory.createSocket(socket, sniHost, targetPort, true) as SSLSocket
+        sslSocket.useClientMode = true
+        val params = sslSocket.sslParameters
+        params.serverNames = listOf(SNIHostName(sniHost))
+        sslSocket.sslParameters = params
+        sslSocket.startHandshake()
+        return sslSocket
+    }
+
+    private suspend fun maybeStartFloatingWindow() {
+        val overlayAllowed = PermissionHelper.hasOverlayPermission(this)
+        val floatingEnabled = repository.floatingWindow.first()
+        if (!floatingEnabled || !overlayAllowed) {
+            return
+        }
+
+        val intent = Intent(this, FloatingWindowService::class.java)
+        startService(intent)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -341,6 +492,32 @@ class GhostVpnService : VpnService() {
         notificationManager.notify(GhostNexoraApp.NOTIF_ID_VPN, buildNotification(state))
     }
 
+
+    private fun friendlyConnectionError(error: Throwable, profile: VpnProfile?): String {
+        val raw = error.message.orEmpty()
+        val lower = raw.lowercase()
+        val base = when {
+            lower.contains("auth fail") -> {
+                "Autenticación SSH fallida. Verifica usuario, contraseña, puerto y que el servidor permita password auth."
+            }
+            lower.contains("trust anchor for certification path not found") -> {
+                "Fallo TLS/SNI: el certificado del servidor no es confiable para Android o el SNI no coincide."
+            }
+            lower.contains("connection timed out") -> {
+                "Tiempo de espera agotado al conectar. Revisa host, puerto y red."
+            }
+            else -> raw.ifBlank { "Error desconocido al conectar" }
+        }
+
+        return buildString {
+            append(base)
+            profile?.let {
+                append(" [")
+                append(it.connectionModeLabel)
+                append("]")
+            }
+        }
+    }
     // ══════════════════════════════════════════════════════════════════════
     // HELPERS
     // ══════════════════════════════════════════════════════════════════════

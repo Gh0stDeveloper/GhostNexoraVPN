@@ -68,6 +68,10 @@ class LogsViewModel @Inject constructor(
         _uiState.update { it.copy(showClearDialog = true) }
     }
 
+    fun clearLogs() {
+        confirmClearLogs()
+    }
+
     fun dismissClearDialog() {
         _uiState.update { it.copy(showClearDialog = false) }
     }

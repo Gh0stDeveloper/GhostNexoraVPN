@@ -1,67 +1,107 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.ghostnexora.vpn.ui.screens.profiles
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ghostnexora.vpn.data.model.VpnProfile
-import com.ghostnexora.vpn.ui.theme.*
+import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.ui.theme.BackgroundDark
+import com.ghostnexora.vpn.ui.theme.BorderSubtle
+import com.ghostnexora.vpn.ui.theme.Dimens
+import com.ghostnexora.vpn.ui.theme.GhostButton
+import com.ghostnexora.vpn.ui.theme.GhostCard
+import com.ghostnexora.vpn.ui.theme.NeonAmber
+import com.ghostnexora.vpn.ui.theme.NeonCyan
+import com.ghostnexora.vpn.ui.theme.TextOnAccent
+import com.ghostnexora.vpn.ui.theme.TextPrimary
+import com.ghostnexora.vpn.ui.theme.TextSecondary
 
 @Composable
 fun CreateEditProfileScreen(
-    profileId: Long? = null, // null = crear nuevo
+    profileId: String? = null,
     onBack: () -> Unit,
-    viewModel: ProfileViewModel = hiltViewModel()
+    viewModel: CreateEditViewModel = hiltViewModel()
 ) {
-    val isEditMode = profileId != null
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // Cargar perfil si es modo edición
-    LaunchedEffect(profileId) {
-        if (profileId != null) {
-            viewModel.loadProfileForEdit(profileId)
-        }
-    }
-
-    // Snackbar
-    LaunchedEffect(state.snackbarMessage) {
-        state.snackbarMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
-            viewModel.clearSnackbar()
-        }
-    }
-
-    // Éxito al guardar
-    LaunchedEffect(state.savedSuccessfully) {
-        if (state.savedSuccessfully) {
-            onBack()
-        }
-    }
-
     val scrollState = rememberScrollState()
+
+    LaunchedEffect(profileId) {
+        viewModel.loadProfile(profileId)
+    }
+
+    LaunchedEffect(state.error) {
+        state.error?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.clearError()
+        }
+    }
+
+    LaunchedEffect(state.savedSuccessfully) {
+        if (state.savedSuccessfully) onBack()
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditMode) "Editar Perfil" else "Nuevo Perfil") },
+                title = { Text(state.title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = viewModel::save, enabled = !state.isSaving) {
+                        Text(if (state.isSaving) "Guardando" else "Guardar", color = NeonAmber)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -78,22 +118,20 @@ fun CreateEditProfileScreen(
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
         ) {
-            GhostCard {
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-                    // Nombre
                     OutlinedTextField(
                         value = state.name,
-                        onValueChange = { viewModel.updateName(it) },
+                        onValueChange = viewModel::onNameChange,
                         label = { Text("Nombre del Perfil") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = state.nameError != null,
                         supportingText = { state.nameError?.let { Text(it, color = Color.Red) } }
                     )
 
-                    // Host
                     OutlinedTextField(
                         value = state.host,
-                        onValueChange = { viewModel.updateHost(it) },
+                        onValueChange = viewModel::onHostChange,
                         label = { Text("Servidor (Host)") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = state.hostError != null,
@@ -101,54 +139,43 @@ fun CreateEditProfileScreen(
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-                        // Puerto
                         OutlinedTextField(
                             value = state.port,
-                            onValueChange = { viewModel.updatePort(it) },
+                            onValueChange = viewModel::onPortChange,
                             label = { Text("Puerto") },
                             modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                             isError = state.portError != null,
                             supportingText = { state.portError?.let { Text(it, color = Color.Red) } }
                         )
 
-                        // Método
-                        OutlinedTextField(
-                            value = state.method,
-                            onValueChange = { viewModel.updateMethod(it) },
-                            label = { Text("Método") },
+                        ModeSelector(
+                            selectedMode = state.selectedMode,
+                            onModeSelected = viewModel::onConnectionModeChange,
                             modifier = Modifier.weight(1f)
                         )
                     }
 
-                    // SSL / TLS
-                    SwitchSetting(
-                        title = "Habilitar SSL/TLS",
-                        checked = state.sslEnabled,
-                        onCheckedChange = { viewModel.toggleSslEnabled() }
-                    )
+                    ModeInfoCard(mode = state.selectedMode)
 
-                    // Username y Password
                     OutlinedTextField(
                         value = state.username,
-                        onValueChange = { viewModel.updateUsername(it) },
-                        label = { Text("Usuario (opcional)") },
+                        onValueChange = viewModel::onUsernameChange,
+                        label = { Text("Usuario SSH") },
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    var passwordVisible by remember { mutableStateOf(false) }
-
                     OutlinedTextField(
                         value = state.password,
-                        onValueChange = { viewModel.updatePassword(it) },
-                        label = { Text("Contraseña (opcional)") },
+                        onValueChange = viewModel::onPasswordChange,
+                        label = { Text("Contraseña SSH") },
                         modifier = Modifier.fillMaxWidth(),
-                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            IconButton(onClick = viewModel::togglePasswordVisible) {
                                 Icon(
-                                    if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "Ocultar" else "Mostrar"
+                                    if (state.passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = if (state.passwordVisible) "Ocultar" else "Mostrar"
                                 )
                             }
                         }
@@ -156,78 +183,73 @@ fun CreateEditProfileScreen(
                 }
             }
 
-            // Advanced Options (collapsible)
-            var showAdvanced by remember { mutableStateOf(false) }
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
+                    Text("Opciones del modo", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
 
-            GhostCard {
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showAdvanced = !showAdvanced }
-                            .padding(Dimens.SpaceMD),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Opciones Avanzadas", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.weight(1f))
-                        Icon(
-                            if (showAdvanced) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            null
+                    if (state.selectedMode.requiresSni) {
+                        OutlinedTextField(
+                            value = state.sni,
+                            onValueChange = viewModel::onSniChange,
+                            label = { Text("SNI / Host TLS") },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    if (showAdvanced) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = Dimens.SpaceMD),
-                            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-                        ) {
-                            OutlinedTextField(
-                                value = state.sni ?: "",
-                                onValueChange = { viewModel.updateSni(it) },
-                                label = { Text("SNI (Server Name Indication)") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                    if (state.selectedMode.requiresPayload) {
+                        OutlinedTextField(
+                            value = state.payload,
+                            onValueChange = viewModel::onPayloadChange,
+                            label = { Text("Payload") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 4
+                        )
+                    }
 
+                    if (state.selectedMode.requiresProxy) {
+                        OutlinedTextField(
+                            value = state.proxyHost,
+                            onValueChange = viewModel::onProxyHostChange,
+                            label = { Text("Proxy Host") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
                             OutlinedTextField(
-                                value = state.proxyHost ?: "",
-                                onValueChange = { viewModel.updateProxyHost(it) },
-                                label = { Text("Proxy Host") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            OutlinedTextField(
-                                value = state.proxyPort ?: "",
-                                onValueChange = { viewModel.updateProxyPort(it) },
+                                value = state.proxyPort,
+                                onValueChange = viewModel::onProxyPortChange,
                                 label = { Text("Proxy Puerto") },
-                                modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
-
-                            // Proxy Type (puedes expandir con Dropdown si quieres)
                             OutlinedTextField(
-                                value = state.proxyType ?: "",
-                                onValueChange = { viewModel.updateProxyType(it) },
-                                label = { Text("Tipo de Proxy") },
-                                modifier = Modifier.fillMaxWidth()
+                                value = state.proxyType,
+                                onValueChange = viewModel::onProxyTypeChange,
+                                label = { Text("Tipo") },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
+
+                    SwitchRow(
+                        title = "Perfil habilitado",
+                        checked = state.enabled,
+                        onCheckedChange = viewModel::onEnabledChange
+                    )
                 }
             }
 
-            // Tags y Notes
-            GhostCard {
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
                     OutlinedTextField(
-                        value = state.tags.joinToString(", "),
-                        onValueChange = { viewModel.updateTags(it) },
+                        value = state.tags,
+                        onValueChange = viewModel::onTagsChange,
                         label = { Text("Tags (separados por coma)") },
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     OutlinedTextField(
-                        value = state.notes ?: "",
-                        onValueChange = { viewModel.updateNotes(it) },
+                        value = state.notes,
+                        onValueChange = viewModel::onNotesChange,
                         label = { Text("Notas") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3
@@ -235,10 +257,9 @@ fun CreateEditProfileScreen(
                 }
             }
 
-            // Save Button
             GhostButton(
-                text = if (state.isSaving) "Guardando..." else if (isEditMode) "Guardar Cambios" else "Crear Perfil",
-                onClick = { viewModel.saveProfile() },
+                text = if (state.isSaving) "Guardando..." else if (state.isEditMode) "Guardar Cambios" else "Crear Perfil",
+                onClick = viewModel::save,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isSaving,
                 containerColor = NeonAmber,
@@ -251,18 +272,82 @@ fun CreateEditProfileScreen(
 }
 
 @Composable
-private fun SwitchSetting(
+private fun ModeSelector(
+    selectedMode: ConnectionMode,
+    onModeSelected: (ConnectionMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(selectedMode.label)
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ConnectionMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(mode.label)
+                            Text(
+                                mode.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (mode.supported) TextSecondary else NeonAmber
+                            )
+                        }
+                    },
+                    onClick = {
+                        if (mode.supported) {
+                            expanded = false
+                            onModeSelected(mode)
+                        }
+                    },
+                    enabled = mode.supported
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModeInfoCard(
+    mode: ConnectionMode
+) {
+    GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
+            Text("Método seleccionado", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text(mode.label, style = MaterialTheme.typography.titleMedium, color = NeonCyan)
+            Text(mode.description, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Text(
+                "Campos requeridos: ${mode.requiredFields.joinToString(" · ")}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+            if (!mode.supported) {
+                Text(
+                    "Este método está documentado pero todavía no está habilitado en el motor actual.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NeonAmber
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Dimens.SpaceMD, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(title, modifier = Modifier.weight(1f), color = TextPrimary)
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

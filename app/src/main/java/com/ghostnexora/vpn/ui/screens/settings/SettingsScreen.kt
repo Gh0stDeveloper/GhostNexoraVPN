@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.ghostnexora.vpn.ui.screens.settings
 
 import androidx.compose.foundation.background
@@ -14,15 +16,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ghostnexora.vpn.ui.theme.*
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Snackbar
@@ -105,6 +109,12 @@ fun SettingsScreen(
                     contentColor = Color.White,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            // Update Section
+            SettingsSection(title = "Actualizaciones") {
+                InfoRow("Verificación automática", "Al abrir la app")
+                InfoRow("Instalación", "Desde GitHub Releases")
             }
 
             // About Section

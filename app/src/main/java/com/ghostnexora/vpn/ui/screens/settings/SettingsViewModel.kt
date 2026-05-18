@@ -68,16 +68,32 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAutoReconnect(enabled) }
     }
 
+    fun toggleAutoReconnect() {
+        setAutoReconnect(!_uiState.value.autoReconnect)
+    }
+
     fun setFloatingWindow(enabled: Boolean) {
         viewModelScope.launch { repository.setFloatingWindow(enabled) }
+    }
+
+    fun toggleFloatingWindow() {
+        setFloatingWindow(!_uiState.value.floatingWindow)
     }
 
     fun setNotifications(enabled: Boolean) {
         viewModelScope.launch { repository.setNotifications(enabled) }
     }
 
+    fun toggleNotifications() {
+        setNotifications(!_uiState.value.notifications)
+    }
+
     fun setReconnectOnBoot(enabled: Boolean) {
         viewModelScope.launch { repository.setReconnectOnBoot(enabled) }
+    }
+
+    fun toggleReconnectOnBoot() {
+        setReconnectOnBoot(!_uiState.value.reconnectOnBoot)
     }
 
     fun setLogsMaxEntries(max: Int) {
@@ -124,6 +140,15 @@ class SettingsViewModel @Inject constructor(
     // ══════════════════════════════════════════════════════════════════════
     // HELPERS
     // ══════════════════════════════════════════════════════════════════════
+
+    fun clearLogs() {
+        viewModelScope.launch {
+            repository.clearLogs()
+            _uiState.update {
+                it.copy(snackbarMessage = "Registros eliminados")
+            }
+        }
+    }
 
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }

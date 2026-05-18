@@ -11,15 +11,15 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 /**
  * Base de datos Room principal de Ghost Nexora VPN.
  *
- * Versión: 1
+ * Versión: 2
  * Entidades: VpnProfile, LogEntry
  *
  * Patrón Singleton para evitar múltiples instancias concurrentes.
  */
 @Database(
     entities = [VpnProfile::class, LogEntry::class],
-    version = 1,
-    exportSchema = true
+    version = 2,
+    exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

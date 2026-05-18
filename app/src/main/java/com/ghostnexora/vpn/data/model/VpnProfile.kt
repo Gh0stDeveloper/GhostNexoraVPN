@@ -32,15 +32,21 @@ data class VpnProfile(
     @ColumnInfo(name = "password")
     val password: String = "",
 
-    // Método: "ssh", "v2ray", "shadowsocks", "wireguard", etc.
+    // Campo legado para compatibilidad con versiones previas
     @ColumnInfo(name = "method")
     val method: String = "ssh",
 
+    @ColumnInfo(name = "connection_mode")
+    val connectionMode: String = ConnectionMode.SSH_DIRECT.id,
+
     @ColumnInfo(name = "ssl_enabled")
-    val sslEnabled: Boolean = true,
+    val sslEnabled: Boolean = false,
 
     @ColumnInfo(name = "sni")
     val sni: String = "",
+
+    @ColumnInfo(name = "payload")
+    val payload: String = "",
 
     // Proxy embebido (proxy_host, proxy_port, proxy_type)
     @Embedded
@@ -79,6 +85,26 @@ data class VpnProfile(
     /** Indica si el perfil tiene credenciales configuradas */
     val hasCredentials: Boolean
         get() = username.isNotEmpty() && password.isNotEmpty()
+
+    /** Modo real seleccionado, con compatibilidad para perfiles antiguos */
+    val selectedMode: ConnectionMode
+        get() = ConnectionMode.fromStored(connectionMode, method, sslEnabled)
+
+    /** Etiqueta amigable para mostrar en UI */
+    val connectionModeLabel: String
+        get() = selectedMode.label
+
+    /** True si el perfil requiere un host SNI */
+    val requiresSni: Boolean
+        get() = selectedMode.requiresSni
+
+    /** True si el perfil requiere proxy */
+    val requiresProxy: Boolean
+        get() = selectedMode.requiresProxy
+
+    /** True si el perfil requiere payload */
+    val requiresPayload: Boolean
+        get() = selectedMode.requiresPayload
 
     companion object {
         /** Crea un perfil vacío listo para edición */
