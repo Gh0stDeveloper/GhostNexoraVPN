@@ -6,7 +6,6 @@ import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.SocketFactory
-import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
 import java.io.BufferedReader
 import java.io.IOException
@@ -26,7 +25,7 @@ import javax.net.ssl.X509TrustManager
 /**
  * Motor SSH por modos con transporte directo, proxy y/o TLS/SNI.
  *
- * La estrategia es:
+ * Estrategia:
  * 1) resolver el transporte TCP (directo o proxy),
  * 2) opcionalmente envolverlo en TLS/SNI,
  * 3) entregar el socket a JSch para levantar la sesión SSH real.
@@ -49,12 +48,15 @@ class SshTunnelEngine {
         require(sshPassword.isNotBlank()) { "La contraseña SSH es obligatoria para este modo" }
 
         val jsch = JSch()
+        jsch.removeAllIdentity()
+
         val session = jsch.getSession(sshUser, transportHost, transportPort)
         session.setPassword(sshPassword)
-        session.setUserInfo(ProfileUserInfo(sshUser, sshPassword))
+        session.setUserInfo(ProfileUserInfo(sshPassword))
         session.setConfig("StrictHostKeyChecking", "no")
         session.setConfig("PreferredAuthentications", "password")
-        session.setConfig("MaxAuthTries", "3")
+        session.setConfig("PubkeyAuthentication", "no")
+        session.setConfig("MaxAuthTries", "1")
         session.setServerAliveInterval(15_000)
         session.setTimeout(20_000)
         session.setSocketFactory(TunnelSocketFactory(profile))
@@ -72,6 +74,7 @@ class SshTunnelEngine {
             }
             throw e
         }
+
         return session
     }
 
@@ -152,6 +155,7 @@ private class TunnelSocketFactory(
 
         out.write(byteArrayOf(0x05, 0x01, 0x00))
         out.flush()
+
         val methodResponse = ByteArray(2)
         readFully(input, methodResponse)
         if (methodResponse[1].toInt() != 0x00) {
@@ -194,34 +198,25 @@ private class TunnelSocketFactory(
 
         val sslSocket = sslContext.socketFactory.createSocket(socket, peerHost, peerPort, true) as SSLSocket
         sslSocket.useClientMode = true
+
         val params: SSLParameters = sslSocket.sslParameters
         params.serverNames = listOf(SNIHostName(sniHost))
         sslSocket.sslParameters = params
+
         sslSocket.startHandshake()
         return sslSocket
     }
 }
 
 private class ProfileUserInfo(
-    private val username: String,
     private val password: String
-) : UserInfo, UIKeyboardInteractive {
+) : UserInfo {
     override fun getPassword(): String? = password
     override fun promptYesNo(str: String?): Boolean = true
     override fun getPassphrase(): String? = null
     override fun promptPassphrase(message: String?): Boolean = false
     override fun promptPassword(message: String?): Boolean = password.isNotBlank()
     override fun showMessage(message: String?) = Unit
-    override fun promptKeyboardInteractive(
-        destination: String?,
-        name: String?,
-        instruction: String?,
-        prompt: Array<out String>?,
-        echo: BooleanArray?
-    ): Array<String>? {
-        if (prompt.isNullOrEmpty()) return emptyArray()
-        return Array(prompt.size) { password }
-    }
 }
 
 private class TrustAllX509TrustManager : X509TrustManager {
