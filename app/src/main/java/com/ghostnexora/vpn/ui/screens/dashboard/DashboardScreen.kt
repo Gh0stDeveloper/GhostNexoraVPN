@@ -25,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Sync
@@ -42,12 +44,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -79,6 +84,8 @@ fun DashboardScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val snackbarHostState = remember { SnackbarHostState() }
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -133,6 +140,17 @@ fun DashboardScreen(
                 profile = uiState.activeProfile,
                 connectionState = uiState.connectionState,
                 onChangeProfile = onNavigateToProfiles
+            )
+
+            DashboardLogCard(
+                logs = uiState.recentLogs,
+                onCopyAll = {
+                    val payload = uiState.recentLogs.joinToString("\n") { entry ->
+                        "[${entry.timeFormatted}] [${entry.level.label}] [${entry.tag}] ${entry.message}"
+                    }
+                    clipboard.setText(AnnotatedString(payload))
+                    scope.launch { snackbarHostState.showSnackbar("Registro copiado") }
+                }
             )
 
             QuickActionsRow(
@@ -334,6 +352,62 @@ private fun QuickActionCard(
             Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(32.dp))
             Spacer(Modifier.height(8.dp))
             Text(label, color = color, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun DashboardLogCard(
+    logs: List<com.ghostnexora.vpn.data.model.LogEntry>,
+    onCopyAll: () -> Unit
+) {
+    GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Article, contentDescription = null, tint = NeonCyan)
+                    Spacer(Modifier.width(Dimens.SpaceSM))
+                    Text(
+                        text = "Registro de conexión",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary
+                    )
+                }
+                IconButton(onClick = onCopyAll) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = "Copiar registro", tint = NeonCyan)
+                }
+            }
+
+            if (logs.isEmpty()) {
+                Text(
+                    text = "Sin eventos todavía",
+                    style = MonoStyle.copy(color = TextTertiary),
+                    color = TextTertiary
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    logs.take(6).forEach { entry ->
+                        Text(
+                            text = "[${entry.timeFormatted}] [${entry.level.label}] ${entry.message}",
+                            style = MonoStyle.copy(color = TextSecondary),
+                            color = TextSecondary,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    if (logs.size > 6) {
+                        Text(
+                            text = "… y ${logs.size - 6} eventos más",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
+                }
+            }
         }
     }
 }

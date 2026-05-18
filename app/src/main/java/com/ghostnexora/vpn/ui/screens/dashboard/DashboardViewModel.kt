@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
@@ -40,6 +41,7 @@ class DashboardViewModel @Inject constructor(
         observeActiveProfile()
         observeAllProfiles()
         observeServiceState()
+        observeRecentLogs()
     }
 
     private fun observeActiveProfile() {
@@ -84,6 +86,14 @@ class DashboardViewModel @Inject constructor(
                     is VpnConnectionState.Error -> stopSessionTimer()
                     else -> Unit
                 }
+            }
+        }
+    }
+
+    private fun observeRecentLogs() {
+        viewModelScope.launch {
+            repository.getRecentLogs(12).collectLatest { logs ->
+                _uiState.update { it.copy(recentLogs = logs) }
             }
         }
     }
@@ -203,7 +213,8 @@ data class DashboardUiState(
     val hasProfiles: Boolean = false,
     val sessionElapsed: Long = 0L,
     val snackbarMessage: String? = null,
-    val pendingVpnPermissionIntent: Intent? = null
+    val pendingVpnPermissionIntent: Intent? = null,
+    val recentLogs: List<LogEntry> = emptyList()
 ) {
     val isConnected: Boolean get() = connectionState is VpnConnectionState.Connected
     val isConnecting: Boolean get() = connectionState is VpnConnectionState.Connecting

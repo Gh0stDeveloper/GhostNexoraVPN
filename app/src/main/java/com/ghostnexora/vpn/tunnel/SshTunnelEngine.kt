@@ -53,7 +53,7 @@ class SshTunnelEngine {
         session.setPassword(sshPassword)
         session.setUserInfo(ProfileUserInfo(sshUser, sshPassword))
         session.setConfig("StrictHostKeyChecking", "no")
-        session.setConfig("PreferredAuthentications", "keyboard-interactive,password,publickey")
+        session.setConfig("PreferredAuthentications", "password")
         session.setConfig("MaxAuthTries", "3")
         session.setServerAliveInterval(15_000)
         session.setTimeout(20_000)
