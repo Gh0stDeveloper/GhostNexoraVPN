@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.ghostnexora.vpn.BuildConfig
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonSyntaxException
@@ -18,6 +19,7 @@ import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -153,11 +155,13 @@ class JsonManager @Inject constructor(
     fun exportToString(profiles: List<VpnProfile>): String {
         val document = VpnProfileDocument(
             appName = "Ghost Nexora VPN",
-            version = "1.0.0",
+            version = BuildConfig.VERSION_NAME,
             exportedAt = SimpleDateFormat(
                 "yyyy-MM-dd'T'HH:mm:ss'Z'",
                 Locale.getDefault()
-            ).format(Date()),
+            ).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date()),
             profiles = profiles.map { it.toJson() }
         )
         return gson.toJson(document)
@@ -188,7 +192,7 @@ class JsonManager @Inject constructor(
 
 data class VpnProfileDocument(
     val appName: String? = "Ghost Nexora VPN",
-    val version: String? = "1.0.0",
+    val version: String? = BuildConfig.VERSION_NAME,
     val exportedAt: String? = null,
     val profiles: List<VpnProfileJson>? = null
 )

@@ -97,9 +97,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setLogsMaxEntries(max: Int) {
+        val clamped = max.coerceIn(100, 5_000)
         viewModelScope.launch {
-            repository.setNotifications(true) // placeholder
-            _uiState.update { it.copy(logsMaxEntries = max) }
+            repository.setLogsMaxEntries(clamped)
+            _uiState.update { it.copy(logsMaxEntries = clamped, snackbarMessage = "Límite de registros actualizado a $clamped") }
         }
     }
 

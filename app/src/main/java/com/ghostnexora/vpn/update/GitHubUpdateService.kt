@@ -4,6 +4,7 @@ package com.ghostnexora.vpn.update
 import com.google.gson.Gson
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -76,6 +77,28 @@ class GitHubUpdateService(
         }
     }
 
+
+    fun downloadText(downloadUrl: String): String {
+        val connection = (URL(downloadUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            setRequestProperty("User-Agent", "GhostNexoraVPN")
+        }
+
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                throw IllegalStateException("No se pudo leer el recurso ($code): ${body.ifBlank { "sin detalle" }}")
+            }
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     companion object {
         fun isNewer(remoteTag: String, currentVersion: String): Boolean {
             fun normalize(v: String): List<Int> {
@@ -94,6 +117,24 @@ class GitHubUpdateService(
                 if (r != c) return r > c
             }
             return false
+        }
+
+        fun parseVersionCode(text: String): Int? {
+            val direct = Regex("""(?:versionCode|version_code)\s*[:=]\s*(\d+)""", RegexOption.IGNORE_CASE)
+                .find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (direct != null) return direct
+
+            val semanticParts = text
+                .trim()
+                .removePrefix("v")
+                .split('.', '-', '_')
+                .mapNotNull { it.toIntOrNull() }
+            return semanticParts.lastOrNull()
+        }
+
+        fun sha256(bytes: ByteArray): String {
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            return digest.joinToString("") { "%02x".format(it) }
         }
     }
 }

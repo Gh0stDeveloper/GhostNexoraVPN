@@ -146,6 +146,7 @@ class ProfileRepository @Inject constructor(
     suspend fun setNotifications(v: Boolean)    = dataStore.setNotificationsEnabled(v)
     suspend fun setReconnectOnBoot(v: Boolean)  = dataStore.setReconnectOnBoot(v)
     suspend fun setShowFloatingHint(v: Boolean) = dataStore.setShowFloatingHint(v)
+    suspend fun setLogsMaxEntries(v: Int)        = dataStore.setLogsMaxEntries(v)
     suspend fun setFirstLaunchDone()            = dataStore.setFirstLaunchDone()
 
     /** Limpia todo: perfiles, logs y preferencias */

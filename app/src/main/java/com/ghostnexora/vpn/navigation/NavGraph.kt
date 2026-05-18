@@ -23,6 +23,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.ghostnexora.vpn.ui.screens.about.AboutScreen
+import com.ghostnexora.vpn.ui.screens.history.HistoryScreen
 import com.ghostnexora.vpn.ui.screens.documentation.DocumentationScreen
 import com.ghostnexora.vpn.ui.screens.dashboard.DashboardScreen
 import com.ghostnexora.vpn.ui.screens.importexport.ExportScreen
@@ -117,7 +118,7 @@ fun GhostNavHost(
 
         // ── Historial (placeholder Fase 2) ────────────────────────────────
         composable(Screen.History.route) {
-            HistoryPlaceholderScreen()
+            HistoryScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Logs ───────────────────────────────────────────────────────────
@@ -324,7 +325,7 @@ private fun GhostDrawerItem(
 // ══════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun HistoryPlaceholderScreen() {
+private fun HistoryScreen(onBack = { navController.popBackStack() }) {
     Box(
         modifier = Modifier
             .fillMaxSize()

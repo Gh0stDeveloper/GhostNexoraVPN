@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.ui.theme.*
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -30,7 +31,7 @@ import com.ghostnexora.vpn.ui.theme.*
 private const val GITHUB_URL   = "https://github.com/CHICO-CP"
 private const val TELEGRAM_URL = "https://t.me/Gh0stDeveloper"
 private const val EMAIL        = "ghostnexora@gmail.com"
-private const val APP_VERSION  = "1.0.0"
+private val APP_VERSION = BuildConfig.VERSION_NAME
 
 @Composable
 fun AboutScreen() {
@@ -177,7 +178,7 @@ private fun AboutHeader() {
                 .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceXS)
         ) {
             Text(
-                text  = "v$APP_VERSION  ·  Fase 1 Estable",
+                text  = "v$APP_VERSION  ·  V20 estable",
                 style = MaterialTheme.typography.labelSmall.copy(
                     color = NeonCyan,
                     letterSpacing = 1.sp

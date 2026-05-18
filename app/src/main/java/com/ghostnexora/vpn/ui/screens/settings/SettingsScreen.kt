@@ -20,6 +20,7 @@ import com.ghostnexora.vpn.ui.theme.*
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.unit.sp
+import com.ghostnexora.vpn.BuildConfig
 
 @Composable
 fun SettingsScreen(
@@ -38,6 +39,7 @@ fun SettingsScreen(
     }
 
     var showClearDialog by remember { mutableStateOf(false) }
+    var showLogsLimitDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -99,7 +101,7 @@ fun SettingsScreen(
                 ListSetting(
                     title = "Máximo de entradas",
                     value = "${state.logsMaxEntries}",
-                    onClick = { /* TODO: Implementar selector */ }
+                    onClick = { showLogsLimitDialog = true }
                 )
 
                 GhostButton(
@@ -119,12 +121,47 @@ fun SettingsScreen(
 
             // About Section
             SettingsSection(title = "Acerca de") {
-                InfoRow("Versión", "1.0.0")
+                InfoRow("Versión", BuildConfig.VERSION_NAME)
                 InfoRow("Desarrollado por", "GhostNexora")
             }
 
             Spacer(modifier = Modifier.height(Dimens.Space3XL))
         }
+    }
+
+    if (showLogsLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogsLimitDialog = false },
+            title = { Text("Máximo de entradas") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Selecciona un límite para conservar el historial visible.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(onClick = {
+                            viewModel.setLogsMaxEntries(250)
+                            showLogsLimitDialog = false
+                        }, label = { Text("250") })
+                        AssistChip(onClick = {
+                            viewModel.setLogsMaxEntries(500)
+                            showLogsLimitDialog = false
+                        }, label = { Text("500") })
+                        AssistChip(onClick = {
+                            viewModel.setLogsMaxEntries(1000)
+                            showLogsLimitDialog = false
+                        }, label = { Text("1000") })
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setLogsMaxEntries(2000)
+                    showLogsLimitDialog = false
+                }) { Text("2000") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogsLimitDialog = false }) { Text("Cerrar") }
+            }
+        )
     }
 
     // Clear logs confirmation dialog

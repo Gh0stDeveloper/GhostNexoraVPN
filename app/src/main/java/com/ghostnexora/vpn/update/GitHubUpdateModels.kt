@@ -8,6 +8,9 @@ data class GitHubReleaseResponse(
     @SerializedName("name") val name: String = "",
     @SerializedName("body") val body: String = "",
     @SerializedName("html_url") val htmlUrl: String = "",
+    @SerializedName("prerelease") val prerelease: Boolean = false,
+    @SerializedName("draft") val draft: Boolean = false,
+    @SerializedName("published_at") val publishedAt: String = "",
     @SerializedName("assets") val assets: List<GitHubAsset> = emptyList()
 )
 
@@ -27,6 +30,10 @@ data class UpdateUiState(
     val latestVersion: String = "",
     val releaseNotes: String = "",
     val downloadUrl: String = "",
+    val expectedSha256: String = "",
+    val currentVersionCode: Int = 0,
+    val latestVersionCode: Int = 0,
+    val lastCheckedAt: Long = 0L,
     val error: String? = null,
     val message: String? = null
 )
