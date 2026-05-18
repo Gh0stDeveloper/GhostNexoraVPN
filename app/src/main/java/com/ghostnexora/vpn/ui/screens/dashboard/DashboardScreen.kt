@@ -74,6 +74,7 @@ import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.toSessionTime
+import kotlinx.coroutines.launch
 
 @Composable
 fun DashboardScreen(
