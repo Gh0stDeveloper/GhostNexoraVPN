@@ -319,37 +319,3 @@ private fun GhostDrawerItem(
         )
     )
 }
-
-// ══════════════════════════════════════════════════════════════════════════
-// PLACEHOLDER — HISTORIAL (Fase 2)
-// ══════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun HistoryScreen(onBack = { navController.popBackStack() }) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDark),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Filled.History,
-                contentDescription = null,
-                tint = TextTertiary,
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.height(Dimens.SpaceLG))
-            Text(
-                text = "Historial",
-                style = MaterialTheme.typography.titleMedium,
-                color = TextSecondary
-            )
-            Text(
-                text = "Disponible en Fase 2",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextTertiary
-            )
-        }
-    }
-}

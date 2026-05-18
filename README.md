@@ -1,4 +1,4 @@
-# 👻 Ghost Nexora VPN
+# 🔑 Ghost Nexora VPN
 
 <div align="center">
 
@@ -199,7 +199,7 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 <div align="center">
 
-**Ghost Nexora VPN** — Desarrollado con ❤️ por Ghost Developer
+**Ghost Nexora VPN** — Desarrollado por Ghost Developer
 
 [GitHub](https://github.com/CHICO-CP) · [Telegram](https://t.me/Gh0stDeveloper) · [Contacto](mailto:ghostnexora@gmail.com)
 
