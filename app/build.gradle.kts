@@ -56,6 +56,7 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            pickFirsts += "META-INF/versions/11/OSGI-INF/MANIFEST.MF"
         }
     }
 }
