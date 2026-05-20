@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.util.httpInjectorLine
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -146,8 +147,8 @@ fun DashboardScreen(
             DashboardLogCard(
                 logs = uiState.recentLogs,
                 onCopyAll = {
-                    val payload = uiState.recentLogs.joinToString("\n") { entry ->
-                        "[${entry.timeFormatted}] [${entry.level.label}] [${entry.tag}] ${entry.message}"
+                    val payload = uiState.recentLogs.sortedBy { it.timestamp }.joinToString("\n") { entry ->
+                        entry.httpInjectorLine()
                     }
                     clipboard.setText(AnnotatedString(payload))
                     scope.launch { snackbarHostState.showSnackbar("Registro copiado") }
@@ -373,7 +374,7 @@ private fun DashboardLogCard(
                     Icon(Icons.Filled.Article, contentDescription = null, tint = NeonCyan)
                     Spacer(Modifier.width(Dimens.SpaceSM))
                     Text(
-                        text = "Registro de conexión",
+                        text = "Terminal de conexión",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextPrimary
                     )
@@ -383,32 +384,11 @@ private fun DashboardLogCard(
                 }
             }
 
-            if (logs.isEmpty()) {
-                Text(
-                    text = "Sin eventos todavía",
-                    style = MonoStyle.copy(color = TextTertiary),
-                    color = TextTertiary
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    logs.take(6).forEach { entry ->
-                        Text(
-                            text = "[${entry.timeFormatted}] [${entry.level.label}] ${entry.message}",
-                            style = MonoStyle.copy(color = TextSecondary),
-                            color = TextSecondary,
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                    if (logs.size > 6) {
-                        Text(
-                            text = "… y ${logs.size - 6} eventos más",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextTertiary
-                        )
-                    }
-                }
-            }
+            HttpInjectorLogConsole(
+                logs = logs.sortedBy { it.timestamp },
+                modifier = Modifier.fillMaxWidth(),
+                maxHeight = 280
+            )
         }
     }
 }

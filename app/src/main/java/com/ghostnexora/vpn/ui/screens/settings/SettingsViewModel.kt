@@ -38,15 +38,17 @@ class SettingsViewModel @Inject constructor(
                 repository.floatingWindow,
                 repository.notifications,
                 repository.reconnectOnBoot,
-                repository.logsMaxEntries
-            ) { reconnect, floating, notifs, boot, maxLogs ->
+                repository.logsMaxEntries,
+                repository.isFirstLaunch
+            ) { reconnect, floating, notifs, boot, maxLogs, firstLaunch ->
                 SettingsUiState(
                     autoReconnect     = reconnect,
                     floatingWindow    = floating,
                     notifications     = notifs,
                     reconnectOnBoot   = boot,
                     logsMaxEntries    = maxLogs,
-                    permissionStatus  = PermissionHelper.permissionStatus(context)
+                    permissionStatus  = PermissionHelper.permissionStatus(context),
+                    firstLaunch       = firstLaunch
                 )
             }.collectLatest { state ->
                 _uiState.value = state
@@ -139,6 +141,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun completeFirstLaunch() {
+        viewModelScope.launch { repository.setFirstLaunchDone() }
+        _uiState.update { it.copy(firstLaunch = false) }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // HELPERS
     // ══════════════════════════════════════════════════════════════════════
@@ -179,5 +186,6 @@ data class SettingsUiState(
 
     // UI
     val showClearDialog: Boolean    = false,
-    val snackbarMessage: String?    = null
+    val snackbarMessage: String?    = null,
+    val firstLaunch: Boolean         = true
 )

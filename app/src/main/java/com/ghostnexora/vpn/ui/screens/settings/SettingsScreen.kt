@@ -122,7 +122,7 @@ fun SettingsScreen(
             // About Section
             SettingsSection(title = "Acerca de") {
                 InfoRow("Versión", BuildConfig.VERSION_NAME)
-                InfoRow("Desarrollado por", "GhostNexora")
+                InfoRow("Desarrollado por", "Ghost Developer")
             }
 
             Spacer(modifier = Modifier.height(Dimens.Space3XL))

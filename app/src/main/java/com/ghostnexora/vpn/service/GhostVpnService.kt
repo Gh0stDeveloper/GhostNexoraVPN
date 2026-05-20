@@ -1,14 +1,19 @@
 package com.ghostnexora.vpn.service
 
 import android.app.Notification
+import android.content.Context
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.net.VpnService
 import android.os.Binder
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.GhostNexoraApp
 import com.ghostnexora.vpn.R
 import com.ghostnexora.vpn.data.model.ConnectionMode
@@ -133,11 +138,15 @@ class GhostVpnService : VpnService() {
                 }
 
             activeProfile = profile
+            logSafe(LogLevel.INFO, "[START] Servicio Solicitado", profile.id)
+            logSafe(LogLevel.INFO, "Tipo de túnel ${profile.connectionModeLabel}", profile.id)
+            logConnectionSnapshot(profile)
             updateState(VpnConnectionState.Connecting(profile.name))
             startForeground(
                 GhostNexoraApp.NOTIF_ID_VPN,
                 buildNotification(VpnConnectionState.Connecting(profile.name))
             )
+            logSafe(LogLevel.INFO, "Iniciar servicio de túnel", profile.id)
             logSafe(LogLevel.INFO, "Iniciando conexión: ${profile.name}", profile.id)
             logSafe(LogLevel.DEBUG, "Modo seleccionado: ${profile.connectionModeLabel}", profile.id)
 
@@ -162,8 +171,10 @@ class GhostVpnService : VpnService() {
             )
             updateState(connectedState)
             updateNotification(connectedState)
+            logSafe(LogLevel.SUCCESS, "Conectado", profile.id)
             logSafe(LogLevel.SUCCESS, "Sesión SSH establecida: ${profile.host}:${profile.port}", profile.id)
             logSafe(LogLevel.INFO, "Modo activo: ${profile.connectionModeLabel}", profile.id)
+            logSafe(LogLevel.INFO, "Iniciando Inyección con Servicio VPN", profile.id)
             if (profile.selectedMode.requiresPayload) {
                 logSafe(LogLevel.WARNING, "El modo con payload aún queda pendiente de un core de datos", profile.id)
             }
@@ -174,13 +185,16 @@ class GhostVpnService : VpnService() {
             val msg = friendlyConnectionError(e, activeProfile)
             updateState(VpnConnectionState.Error(msg))
             logSafe(LogLevel.ERROR, "Error de conexión: $msg", activeProfile?.id)
+            logSafe(LogLevel.INFO, "Tunnel core stopped", activeProfile?.id)
             updateNotification(VpnConnectionState.Error(msg))
         }
     }
 
     private suspend fun handleDisconnect() {
         try {
-            logSafe(LogLevel.INFO, "Desconectando VPN…", activeProfile?.id)
+            logSafe(LogLevel.INFO, "[STOP] Servicio Solicitado", activeProfile?.id)
+            logSafe(LogLevel.INFO, "Detener servicio de Injecion VPN", activeProfile?.id)
+            logSafe(LogLevel.INFO, "Deteniendo... SSH", activeProfile?.id)
             updateState(VpnConnectionState.Disconnecting)
 
             tunnelJob?.cancelAndJoin()
@@ -199,7 +213,10 @@ class GhostVpnService : VpnService() {
 
             activeProfile = null
             updateState(VpnConnectionState.Disconnected)
-            logSafe(LogLevel.INFO, "VPN desconectada correctamente")
+            logSafe(LogLevel.INFO, "Tunnel core stopped")
+            logSafe(LogLevel.INFO, "Cerrando interface, destruyendo interface VPN")
+            logSafe(LogLevel.INFO, "VPN thread stopped")
+            logSafe(LogLevel.INFO, "[VPN] Desconectado")
 
             stopService(Intent(this, FloatingWindowService::class.java))
 
@@ -518,6 +535,90 @@ class GhostVpnService : VpnService() {
             }
         }
     }
+    private fun logConnectionSnapshot(profile: VpnProfile) {
+        val abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty().ifBlank { "unknown" }
+        logSafe(
+            LogLevel.INFO,
+            "${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}) Android API ${Build.VERSION.SDK_INT} ($abi)",
+            profile.id
+        )
+        logSafe(
+            LogLevel.INFO,
+            "App version: ${BuildConfig.VERSION_NAME} Build ${BuildConfig.VERSION_CODE}",
+            profile.id
+        )
+        resolveLocalIpAddress()?.let { ip ->
+            logSafe(LogLevel.INFO, "IP local: $ip", profile.id)
+        }
+        logSafe(LogLevel.INFO, describeNetworkState(), profile.id)
+        logSafe(LogLevel.INFO, describeNetworkDetails(), profile.id)
+        logSafe(LogLevel.INFO, "Password auth available", profile.id)
+        logSafe(LogLevel.INFO, "Autenticarse con una contraseña", profile.id)
+        if (profile.selectedMode.usesTls) {
+            logSafe(
+                LogLevel.INFO,
+                "SNI hostname: ${profile.sni.ifBlank { profile.host }}",
+                profile.id
+            )
+        }
+    }
+
+    private fun resolveLocalIpAddress(): String? {
+        return runCatching {
+            java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+                .asSequence()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { iface -> java.util.Collections.list(iface.inetAddresses).asSequence() }
+                .firstOrNull { address ->
+                    !address.isLoopbackAddress && address.hostAddress?.contains(':') != true
+                }
+                ?.hostAddress
+        }.getOrNull()
+    }
+
+    private fun describeNetworkState(): String {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val caps = connectivityManager.getNetworkCapabilities(network)
+        val transport = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WIFI"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "MOBILE"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ETHERNET"
+            else -> "UNKNOWN"
+        }
+        val carrier = if (transport == "MOBILE") "LTE" else transport
+        val extra = resolveNetworkExtra()
+        return "Estado de la Red: CONNECTED $carrier to $transport $extra".trim()
+    }
+
+    private fun describeNetworkDetails(): String {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val caps = connectivityManager.getNetworkCapabilities(network)
+        val transport = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WIFI"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "MOBILE"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ETHERNET"
+            else -> "UNKNOWN"
+        }
+        val networkMode = if (transport == "MOBILE") "MOBILE[LTE]" else transport
+        val extra = resolveNetworkExtra()
+        val roaming = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)?.not() ?: false
+        val available = caps != null
+        return "Network available: [type: $networkMode, state: CONNECTED/CONNECTED, reason: (unspecified), extra: $extra, failover: false, available: $available, roaming: $roaming]"
+    }
+
+    private fun resolveNetworkExtra(): String {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val properties = connectivityManager.getLinkProperties(network)
+        return properties?.interfaceName
+            ?: properties?.dnsServers?.firstOrNull()?.hostAddress
+            ?: "internet"
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // HELPERS
     // ══════════════════════════════════════════════════════════════════════

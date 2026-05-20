@@ -63,6 +63,8 @@ import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
+import com.ghostnexora.vpn.util.PayloadGenerator
+import com.ghostnexora.vpn.util.PayloadUseCase
 
 @Composable
 fun CreateEditProfileScreen(
@@ -197,6 +199,13 @@ fun CreateEditProfileScreen(
                     }
 
                     if (state.selectedMode.requiresPayload) {
+                        PayloadPresetPanel(
+                            host = state.host,
+                            port = state.port.toIntOrNull() ?: 443,
+                            sni = state.sni.ifBlank { state.host },
+                            onUsePayload = viewModel::onPayloadChange
+                        )
+
                         OutlinedTextField(
                             value = state.payload,
                             onValueChange = viewModel::onPayloadChange,
@@ -349,5 +358,61 @@ private fun SwitchRow(
     ) {
         Text(title, modifier = Modifier.weight(1f), color = TextPrimary)
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+
+@Composable
+private fun PayloadPresetPanel(
+    host: String,
+    port: Int,
+    sni: String,
+    onUsePayload: (String) -> Unit
+) {
+    var preset by remember { mutableStateOf(PayloadUseCase.BROWSING) }
+
+    GhostCard(
+        backgroundColor = NeonCyan.copy(alpha = 0.04f),
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            Text("Generador de payload", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Elige un preset y la app llenará el campo Payload con una plantilla base editable.",
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                TextButton(onClick = {
+                    preset = PayloadUseCase.BROWSING
+                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.BROWSING, host, port, sni = sni))
+                }) { Text("Navegación") }
+
+                TextButton(onClick = {
+                    preset = PayloadUseCase.STREAMING
+                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.STREAMING, host, port, sni = sni))
+                }) { Text("Streaming") }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                TextButton(onClick = {
+                    preset = PayloadUseCase.GAMING
+                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.GAMING, host, port, sni = sni))
+                }) { Text("Gaming") }
+
+                TextButton(onClick = {
+                    preset = PayloadUseCase.CUSTOM
+                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.CUSTOM, host, port, sni = sni))
+                }) { Text("Custom") }
+            }
+
+            Text(
+                text = "Preset actual: ${preset.label}",
+                color = NeonAmber,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
 }

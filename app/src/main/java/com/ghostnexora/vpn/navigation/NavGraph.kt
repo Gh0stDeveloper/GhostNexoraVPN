@@ -267,7 +267,7 @@ private fun DrawerHeader() {
                 )
             )
             Text(
-                text = "VPN Manager v1.0",
+                text = "Vercion 1.0.21",
                 style = MaterialTheme.typography.bodySmall.copy(
                     color = NeonCyanDim,
                     letterSpacing = 1.sp

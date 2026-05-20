@@ -7,6 +7,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.app.NotificationManagerCompat
 
@@ -65,6 +67,21 @@ object PermissionHelper {
         }
     }
 
+    // ── Instalación de APKs desde fuentes desconocidas ───────────────────
+
+    fun hasInstallUnknownAppsPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    fun installUnknownAppsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = android.net.Uri.parse("package:${context.packageName}")
+        }
+
     // ── Optimización de batería ───────────────────────────────────────────
 
     /**
@@ -95,8 +112,28 @@ object PermissionHelper {
             vpn          = hasVpnPermission(context),
             overlay      = hasOverlayPermission(context),
             notification = hasNotificationPermission(context),
-            battery      = isBatteryOptimizationIgnored(context)
+            battery      = isBatteryOptimizationIgnored(context),
+            unknownSources = hasInstallUnknownAppsPermission(context)
         )
+
+    fun storagePermissions(): Array<String> = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+        arrayOf(
+            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
+    } else {
+        emptyArray()
+    }
+
+    fun hasStoragePermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+            storagePermissions().all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        } else {
+            true
+        }
+    }
 }
 
 /**
@@ -106,19 +143,21 @@ data class PermissionStatus(
     val vpn: Boolean,
     val overlay: Boolean,
     val notification: Boolean,
-    val battery: Boolean
+    val battery: Boolean,
+    val unknownSources: Boolean = false
 ) {
     /** True si todos los permisos críticos están concedidos */
     val allGranted: Boolean get() = vpn && notification
 
     /** True si los permisos opcionales también están concedidos */
-    val allOptionalGranted: Boolean get() = overlay && battery
+    val allOptionalGranted: Boolean get() = overlay && battery && unknownSources
 
     /** Descripción de qué falta */
     fun missingList(): List<String> = buildList {
-        if (!vpn)          add("Permiso VPN")
-        if (!notification) add("Notificaciones")
-        if (!overlay)      add("Ventana flotante (overlay)")
-        if (!battery)      add("Optimización de batería")
+        if (!vpn)            add("Permiso VPN")
+        if (!notification)    add("Notificaciones")
+        if (!overlay)        add("Ventana flotante (overlay)")
+        if (!battery)        add("Optimización de batería")
+        if (!unknownSources)  add("Instalar apps desconocidas")
     }
 }

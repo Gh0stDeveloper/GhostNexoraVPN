@@ -579,7 +579,7 @@ private fun VersionFooter() {
             )
         )
         Text(
-            text  = "Desarrollado con ❤️ por Ghost Developer",
+            text  = "Desarrollado  por Ghost Developer",
             style = MaterialTheme.typography.bodySmall,
             color = TextTertiary,
             textAlign = TextAlign.Center

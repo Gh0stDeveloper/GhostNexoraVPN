@@ -25,6 +25,7 @@ fun UpdateDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Hay una versión más reciente.")
+                Text("La instalación se realiza encima de la app actual y conserva perfiles, logs y ajustes mientras la firma del APK sea la misma.")
                 if (state.latestVersion.isNotBlank()) {
                     Text("Versión: ${state.latestVersion}")
                 }

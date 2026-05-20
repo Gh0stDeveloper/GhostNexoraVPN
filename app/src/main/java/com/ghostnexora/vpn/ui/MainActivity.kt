@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +20,8 @@ import androidx.navigation.compose.rememberNavController
 import com.ghostnexora.vpn.navigation.GhostNavigationDrawer
 import com.ghostnexora.vpn.ui.components.UpdateDialog
 import com.ghostnexora.vpn.update.UpdateViewModel
+import com.ghostnexora.vpn.ui.screens.settings.SettingsViewModel
+import com.ghostnexora.vpn.ui.screens.onboarding.FirstLaunchPermissionsScreen
 import com.ghostnexora.vpn.navigation.GhostNavHost
 import com.ghostnexora.vpn.navigation.Screen
 import com.ghostnexora.vpn.ui.theme.*
@@ -56,23 +59,37 @@ private fun GhostNexoraApp() {
     val drawerState       = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope    = rememberCoroutineScope()
 
-    // Import explícito resuelve el Unresolved reference
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val settingsState by settingsViewModel.uiState.collectAsState()
+
     val currentBackStack  by navController.currentBackStackEntryAsState()
     val currentRoute      = currentBackStack?.destination?.route
     val currentTitle      = screenTitle(currentRoute)
+
     val updateViewModel: UpdateViewModel = hiltViewModel()
     val updateState by updateViewModel.uiState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        updateViewModel.checkForUpdates()
+    LaunchedEffect(settingsState.firstLaunch) {
+        if (!settingsState.firstLaunch) {
+            updateViewModel.checkForUpdates(force = true)
+        }
     }
 
-    if (updateState.available && !updateState.dismissed) {
+    if (!settingsState.firstLaunch && updateState.available && !updateState.dismissed) {
         UpdateDialog(
             state = updateState,
             onDismiss = { updateViewModel.dismissUpdatePrompt() },
             onUpdateNow = { updateViewModel.downloadAndInstall() }
         )
+    }
+
+    if (settingsState.firstLaunch) {
+        FirstLaunchPermissionsScreen(
+            onComplete = {
+                updateViewModel.checkForUpdates(force = true)
+            }
+        )
+        return
     }
 
     GhostNavigationDrawer(
@@ -88,7 +105,8 @@ private fun GhostNexoraApp() {
                             if (drawerState.isClosed) drawerState.open()
                             else drawerState.close()
                         }
-                    }
+                    },
+                    onUpdateClick = { updateViewModel.checkForUpdates(force = true) }
                 )
             },
             containerColor = BackgroundDark,
@@ -114,7 +132,8 @@ private fun GhostNexoraApp() {
 @Composable
 private fun GhostTopBar(
     title: String,
-    onMenuClick: () -> Unit
+    onMenuClick: () -> Unit,
+    onUpdateClick: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -130,6 +149,15 @@ private fun GhostTopBar(
                     imageVector        = Icons.Filled.Menu,
                     contentDescription = "Menú",
                     tint               = NeonCyan
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onUpdateClick) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Buscar actualizaciones",
+                    tint = NeonCyan
                 )
             }
         },

@@ -45,7 +45,7 @@ class LogsViewModel @Inject constructor(
                 entry.message.contains(query, ignoreCase = true) ||
                 entry.tag.contains(query, ignoreCase = true)
             matchLevel && matchQuery
-        }
+        }.sortedBy { it.timestamp }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ══════════════════════════════════════════════════════════════════════
@@ -99,13 +99,8 @@ class LogsViewModel @Inject constructor(
             appendLine("  Ghost Nexora VPN — Registro de Logs")
             appendLine("═══════════════════════════════════════")
             appendLine()
-            logs.forEach { entry ->
-                appendLine(
-                    "[${entry.dateTimeFormatted}] " +
-                    "[${entry.level.label}] " +
-                    "[${entry.tag}] " +
-                    entry.message
-                )
+            logs.sortedBy { it.timestamp }.forEach { entry ->
+                appendLine(entry.httpInjectorLine())
             }
             appendLine()
             appendLine("Total: ${logs.size} entrada(s)")
