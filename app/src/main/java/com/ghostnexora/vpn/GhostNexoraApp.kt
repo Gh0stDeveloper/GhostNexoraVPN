@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import java.io.File
 import dagger.hilt.android.HiltAndroidApp
 
 /**
@@ -18,6 +19,7 @@ class GhostNexoraApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        prepareEmbeddedGeoData()
         createNotificationChannels()
     }
 
@@ -60,6 +62,21 @@ class GhostNexoraApp : Application() {
         notificationManager.createNotificationChannels(
             listOf(vpnChannel, floatingChannel)
         )
+    }
+
+    private fun prepareEmbeddedGeoData() {
+        listOf("geoip.dat", "geosite.dat").forEach { fileName ->
+            val destination = File(filesDir, fileName)
+            if (destination.exists()) return@forEach
+
+            runCatching {
+                assets.open(fileName).use { input ->
+                    destination.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+        }
     }
 
     companion object {

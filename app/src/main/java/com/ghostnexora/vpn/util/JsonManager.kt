@@ -13,6 +13,7 @@ import com.google.gson.JsonSyntaxException
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.util.ProtocolLinkParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.InputStream
@@ -38,23 +39,44 @@ class JsonManager @Inject constructor(
             val inputStream: InputStream = context.contentResolver.openInputStream(uri)
                 ?: return ImportResult.Error("No se pudo abrir el archivo")
 
-            val jsonString = inputStream.bufferedReader().use { it.readText() }
-            parseJson(jsonString)
+            val rawText = inputStream.bufferedReader().use { it.readText() }
+            parseImportText(rawText)
         } catch (e: Exception) {
             ImportResult.Error("Error al leer el archivo: ${e.message}")
         }
     }
 
-    fun importFromString(jsonString: String): ImportResult = parseJson(jsonString)
+    fun importFromString(jsonString: String): ImportResult = parseImportText(jsonString)
 
-    private fun parseJson(jsonString: String): ImportResult {
-        if (jsonString.isBlank()) return ImportResult.Error("El archivo está vacío")
+    private fun parseImportText(rawText: String): ImportResult {
+        if (rawText.isBlank()) return ImportResult.Error("El archivo está vacío")
+
+        parseJson(rawText)?.let { return it }
+
+        val protocolProfiles = ProtocolLinkParser.parseText(rawText)
+        if (protocolProfiles.isNotEmpty()) {
+            val source = when {
+                rawText.contains("vmess://", ignoreCase = true) -> "Enlaces vmess"
+                rawText.contains("vless://", ignoreCase = true) -> "Enlaces vless"
+                rawText.contains("trojan://", ignoreCase = true) -> "Enlaces trojan"
+                else -> "Enlaces compatibles"
+            }
+            return ImportResult.Success(protocolProfiles, source)
+        }
+
+        return ImportResult.Error("Formato JSON o enlace no reconocido")
+    }
+
+    private fun parseJson(jsonString: String): ImportResult? {
+        val trimmed = jsonString.trim()
+        if (trimmed.isBlank()) return ImportResult.Error("El archivo está vacío")
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null
 
         return try {
-            val document = gson.fromJson(jsonString, VpnProfileDocument::class.java)
+            val document = gson.fromJson(trimmed, VpnProfileDocument::class.java)
 
             if (document?.profiles.isNullOrEmpty()) {
-                val profiles = gson.fromJson(jsonString, Array<VpnProfileJson>::class.java)
+                val profiles = gson.fromJson(trimmed, Array<VpnProfileJson>::class.java)
                     ?.toList()
                     ?: return ImportResult.Error("Formato JSON no reconocido")
 
@@ -170,13 +192,18 @@ class JsonManager @Inject constructor(
     fun validateJson(jsonString: String): ValidationResult {
         if (jsonString.isBlank()) return ValidationResult(false, "Archivo vacío", 0)
 
+        val raw = jsonString.trim()
+        if (ProtocolLinkParser.supportsProtocolLinks(raw)) {
+            return ValidationResult(true, "Enlace(s) de protocolo detectados", ProtocolLinkParser.parseText(raw).size)
+        }
+
         return try {
-            val doc = gson.fromJson(jsonString, VpnProfileDocument::class.java)
+            val doc = gson.fromJson(raw, VpnProfileDocument::class.java)
             val count = doc?.profiles?.size ?: 0
             if (count > 0) {
                 ValidationResult(true, "Formato válido", count)
             } else {
-                val arr = gson.fromJson(jsonString, Array<VpnProfileJson>::class.java)
+                val arr = gson.fromJson(raw, Array<VpnProfileJson>::class.java)
                 val arrCount = arr?.size ?: 0
                 if (arrCount > 0) ValidationResult(true, "Formato array válido", arrCount)
                 else ValidationResult(false, "No se encontraron perfiles", 0)

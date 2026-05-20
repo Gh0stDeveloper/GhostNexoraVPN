@@ -38,46 +38,23 @@ class ImportExportViewModel @Inject constructor(
 
     fun onFilePicked(uri: Uri) {
         viewModelScope.launch {
-            _importState.update { it.copy(isLoading = true, error = null) }
+            loadImportResult(
+                fileName = resolveFileName(uri),
+                sourceLabel = "Archivo",
+                loader = { jsonManager.importFromUri(uri) },
+                selectedUri = uri
+            )
+        }
+    }
 
-            try {
-                val fileName = resolveFileName(uri)
-                val result = jsonManager.importFromUri(uri)
-
-                when (result) {
-                    is ImportResult.Success -> {
-                        _importState.update {
-                            it.copy(
-                                isLoading = false,
-                                selectedUri = uri,
-                                fileName = fileName,
-                                previewProfiles = result.profiles,
-                                sourceName = result.sourceName,
-                                validation = ValidationResult(
-                                    isValid = true,
-                                    message = "Formato válido",
-                                    profileCount = result.profiles.size
-                                ),
-                                error = null
-                            )
-                        }
-                    }
-
-                    is ImportResult.Error -> {
-                        _importState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = result.message,
-                                previewProfiles = emptyList()
-                            )
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                _importState.update {
-                    it.copy(isLoading = false, error = "Error inesperado: ${e.message}")
-                }
-            }
+    fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") {
+        viewModelScope.launch {
+            loadImportResult(
+                fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
+                sourceLabel = sourceLabel,
+                loader = { jsonManager.importFromString(rawText) },
+                selectedUri = null
+            )
         }
     }
 
@@ -110,6 +87,55 @@ class ImportExportViewModel @Inject constructor(
 
     fun clearImportMessage() {
         _importState.update { it.copy(importSuccess = false, error = null) }
+    }
+
+    private suspend fun loadImportResult(
+        fileName: String,
+        sourceLabel: String,
+        loader: suspend () -> ImportResult,
+        selectedUri: Uri?
+    ) {
+        _importState.update { it.copy(isLoading = true, error = null) }
+
+        try {
+            when (val result = loader()) {
+                is ImportResult.Success -> {
+                    _importState.update {
+                        it.copy(
+                            isLoading = false,
+                            selectedUri = selectedUri,
+                            fileName = fileName,
+                            previewProfiles = result.profiles,
+                            sourceName = result.sourceName.ifBlank { sourceLabel },
+                            validation = ValidationResult(
+                                isValid = true,
+                                message = "Formato válido",
+                                profileCount = result.profiles.size
+                            ),
+                            error = null
+                        )
+                    }
+                }
+
+                is ImportResult.Error -> {
+                    _importState.update {
+                        it.copy(
+                            isLoading = false,
+                            selectedUri = selectedUri,
+                            fileName = fileName,
+                            sourceName = sourceLabel,
+                            error = result.message,
+                            previewProfiles = emptyList(),
+                            validation = ValidationResult(false, result.message, 0)
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            _importState.update {
+                it.copy(isLoading = false, error = "Error inesperado: ${e.message}")
+            }
+        }
     }
 
     fun toggleProfileSelection(profileId: String) {

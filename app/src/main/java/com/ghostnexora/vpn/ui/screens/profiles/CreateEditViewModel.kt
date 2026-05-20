@@ -97,11 +97,6 @@ class CreateEditViewModel @Inject constructor(
         val mode = s.selectedMode
         var valid = true
 
-        if (!mode.supported) {
-            _uiState.update { it.copy(error = "Este método todavía no está implementado en el motor actual") }
-            return false
-        }
-
         if (s.name.isBlank()) {
             _uiState.update { it.copy(nameError = "El nombre es obligatorio") }
             valid = false

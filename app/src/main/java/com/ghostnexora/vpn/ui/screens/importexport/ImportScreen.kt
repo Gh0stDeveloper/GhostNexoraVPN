@@ -39,12 +39,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
@@ -60,6 +62,9 @@ import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
+import android.content.ClipboardManager
+import android.content.Context
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.ExperimentalMaterial3Api
 
@@ -70,6 +75,8 @@ fun ImportScreen(
 ) {
     val state by viewModel.importState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -141,7 +148,7 @@ fun ImportScreen(
                             )
                         )
                         Text(
-                            text = "Selecciona un archivo JSON exportado previamente",
+                            text = "Selecciona un archivo JSON o un enlace compatible desde archivo o portapapeles",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                             textAlign = TextAlign.Center
@@ -157,6 +164,32 @@ fun ImportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
                     containerColor = NeonCyan,
+                    contentColor = TextOnAccent
+                )
+            }
+
+            item {
+                GhostButton(
+                    text = "Importar desde portapapeles",
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val rawText = clipboard.primaryClip
+                            ?.getItemAt(0)
+                            ?.coerceToText(context)
+                            ?.toString()
+                            .orEmpty()
+
+                        if (rawText.isBlank()) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("El portapapeles está vacío")
+                            }
+                        } else {
+                            viewModel.onTextProvided(rawText)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.isLoading,
+                    containerColor = NeonAmber,
                     contentColor = TextOnAccent
                 )
             }
@@ -258,7 +291,7 @@ fun ImportScreen(
             item {
                 Spacer(modifier = Modifier.height(Dimens.Space3XL))
                 Text(
-                    text = "Solo se aceptan archivos JSON generados por GhostNexoraVPN",
+                    text = "La importación acepta JSON exportado y enlaces vmess/vless/trojan desde el portapapeles.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary,
                     textAlign = TextAlign.Center,

@@ -7,6 +7,7 @@ import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnProfile
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -105,7 +106,10 @@ class ProfileRepository @Inject constructor(
     }
 
     /** Inserta un log directamente */
-    suspend fun insertLog(entry: LogEntry) = logDao.insertLog(entry)
+    suspend fun insertLog(entry: LogEntry) {
+        logDao.insertLog(entry)
+        trimLogsIfNeeded()
+    }
 
     /** Shortcut para loggear desde el repositorio o servicios */
     suspend fun log(
@@ -114,7 +118,7 @@ class ProfileRepository @Inject constructor(
         profileId: String? = null,
         tag: String = "GhostVPN"
     ) {
-        logDao.insertLog(
+        insertLog(
             LogEntry(
                 level = level,
                 tag = tag,
@@ -155,5 +159,10 @@ class ProfileRepository @Inject constructor(
         logDao.clearAllLogs()
         dataStore.clearAll()
         log(LogLevel.WARNING, "Todos los datos eliminados")
+    }
+
+    private suspend fun trimLogsIfNeeded() {
+        val maxEntries = logsMaxEntries.first().coerceIn(100, 5_000)
+        logDao.keepOnly(maxEntries)
     }
 }
