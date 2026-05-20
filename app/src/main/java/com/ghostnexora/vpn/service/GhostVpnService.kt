@@ -535,7 +535,7 @@ class GhostVpnService : VpnService() {
             }
         }
     }
-    private fun logConnectionSnapshot(profile: VpnProfile) {
+    private suspend fun logConnectionSnapshot(profile: VpnProfile) {
         val abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty().ifBlank { "unknown" }
         logSafe(
             LogLevel.INFO,

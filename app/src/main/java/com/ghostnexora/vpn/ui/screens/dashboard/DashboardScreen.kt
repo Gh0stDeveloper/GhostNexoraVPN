@@ -60,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.util.httpInjectorLine
+import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens

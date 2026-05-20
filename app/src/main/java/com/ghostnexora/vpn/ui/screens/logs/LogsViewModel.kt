@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.util.httpInjectorLine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*

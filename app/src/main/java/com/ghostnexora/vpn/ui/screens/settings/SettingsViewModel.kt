@@ -38,17 +38,24 @@ class SettingsViewModel @Inject constructor(
                 repository.floatingWindow,
                 repository.notifications,
                 repository.reconnectOnBoot,
-                repository.logsMaxEntries,
-                repository.isFirstLaunch
-            ) { reconnect, floating, notifs, boot, maxLogs, firstLaunch ->
+                repository.logsMaxEntries
+            ) { reconnect, floating, notifs, boot, maxLogs ->
+                SettingsSnapshot(
+                    autoReconnect = reconnect,
+                    floatingWindow = floating,
+                    notifications = notifs,
+                    reconnectOnBoot = boot,
+                    logsMaxEntries = maxLogs
+                )
+            }.combine(repository.isFirstLaunch) { snapshot, firstLaunch ->
                 SettingsUiState(
-                    autoReconnect     = reconnect,
-                    floatingWindow    = floating,
-                    notifications     = notifs,
-                    reconnectOnBoot   = boot,
-                    logsMaxEntries    = maxLogs,
-                    permissionStatus  = PermissionHelper.permissionStatus(context),
-                    firstLaunch       = firstLaunch
+                    autoReconnect    = snapshot.autoReconnect,
+                    floatingWindow   = snapshot.floatingWindow,
+                    notifications    = snapshot.notifications,
+                    reconnectOnBoot  = snapshot.reconnectOnBoot,
+                    logsMaxEntries   = snapshot.logsMaxEntries,
+                    permissionStatus = PermissionHelper.permissionStatus(context),
+                    firstLaunch      = firstLaunch
                 )
             }.collectLatest { state ->
                 _uiState.value = state
@@ -167,6 +174,14 @@ class SettingsViewModel @Inject constructor(
 // ══════════════════════════════════════════════════════════════════════════
 // UI STATE
 // ══════════════════════════════════════════════════════════════════════════
+
+private data class SettingsSnapshot(
+    val autoReconnect: Boolean,
+    val floatingWindow: Boolean,
+    val notifications: Boolean,
+    val reconnectOnBoot: Boolean,
+    val logsMaxEntries: Int
+)
 
 data class SettingsUiState(
     // Preferencias
