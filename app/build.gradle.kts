@@ -26,8 +26,7 @@ android {
     signingConfigs {
         create("release") {
             // Ruta del .jks que reconstruyes en GitHub Actions
-            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "ghostnexora-release.jks")
-
+            storeFile = file("ghostnexora-release.jks")
             // Variables de entorno / GitHub Secrets
             storePassword = System.getenv("KEYSTORE_PASSWORD")
             keyAlias = System.getenv("KEY_ALIAS")

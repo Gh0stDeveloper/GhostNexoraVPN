@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    name: Compilar APK firmado
+    name: Compilar APK Release
     runs-on: ubuntu-latest
 
     steps:
@@ -16,25 +16,39 @@ jobs:
       - name: ☕ Configurar JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: "17"
           distribution: "temurin"
+          java-version: "17"
+
+      - name: 🔐 Restaurar keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/ghostnexora-release.jks
+
+      - name: 🧪 Verificar keystore
+        run: |
+          ls -lh app/ghostnexora-release.jks
+          keytool -list \
+            -v \
+            -keystore app/ghostnexora-release.jks \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}"
+
+      - name: ⚙️ Crear local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: 🔧 Dar permisos a gradlew
         run: chmod +x ./gradlew
 
-      - name: 🔐 Restaurar keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ghostnexora-release.jks
-
       - name: 🛠️ Compilar APK Release
         env:
-          KEYSTORE_FILE: ${{ github.workspace }}/ghostnexora-release.jks
+          KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace
 
-      - name: 📤 Subir APK como artefacto
+      - name: 📤 Subir APK Release
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: GhostNexoraVPN-Release
           path: app/build/outputs/apk/release/*.apk
