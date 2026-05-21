@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -30,9 +29,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +51,6 @@ import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.httpInjectorLine
-import kotlinx.coroutines.flow.collectLatest
 
 /**
  * Consola interactiva estilo HTTP Injector.
@@ -72,8 +68,8 @@ fun HttpInjectorLogConsole(
 ) {
     val listState = rememberLazyListState()
     val orderedLogs = remember(logs) { logs.sortedBy { it.timestamp } }
-    var selectedLogId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var followTail by rememberSaveable { mutableStateOf(true) }
+    var selectedLogId by remember { mutableStateOf<Long?>(null) }
+    var followTail by remember { mutableStateOf(true) }
 
     val selectedEntry = remember(orderedLogs, selectedLogId) {
         orderedLogs.firstOrNull { it.id == selectedLogId }
@@ -95,13 +91,6 @@ fun HttpInjectorLogConsole(
         if (followTail && orderedLogs.isNotEmpty()) {
             listState.animateScrollToItem(orderedLogs.lastIndex)
         }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to isAtBottom }
-            .collectLatest { (_, atBottom) ->
-                if (!atBottom) followTail = false
-            }
     }
 
     GhostCard(
@@ -151,23 +140,21 @@ fun HttpInjectorLogConsole(
                         color = TextTertiary
                     )
                 } else {
-                    SelectionContainer {
-                        LazyColumn(
-                            state = listState,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            itemsIndexed(orderedLogs, key = { _, entry -> entry.id }) { index, entry ->
-                                HttpLogLine(
-                                    entry = entry,
-                                    isLast = index == orderedLogs.lastIndex,
-                                    isSelected = entry.id == selectedLogId,
-                                    onClick = {
-                                        selectedLogId = if (selectedLogId == entry.id) null else entry.id
-                                    }
-                                )
-                            }
-                            item { Spacer(modifier = Modifier.height(4.dp)) }
+                    LazyColumn(
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        itemsIndexed(orderedLogs, key = { _, entry -> entry.id }) { index, entry ->
+                            HttpLogLine(
+                                entry = entry,
+                                isLast = index == orderedLogs.lastIndex,
+                                isSelected = entry.id == selectedLogId,
+                                onClick = {
+                                    selectedLogId = if (selectedLogId == entry.id) null else entry.id
+                                }
+                            )
                         }
+                        item { Spacer(modifier = Modifier.height(4.dp)) }
                     }
                 }
             }

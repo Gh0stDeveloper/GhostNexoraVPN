@@ -9,6 +9,7 @@
 ![License](https://img.shields.io/badge/License-MIT-00E676?style=for-the-badge)
 
 **Gestión profesional de perfiles VPN para Android**
+![Ghost Nexora VPN](./ignore/app.png)
 
 *Desarrollado por [Ghost Developer](https://github.com/CHICO-CP)*
 

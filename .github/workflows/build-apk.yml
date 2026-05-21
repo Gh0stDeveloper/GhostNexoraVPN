@@ -1,12 +1,12 @@
-name: Construir APK Debug
+name: Construir APK Release
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
-    name: Compilar APK
+    name: Compilar APK firmado
     runs-on: ubuntu-latest
 
     steps:
@@ -16,17 +16,25 @@ jobs:
       - name: ☕ Configurar JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
 
       - name: 🔧 Dar permisos a gradlew
         run: chmod +x ./gradlew
 
-      - name: 🛠️ Compilar APK Debug
-        run: ./gradlew assembleDebug
+      - name: 🔐 Restaurar keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ghostnexora-release.jks
+
+      - name: 🛠️ Compilar APK Release
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/ghostnexora-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
 
       - name: 📤 Subir APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
