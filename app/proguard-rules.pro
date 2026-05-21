@@ -17,7 +17,9 @@
 -keepattributes Exceptions
 -keepattributes InnerClasses
 -keepattributes EnclosingMethod
-
+-keep class com.jcraft.jsch.** { *; }
+-keep class com.jcraft.jsch.jce.** { *; }
+-dontwarn com.jcraft.jsch.**
 # ══════════════════════════════════════════════════════════════════════════
 # KOTLIN
 # ══════════════════════════════════════════════════════════════════════════

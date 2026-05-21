@@ -178,7 +178,7 @@ private fun AboutHeader() {
                 .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceXS)
         ) {
             Text(
-                text  = "v$APP_VERSION  ·  V21 estable",
+                text  = "v$APP_VERSION",
                 style = MaterialTheme.typography.labelSmall.copy(
                     color = NeonCyan,
                     letterSpacing = 1.sp
