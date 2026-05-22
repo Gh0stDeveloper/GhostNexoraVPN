@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GhostNavHost(
     navController: NavHostController,
+    onCheckUpdates: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -128,7 +129,10 @@ fun GhostNavHost(
 
         // ── Ajustes ────────────────────────────────────────────────────────
         composable(Screen.Settings.route) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onCheckUpdates = onCheckUpdates
+            )
         }
 
         // ── Documentación ───────────────────────────────────────────────────

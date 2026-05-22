@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -106,7 +105,6 @@ private fun GhostNexoraApp() {
                             else drawerState.close()
                         }
                     },
-                    onUpdateClick = { updateViewModel.checkForUpdates(force = true) }
                 )
             },
             containerColor = BackgroundDark,
@@ -118,7 +116,10 @@ private fun GhostNexoraApp() {
                     .background(BackgroundDark)
                     .padding(paddingValues)
             ) {
-                GhostNavHost(navController = navController)
+                GhostNavHost(
+                    navController = navController,
+                    onCheckUpdates = { updateViewModel.checkForUpdates(force = true) }
+                )
             }
         }
     }
@@ -132,8 +133,7 @@ private fun GhostNexoraApp() {
 @Composable
 private fun GhostTopBar(
     title: String,
-    onMenuClick: () -> Unit,
-    onUpdateClick: () -> Unit
+    onMenuClick: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -149,15 +149,6 @@ private fun GhostTopBar(
                     imageVector        = Icons.Filled.Menu,
                     contentDescription = "Menú",
                     tint               = NeonCyan
-                )
-            }
-        },
-        actions = {
-            IconButton(onClick = onUpdateClick) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = "Buscar actualizaciones",
-                    tint = NeonCyan
                 )
             }
         },

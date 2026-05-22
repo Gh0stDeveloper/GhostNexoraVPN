@@ -162,6 +162,11 @@ class GhostVpnService : VpnService() {
             val session = establishControlConnection(profile)
             sshSession = session
             controlSocket = null
+
+            tunInterface?.close()
+            tunInterface = buildTunInterface(profile) ?: throw IllegalStateException("No se pudo crear la interfaz VPN")
+            logSafe(LogLevel.INFO, "Interfaz VPN establecida", profile.id)
+
             repository.markLastUsed(profile.id)
 
             val connectedState = VpnConnectionState.Connected(
@@ -373,11 +378,8 @@ class GhostVpnService : VpnService() {
             Builder()
                 .setSession(profile.name)
                 .addAddress("10.0.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("1.0.0.1")
-                .addDnsServer("8.8.8.8")
                 .setMtu(1500)
                 .setBlocking(true)
                 .establish()

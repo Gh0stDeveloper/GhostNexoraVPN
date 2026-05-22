@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.ghostnexora.vpn.ui.screens.documentation
 
 import androidx.compose.foundation.background
@@ -31,7 +33,6 @@ import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentationScreen() {
     val scrollState = rememberScrollState()
@@ -64,6 +65,41 @@ fun DocumentationScreen() {
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
+                }
+            }
+
+
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                    Text("Navegación principal", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text("• Inicio: estado actual, perfil activo y resumen rápido de conexión.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("• Log: panel deslizable con registros persistentes y copia completa.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("• Perfiles: administración, importación y exportación.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("• Ajustes: permisos, actualizaciones y opciones del sistema.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            }
+
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                    Text("Actualizaciones", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text("La app consulta GitHub Releases automáticamente al abrirse y también permite una búsqueda manual desde Ajustes.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("La comparación se hace por versionCode para evitar falsos positivos y las nuevas APK se instalan encima de la anterior si la firma coincide.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            }
+
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                    Text("Importación de protocolos", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text("La pantalla de importación acepta JSON exportado y enlaces vmess://, vless:// y trojan:// desde archivo o portapapeles.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("También puedes crear perfiles manuales con campos dinámicos y generar payloads por caso de uso desde el editor.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            }
+
+            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                    Text("Logs y diagnóstico", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text("El registro mantiene el historial persistente en Room y solo se trunca cuando el usuario lo limpia o se supera el límite configurado.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("Desde el panel de logs se puede filtrar, copiar y revisar el detalle completo de cada evento de conexión.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 }
             }
 

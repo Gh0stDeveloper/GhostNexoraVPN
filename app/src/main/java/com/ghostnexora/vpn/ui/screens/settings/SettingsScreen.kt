@@ -25,6 +25,7 @@ import com.ghostnexora.vpn.BuildConfig
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onCheckUpdates: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -117,6 +118,20 @@ fun SettingsScreen(
             SettingsSection(title = "Actualizaciones") {
                 InfoRow("Verificación automática", "Al abrir la app")
                 InfoRow("Instalación", "Desde GitHub Releases")
+
+                GhostButton(
+                    text = "Buscar actualizaciones",
+                    onClick = onCheckUpdates,
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NeonCyan,
+                    contentColor = TextOnAccent
+                )
+
+                Text(
+                    text = "La comprobación consulta la última release publicada y compara el versionCode.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
             }
 
             // About Section

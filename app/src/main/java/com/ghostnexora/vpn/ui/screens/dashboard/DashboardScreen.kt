@@ -1,10 +1,12 @@
+@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+
 package com.ghostnexora.vpn.ui.screens.dashboard
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,26 +20,31 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,9 +64,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
-import com.ghostnexora.vpn.util.httpInjectorLine
 import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
@@ -75,6 +82,7 @@ import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
+import com.ghostnexora.vpn.util.httpInjectorLine
 import com.ghostnexora.vpn.util.toSessionTime
 import kotlinx.coroutines.launch
 
@@ -89,6 +97,7 @@ fun DashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { 2 })
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -120,50 +129,233 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .background(BackgroundDark)
                 .padding(padding)
-                .padding(Dimens.ScreenPadding)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXXL)
+                .padding(Dimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
         ) {
-            Spacer(Modifier.height(Dimens.SpaceSM))
-
-            ConnectionSection(
-                state = uiState.connectionState,
-                onAction = { activity?.let(viewModel::onMainAction) }
+            DashboardPagerHeader(
+                currentPage = pagerState.currentPage,
+                onOverviewClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                onLogsClick = { scope.launch { pagerState.animateScrollToPage(1) } }
             )
 
-            if (uiState.isConnected) {
-                SessionInfoRow(
-                    elapsed = uiState.sessionElapsed,
-                    serverIp = uiState.serverIp
-                )
-            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                pageSpacing = Dimens.SpaceMD
+            ) { page ->
+                when (page) {
+                    0 -> DashboardOverviewPage(
+                        state = uiState,
+                        onAction = { activity?.let(viewModel::onMainAction) },
+                        onNavigateToProfiles = onNavigateToProfiles,
+                        onOpenLogs = { scope.launch { pagerState.animateScrollToPage(1) } }
+                    )
 
-            ActiveProfileCard(
-                profile = uiState.activeProfile,
-                connectionState = uiState.connectionState,
-                onChangeProfile = onNavigateToProfiles
-            )
-
-            DashboardLogCard(
-                logs = uiState.recentLogs,
-                onCopyAll = {
-                    val payload = uiState.recentLogs.sortedBy { it.timestamp }.joinToString("\n") { entry ->
-                        entry.httpInjectorLine()
-                    }
-                    clipboard.setText(AnnotatedString(payload))
-                    scope.launch { snackbarHostState.showSnackbar("Registro copiado") }
+                    1 -> DashboardLogPage(
+                        logs = uiState.recentLogs,
+                        onCopyAll = {
+                            val payload = uiState.recentLogs
+                                .sortedBy { it.timestamp }
+                                .joinToString("\n") { entry -> entry.httpInjectorLine() }
+                            clipboard.setText(AnnotatedString(payload))
+                            scope.launch { snackbarHostState.showSnackbar("Registro copiado") }
+                        },
+                        onBackToOverview = { scope.launch { pagerState.animateScrollToPage(0) } }
+                    )
                 }
-            )
-
-            QuickActionsRow(
-                isConnected = uiState.isConnected,
-                onViewProfiles = onNavigateToProfiles,
-                onDisconnect = viewModel::disconnect
-            )
-
-            Spacer(Modifier.height(Dimens.SpaceLG))
+            }
         }
+    }
+}
+
+@Composable
+private fun DashboardPagerHeader(
+    currentPage: Int,
+    onOverviewClick: () -> Unit,
+    onLogsClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+        GhostCard(
+            backgroundColor = SurfaceVariant,
+            borderColor = BorderSubtle,
+            contentPadding = PaddingValues(Dimens.SpaceMD)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (currentPage == 0) "Inicio" else "Detalles de log",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = if (currentPage == 0) {
+                            "La vista principal se mantiene limpia. Desliza a la izquierda para abrir el log."
+                        } else {
+                            "El registro es persistente, interactivo y puedes copiarlo completo."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                IconButton(onClick = onLogsClick) {
+                    Icon(Icons.Filled.Article, contentDescription = "Abrir log", tint = NeonCyan)
+                }
+            }
+        }
+
+        TabRow(
+            selectedTabIndex = currentPage,
+            containerColor = Color.Transparent
+        ) {
+            Tab(
+                selected = currentPage == 0,
+                onClick = onOverviewClick,
+                text = { Text("Inicio") },
+                icon = { Icon(Icons.Filled.SignalCellularAlt, contentDescription = null) }
+            )
+            Tab(
+                selected = currentPage == 1,
+                onClick = onLogsClick,
+                text = { Text("Log") },
+                icon = { Icon(Icons.Filled.Article, contentDescription = null) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardOverviewPage(
+    state: DashboardUiState,
+    onAction: () -> Unit,
+    onNavigateToProfiles: () -> Unit,
+    onOpenLogs: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
+    ) {
+        ConnectionSection(
+            state = state.connectionState,
+            onAction = onAction
+        )
+
+        OverviewStatusCard(
+            state = state,
+            onOpenLogs = onOpenLogs
+        )
+
+        if (state.isConnected) {
+            SessionInfoRow(
+                elapsed = state.sessionElapsed,
+                serverIp = state.serverIp
+            )
+        }
+
+        ActiveProfileCard(
+            profile = state.activeProfile,
+            connectionState = state.connectionState,
+            onChangeProfile = onNavigateToProfiles
+        )
+
+        QuickActionsRow(
+            isConnected = state.isConnected,
+            onViewProfiles = onNavigateToProfiles,
+            onDisconnect = onAction
+        )
+
+        LogShortcutCard(
+            logCount = state.recentLogs.size,
+            onOpenLogs = onOpenLogs
+        )
+
+        Spacer(Modifier.height(Dimens.SpaceLG))
+    }
+}
+
+@Composable
+private fun DashboardLogPage(
+    logs: List<LogEntry>,
+    onCopyAll: () -> Unit,
+    onBackToOverview: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
+    ) {
+        GhostCard(
+            backgroundColor = SurfaceVariant,
+            borderColor = BorderSubtle,
+            contentPadding = PaddingValues(Dimens.SpaceMD)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Detalles de log",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Registros persistentes, desplazables y con formato tipo terminal",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                IconButton(onClick = onCopyAll) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = "Copiar registro", tint = NeonCyan)
+                }
+            }
+        }
+
+        DashboardLogCard(
+            logs = logs.sortedBy { it.timestamp },
+            onCopyAll = onCopyAll
+        )
+
+        GhostCard(
+            backgroundColor = SurfaceVariant,
+            borderColor = BorderSubtle,
+            contentPadding = PaddingValues(Dimens.SpaceMD)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Volver al inicio",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Desliza hacia la derecha o usa el botón.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+                Button(onClick = onBackToOverview) {
+                    Text("Inicio", color = TextOnAccent)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(Dimens.SpaceLG))
     }
 }
 
@@ -190,22 +382,29 @@ private fun MainActionButton(
     state: VpnConnectionState,
     onClick: () -> Unit
 ) {
-    val color = stateColor(state)
+    val buttonColor = stateColor(state)
     Box(
         modifier = Modifier
-            .size(180.dp)
+            .size(144.dp)
             .clip(CircleShape)
-            .background(color.copy(alpha = 0.15f))
-            .border(4.dp, color.copy(alpha = 0.3f), CircleShape)
+            .background(buttonColor.copy(alpha = 0.12f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = stateIcon(state),
-            contentDescription = state.actionLabel(),
-            tint = color,
-            modifier = Modifier.size(82.dp)
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = stateIcon(state),
+                contentDescription = null,
+                tint = buttonColor,
+                modifier = Modifier.size(42.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = state.actionLabel(),
+                style = MaterialTheme.typography.labelLarge,
+                color = buttonColor
+            )
+        }
     }
 }
 
@@ -215,37 +414,97 @@ private fun SessionInfoRow(
     serverIp: String
 ) {
     GhostCard(
-        backgroundColor = NeonGreen.copy(alpha = 0.12f),
-        borderColor = NeonGreen,
-        contentPadding = PaddingValues(horizontal = Dimens.SpaceXXL, vertical = Dimens.SpaceMD)
+        backgroundColor = SurfaceVariant,
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            SessionInfoItem(Icons.Filled.Timer, "Tiempo", elapsed.toSessionTime(), NeonGreen)
-            androidx.compose.material3.VerticalDivider(
-                modifier = Modifier.height(40.dp),
-                color = BorderSubtle
-            )
-            SessionInfoItem(Icons.Filled.Language, "Servidor", serverIp.ifEmpty { "—" }, NeonCyan)
+            Column {
+                Text("Tiempo de sesión", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                Text(elapsed.toSessionTime(), style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Servidor", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                Text(serverIp, style = MonoStyle.copy(color = TextPrimary))
+            }
         }
     }
 }
 
 @Composable
-private fun SessionInfoItem(
-    icon: ImageVector,
+private fun OverviewStatusCard(
+    state: DashboardUiState,
+    onOpenLogs: () -> Unit
+) {
+    GhostCard(
+        backgroundColor = SurfaceVariant,
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Resumen",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Estado general, perfil activo y acceso rápido al registro",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+                IconButton(onClick = onOpenLogs) {
+                    Icon(Icons.Filled.Article, contentDescription = "Abrir log", tint = NeonCyan)
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+            ) {
+                StatusChip(
+                    label = "Estado",
+                    value = state.connectionState.label(),
+                    color = stateColor(state.connectionState),
+                    modifier = Modifier.weight(1f)
+                )
+                StatusChip(
+                    label = "Log",
+                    value = "${state.recentLogs.size} entradas",
+                    color = NeonCyan,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(
     label: String,
     value: String,
-    tint: Color
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-        Text(value, style = MaterialTheme.typography.titleMedium.copy(color = tint), textAlign = TextAlign.Center)
+    GhostCard(
+        modifier = modifier,
+        backgroundColor = color.copy(alpha = 0.12f),
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceSM)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary, textAlign = TextAlign.Center)
+            Text(value, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = color, textAlign = TextAlign.Center)
+        }
     }
 }
 
@@ -255,7 +514,11 @@ private fun ActiveProfileCard(
     connectionState: VpnConnectionState,
     onChangeProfile: () -> Unit
 ) {
-    GhostCard(borderColor = BorderSubtle) {
+    GhostCard(
+        backgroundColor = SurfaceVariant,
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -360,8 +623,47 @@ private fun QuickActionCard(
 }
 
 @Composable
+private fun LogShortcutCard(
+    logCount: Int,
+    onOpenLogs: () -> Unit
+) {
+    GhostCard(
+        backgroundColor = SurfaceVariant,
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Detalles de log",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
+                )
+                Text(
+                    text = if (logCount == 0) {
+                        "Todavía no hay registros. Al conectarte aparecerán aquí."
+                    } else {
+                        "Hay $logCount entradas recientes. Desliza o abre el panel."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+
+            IconButton(onClick = onOpenLogs) {
+                Icon(Icons.Filled.Article, contentDescription = "Abrir log", tint = NeonCyan)
+            }
+        }
+    }
+}
+
+@Composable
 private fun DashboardLogCard(
-    logs: List<com.ghostnexora.vpn.data.model.LogEntry>,
+    logs: List<LogEntry>,
     onCopyAll: () -> Unit
 ) {
     GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
@@ -388,7 +690,7 @@ private fun DashboardLogCard(
             HttpInjectorLogConsole(
                 logs = logs.sortedBy { it.timestamp },
                 modifier = Modifier.fillMaxWidth(),
-                maxHeight = 280
+                maxHeight = 460
             )
         }
     }
