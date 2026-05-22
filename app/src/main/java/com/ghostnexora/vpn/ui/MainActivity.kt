@@ -178,7 +178,7 @@ private fun GhostTopBar(
 
 private fun screenTitle(route: String?): String = when {
     route == null                        -> "Ghost Nexora VPN"
-    route == Screen.Dashboard.route      -> "Inicio"
+    route == Screen.Dashboard.route      -> "Dashboard"
     route == Screen.Profiles.route       -> "Perfiles VPN"
     route == Screen.CreateProfile.route  -> "Nuevo Perfil"
     route.startsWith("edit_profile")     -> "Editar Perfil"
