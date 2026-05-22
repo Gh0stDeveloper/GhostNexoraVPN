@@ -1,5 +1,9 @@
 
-@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.ghostnexora.vpn.ui.screens.dashboard
+
+import androidx.compose.material3.ExperimentalMaterial3Api
 
 package com.ghostnexora.vpn.ui.screens.dashboard
 

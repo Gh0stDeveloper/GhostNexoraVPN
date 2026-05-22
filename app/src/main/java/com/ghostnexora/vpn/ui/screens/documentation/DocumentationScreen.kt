@@ -1,6 +1,6 @@
 
 @file:OptIn(ExperimentalMaterial3Api::class)
-
+import androidx.compose.foundation.layout.width
 package com.ghostnexora.vpn.ui.screens.documentation
 
 import androidx.compose.foundation.background
