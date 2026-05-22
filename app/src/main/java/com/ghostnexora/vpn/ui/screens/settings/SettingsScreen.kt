@@ -21,6 +21,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.unit.sp
 import com.ghostnexora.vpn.BuildConfig
+import com.ghostnexora.vpn.update.UpdateViewModel
+import com.ghostnexora.vpn.util.toReadableDate
 
 @Composable
 fun SettingsScreen(
@@ -28,6 +30,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val updateViewModel: UpdateViewModel = hiltViewModel()
+    val updateState by updateViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Snackbar
@@ -115,8 +119,70 @@ fun SettingsScreen(
 
             // Update Section
             SettingsSection(title = "Actualizaciones") {
-                InfoRow("Verificación automática", "Al abrir la app")
-                InfoRow("Instalación", "Desde GitHub Releases")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = Dimens.SpaceXS),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+                ) {
+                    InfoRow("Canal", "GitHub Releases")
+                    InfoRow("Versión actual", "${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}")
+                    InfoRow("Verificación automática", "Al abrir la app")
+                    InfoRow("Instalación", "Encima de la APK actual")
+                    InfoRow(
+                        "Estado",
+                        when {
+                            updateState.checking -> "Comprobando…"
+                            updateState.available -> "Nueva versión disponible"
+                            else -> "Al día"
+                        }
+                    )
+
+                    if (updateState.latestVersion.isNotBlank()) {
+                        InfoRow("Última versión", updateState.latestVersion)
+                    }
+                    if (updateState.lastCheckedAt > 0L) {
+                        InfoRow("Última revisión", updateState.lastCheckedAt.toReadableDate("dd/MM/yyyy HH:mm"))
+                    }
+
+                    GhostButton(
+                        text = if (updateState.checking) "Buscando actualizaciones…" else "Buscar actualizaciones",
+                        onClick = { updateViewModel.checkForUpdates(force = true) },
+                        containerColor = NeonCyan.copy(0.85f),
+                        contentColor = TextOnAccent,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (updateState.available && updateState.downloadUrl.isNotBlank()) {
+                        GhostButton(
+                            text = when {
+                                updateState.downloading -> "Descargando…"
+                                updateState.installing -> "Abriendo instalador…"
+                                else -> "Descargar e instalar"
+                            },
+                            onClick = { updateViewModel.downloadAndInstall() },
+                            containerColor = NeonGreen.copy(0.85f),
+                            contentColor = TextOnAccent,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (updateState.message != null) {
+                        Text(
+                            text = updateState.message!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NeonAmber
+                        )
+                    }
+
+                    if (updateState.error != null) {
+                        Text(
+                            text = updateState.error!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NeonRed
+                        )
+                    }
+                }
             }
 
             // About Section

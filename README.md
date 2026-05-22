@@ -205,3 +205,64 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 [GitHub](https://github.com/CHICO-CP) · [Telegram](https://t.me/Gh0stDeveloper) · [Contacto](mailto:ghostnexora@gmail.com)
 
 </div>
+
+
+---
+
+## 🧭 Interfaz interna de la app
+
+La aplicación está organizada para que el usuario encuentre primero el **Inicio** y luego el **Registro**:
+
+- **Inicio**: estado general, perfil activo, resumen de conexión, acciones rápidas y acceso al registro.
+- **Registro**: consola interactiva con desplazamiento vertical, selección de entradas y copia de contenido.
+- **Documentación**: guía técnica detallada con arquitectura, permisos, flujo de conexión, actualización y diagnóstico.
+- **Actualizaciones**: consulta directa a **GitHub Releases** con instalación encima de la versión actual.
+
+El dashboard principal está pensado como panel de control. El acceso al log se resuelve de dos formas: deslizando hacia la izquierda o pulsando el acceso rápido ubicado en la esquina superior derecha del bloque de inicio.
+
+---
+
+## 🔄 Sistema de actualizaciones
+
+Ghost Nexora VPN usa `versionCode` como referencia real para decidir si existe una nueva versión. El flujo recomendado es:
+
+1. GitHub Actions compila la APK.
+2. El workflow publica la APK como asset de una GitHub Release.
+3. La app consulta la release más reciente.
+4. Lee `tag_name`, `name`, `body` y `assets[].browser_download_url`.
+5. Compara `BuildConfig.VERSION_CODE` con la versión remota.
+6. Si la versión remota es superior, muestra el diálogo de actualización.
+7. La nueva APK se descarga, se verifica y se instala encima de la actual.
+
+Con este enfoque no es necesario editar JSON manualmente ni depender de artifacts temporales del workflow.
+
+---
+
+## 📊 Registro y diagnóstico
+
+El sistema de logs está diseñado para ayudar en soporte técnico y depuración:
+
+- conserva hora, nivel, etiqueta y mensaje;
+- permite copiar entradas o el historial completo;
+- soporta selección de líneas para ver detalles;
+- mantiene desplazamiento manual sin perder el auto-scroll;
+- elimina automáticamente las entradas antiguas cuando supera el límite configurado.
+
+En la pantalla principal se muestra una versión resumida. La vista completa de registros ofrece más espacio y lectura cómoda.
+
+---
+
+## 📘 Documentación interna
+
+La sección de documentación de la app describe:
+
+- arquitectura general;
+- modos activos y modos reservados;
+- flujo de arranque;
+- permisos y seguridad;
+- actualizaciones y verificación;
+- diagnóstico de fallos comunes;
+- comportamiento del panel principal y del registro.
+
+Esto convierte la documentación interna en una guía funcional para usuario avanzado, soporte y mantenimiento del proyecto.
+

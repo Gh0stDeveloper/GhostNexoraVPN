@@ -92,7 +92,7 @@ class DashboardViewModel @Inject constructor(
 
     private fun observeRecentLogs() {
         viewModelScope.launch {
-            repository.getRecentLogs(12).collectLatest { logs ->
+            repository.getRecentLogs(80).collectLatest { logs ->
                 _uiState.update { it.copy(recentLogs = logs) }
             }
         }

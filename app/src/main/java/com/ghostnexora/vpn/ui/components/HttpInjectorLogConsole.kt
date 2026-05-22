@@ -17,7 +17,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,7 +84,7 @@ fun HttpInjectorLogConsole(
     }
 
     LaunchedEffect(isAtBottom) {
-        if (isAtBottom) followTail = true
+        followTail = isAtBottom
     }
 
     LaunchedEffect(orderedLogs.size, followTail) {
@@ -121,7 +121,7 @@ fun HttpInjectorLogConsole(
                     selectedLogId = orderedLogs.lastOrNull()?.id
                     followTail = true
                 }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Ir al final", tint = NeonCyan)
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Ir al final", tint = NeonCyan)
                 }
             }
 
