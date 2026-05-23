@@ -72,7 +72,7 @@ jobs:
           APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}
         run: |
           TAG="release-${{ github.run_number }}"
-          OWNER_REPO="GHICO-CP/GhostNexoraVPN"
+          OWNER_REPO="${{ github.repository }}"
           PUBLISH="true"
           if gh release view "$TAG" --repo "$OWNER_REPO" >/dev/null 2>&1; then
             echo "Ya existe el release $TAG. No se volverá a publicar."
