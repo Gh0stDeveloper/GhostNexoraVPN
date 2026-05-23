@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.GhostCard
+import com.ghostnexora.vpn.ui.theme.GhostCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -562,6 +562,43 @@ private fun QuickActionsRow(
             enabled = isConnected,
             onClick = { if (isConnected) onDisconnect() }
         )
+    }
+}
+
+
+@Composable
+private fun LogShortcutCard(
+    logCount: Int,
+    onOpenLogs: () -> Unit
+) {
+    GhostCard(
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = SurfaceVariant,
+        borderColor = BorderSubtle,
+        contentPadding = PaddingValues(Dimens.SpaceMD)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Registro rápido",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "$logCount entradas recientes",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+
+            IconButton(onClick = onOpenLogs) {
+                Icon(Icons.Filled.Article, contentDescription = "Abrir logs", tint = NeonCyan)
+            }
+        }
     }
 }
 
