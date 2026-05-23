@@ -4,10 +4,6 @@ on:
   push:
     branches: ["main"]
 
-# ⬇️ Dar permiso para crear releases
-permissions:
-  contents: write
-
 jobs:
   build:
     name: Compilar APK Release
@@ -23,7 +19,25 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      # ... (resto de los steps igual: keystore, local.properties, gradlew, compilación) ...
+      - name: 🔐 Restaurar keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/ghostnexora-release.jks
+
+      - name: 🧪 Verificar keystore
+        run: |
+          ls -lh app/ghostnexora-release.jks
+          keytool -list \
+            -v \
+            -keystore app/ghostnexora-release.jks \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}"
+
+      - name: ⚙️ Crear local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: 🔧 Dar permisos a gradlew
+        run: chmod +x ./gradlew
 
       - name: 🛠️ Compilar APK Release
         env:
