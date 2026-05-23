@@ -93,8 +93,7 @@ jobs:
         if: steps.should_publish.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          owner: CHICO-CP
-          repository: GhostNexoraVPN
+          repository: GHICO-CP/GhostNexoraVPN
           token: ${{ secrets.TOKEN_GITHUB }}
           files: |
             ${{ steps.apk_hash.outputs.apk_path }}
