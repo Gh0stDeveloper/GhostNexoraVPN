@@ -264,17 +264,10 @@ private fun DrawerHeader() {
             Spacer(modifier = Modifier.height(Dimens.SpaceMD))
 
             Text(
-                text = "Ghost Nexora",
+                text = "Ghost Nexora VPN",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
-                )
-            )
-            Text(
-                text = "VPN Manager v1.0",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = NeonCyanDim,
-                    letterSpacing = 1.sp
                 )
             )
         }

@@ -175,17 +175,6 @@ GhostNexoraVPN/
 ---
 
 
-<div align="center">
-
-**Ghost Nexora VPN** — Desarrollado por Ghost Developer
-
-[GitHub](https://github.com/CHICO-CP) · [Telegram](https://t.me/Gh0stDeveloper) · [Contacto](mailto:ghostnexora@gmail.com)
-
-</div>
-
-
----
-
 ## 🧭 Interfaz interna de la app
 
 La aplicación está organizada para que el usuario encuentre primero el **Inicio** y luego el **Registro**:
@@ -243,3 +232,14 @@ La sección de documentación de la app describe:
 
 Esto convierte la documentación interna en una guía funcional para usuario avanzado, soporte y mantenimiento del proyecto.
 
+--
+<div align="center">
+
+**Ghost Nexora VPN** — Desarrollado por Ghost Developer
+
+[GitHub](https://github.com/CHICO-CP) · [Telegram](https://t.me/Gh0stDeveloper) · [Contacto](mailto:ghostnexora@gmail.com)
+
+</div>
+
+
+---

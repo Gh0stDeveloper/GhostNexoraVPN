@@ -517,7 +517,7 @@ class GhostVpnService : VpnService() {
         val lower = raw.lowercase()
         val base = when {
             lower.contains("auth fail") -> {
-                "Autenticación SSH fallida. Verifica usuario, contraseña, puerto y que el servidor permita password auth."
+                "Autenticación SSH fallida. Verifica usuario, contraseña y puerto."
             }
             lower.contains("trust anchor for certification path not found") -> {
                 "Fallo TLS/SNI: el certificado del servidor no es confiable para Android o el SNI no coincide."
@@ -633,7 +633,7 @@ class GhostVpnService : VpnService() {
         level: LogLevel,
         message: String,
         profileId: String? = null
-    ) = repository.log(level, message, profileId, tag = "GhostVPN")
+    ) = repository.log(level, message, profileId, tag = "Ghost Nexora VPN")
 
     inner class GhostVpnBinder : Binder() {
         fun getService(): GhostVpnService = this@GhostVpnService
