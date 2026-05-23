@@ -53,55 +53,57 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: 📦 Calcular hash del APK
+      - name: 📦 Obtener APK y calcular hash
         id: apk_hash
         run: |
           APK_PATH=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No se encontró el APK generado."
+            exit 1
+          fi
+
           SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
       - name: 🔎 Verificar si el APK cambió
         id: should_publish
-        uses: actions/github-script@v7
         env:
+          GH_TOKEN: ${{ secrets.TOKEN_GITHUB }}
           APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}
-        with:
-          github-token: ${{ secrets.TOKEN_GITHUB }}
-          script: |
-            const owner = 'GHICO-CP'
-            const repo = 'GhostNexoraVPN'
-            const current = process.env.APK_SHA256
-            let publish = true
+        run: |
+          TAG="release-${{ github.run_number }}"
+          OWNER_REPO="GHICO-CP/GhostNexoraVPN"
 
-            try {
-              const latest = await github.rest.repos.getLatestRelease({ owner, repo })
-              const body = latest.data.body || ''
-              const match = body.match(/APK_SHA256:\s*([a-f0-9]{64})/i)
+          PUBLISH="true"
 
-              if (match && match[1].toLowerCase() === current.toLowerCase()) {
-                publish = false
-                core.info('El APK no cambió; se omite la publicación.')
-              }
-            } catch (error) {
-              core.info(`Sin release previo usable: ${error.message}`)
-            }
+          if gh release view "$TAG" --repo "$OWNER_REPO" >/dev/null 2>&1; then
+            echo "Ya existe el release $TAG. No se volverá a publicar."
+            PUBLISH="false"
+          else
+            LATEST_BODY="$(gh release view --repo "$OWNER_REPO" --json body --jq '.body' 2>/dev/null || true)"
+            if echo "$LATEST_BODY" | grep -q "APK_SHA256: $APK_SHA256"; then
+              echo "El APK no cambió respecto al último release. No se publicará."
+              PUBLISH="false"
+            fi
+          fi
 
-            core.setOutput('publish', publish ? 'true' : 'false')
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Crear Release y subir APK
         if: steps.should_publish.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: GHICO-CP/GhostNexoraVPN
-          token: ${{ secrets.TOKEN_GITHUB }}
-          files: |
-            ${{ steps.apk_hash.outputs.apk_path }}
-          overwrite_files: true
-          tag_name: release-${{ github.run_number }}
-          name: Release ${{ github.run_number }}
-          body: |
-            Construcción automática desde el commit `${{ github.sha }}`
-            Ejecución #${{ github.run_number }}
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+        run: |
+          TAG="release-${{ github.run_number }}"
+          TITLE="Release ${{ github.run_number }}"
+          APK="${{ steps.apk_hash.outputs.apk_path }}"
 
-            APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}
+          gh release create "$TAG" "$APK" \
+            --repo "GHICO-CP/GhostNexoraVPN" \
+            --title "$TITLE" \
+            --notes "Construcción automática desde el commit \`${{ github.sha }}\`
+
+Ejecución #${{ github.run_number }}
+
+APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}"
