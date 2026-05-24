@@ -96,6 +96,6 @@ jobs:
           APK="${{ steps.apk_hash.outputs.apk_path }}"
           NOTES="Construcción automática desde el commit \`${{ github.sha }}\`"$'\n'"Ejecución #${{ github.run_number }}"$'\n'"APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}"
           gh release create "$TAG" "$APK" \
-            --repo "GHICO-CP/GhostNexoraVPN" \
+            --repo "CHICO-CP/GhostNexoraVPN" \
             --title "$TITLE" \
             --notes "$NOTES"
