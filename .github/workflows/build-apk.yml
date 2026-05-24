@@ -68,7 +68,7 @@ jobs:
       - name: 🔎 Verificar si el APK cambió
         id: should_publish
         env:
-          GH_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}
         run: |
           TAG="release-${{ github.run_number }}"
@@ -89,7 +89,7 @@ jobs:
       - name: 🚀 Crear Release y subir APK
         if: steps.should_publish.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="release-${{ github.run_number }}"
           TITLE="Release ${{ github.run_number }}"
