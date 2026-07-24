@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.service.GhostVpnService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,11 +17,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,10 +33,8 @@ class DashboardViewModel @Inject constructor(
     private val repository: ProfileRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
-
     private var timerJob: Job? = null
     private var sessionStartTime: Long = 0L
 
@@ -41,6 +42,7 @@ class DashboardViewModel @Inject constructor(
         observeActiveProfile()
         observeAllProfiles()
         observeServiceState()
+        observeTrafficStats()
         observeRecentLogs()
     }
 
@@ -48,17 +50,13 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             repository.activeProfileId
                 .flatMapLatest { id -> if (id.isEmpty()) flowOf(null) else repository.observeProfile(id) }
-                .collectLatest { profile ->
-                    _uiState.update { it.copy(activeProfile = profile) }
-                }
+                .collectLatest { profile -> _uiState.update { it.copy(activeProfile = profile) } }
         }
     }
 
     private fun observeAllProfiles() {
         viewModelScope.launch {
-            repository.profileCount.collectLatest { count ->
-                _uiState.update { it.copy(hasProfiles = count > 0) }
-            }
+            repository.profileCount.collectLatest { count -> _uiState.update { it.copy(hasProfiles = count > 0) } }
         }
     }
 
@@ -68,33 +66,39 @@ class DashboardViewModel @Inject constructor(
                 _uiState.update { current ->
                     current.copy(
                         connectionState = state,
-                        sessionElapsed = if (state is VpnConnectionState.Connected) {
-                            System.currentTimeMillis() - state.connectedSince
-                        } else {
-                            0L
+                        sessionElapsed = when (state) {
+                            is VpnConnectionState.Connected -> System.currentTimeMillis() - state.connectedSince
+                            is VpnConnectionState.Reconnecting -> current.sessionElapsed
+                            else -> 0L
                         }
                     )
                 }
-
                 when (state) {
                     is VpnConnectionState.Connected -> {
                         sessionStartTime = state.connectedSince
                         startSessionTimer()
                     }
+                    is VpnConnectionState.Reconnecting -> if (sessionStartTime > 0) startSessionTimer()
                     is VpnConnectionState.Disconnected,
                     is VpnConnectionState.Disconnecting,
                     is VpnConnectionState.Error -> stopSessionTimer()
-                    else -> Unit
+                    is VpnConnectionState.Connecting -> Unit
                 }
+            }
+        }
+    }
+
+    private fun observeTrafficStats() {
+        viewModelScope.launch {
+            GhostVpnService.trafficStats.collectLatest { stats ->
+                _uiState.update { it.copy(traffic = stats) }
             }
         }
     }
 
     private fun observeRecentLogs() {
         viewModelScope.launch {
-            repository.getRecentLogs(120).collectLatest { logs ->
-                _uiState.update { it.copy(recentLogs = logs) }
-            }
+            repository.getRecentLogs(200).collectLatest { logs -> _uiState.update { it.copy(recentLogs = logs) } }
         }
     }
 
@@ -103,6 +107,7 @@ class DashboardViewModel @Inject constructor(
             is VpnConnectionState.Disconnected,
             is VpnConnectionState.Error -> requestConnect(activity)
             is VpnConnectionState.Connecting -> cancelConnect()
+            is VpnConnectionState.Reconnecting,
             is VpnConnectionState.Connected -> disconnect()
             is VpnConnectionState.Disconnecting -> Unit
         }
@@ -114,13 +119,11 @@ class DashboardViewModel @Inject constructor(
             _uiState.update { it.copy(snackbarMessage = "Selecciona un perfil primero") }
             return
         }
-
         val permissionIntent = VpnService.prepare(activity)
         if (permissionIntent != null) {
             _uiState.update { it.copy(pendingVpnPermissionIntent = permissionIntent) }
             return
         }
-
         connect(profile)
     }
 
@@ -132,17 +135,13 @@ class DashboardViewModel @Inject constructor(
 
     fun onVpnPermissionDenied() {
         _uiState.update {
-            it.copy(
-                pendingVpnPermissionIntent = null,
-                snackbarMessage = "Permiso VPN requerido para conectar"
-            )
+            it.copy(pendingVpnPermissionIntent = null, snackbarMessage = "Permiso VPN requerido para conectar")
         }
     }
 
     private fun connect(profile: VpnProfile) {
         viewModelScope.launch {
             updateState(VpnConnectionState.Connecting(profile.name))
-
             val intent = Intent(context, GhostVpnService::class.java).apply {
                 action = GhostVpnService.ACTION_CONNECT
                 putExtra(GhostVpnService.EXTRA_PROFILE_ID, profile.id)
@@ -155,29 +154,21 @@ class DashboardViewModel @Inject constructor(
     fun disconnect() {
         stopSessionTimer()
         updateState(VpnConnectionState.Disconnecting)
-
-        val intent = Intent(context, GhostVpnService::class.java).apply {
+        context.startService(Intent(context, GhostVpnService::class.java).apply {
             action = GhostVpnService.ACTION_DISCONNECT
-        }
-        context.startService(intent)
+        })
     }
 
-    private fun cancelConnect() {
-        stopSessionTimer()
-        val intent = Intent(context, GhostVpnService::class.java).apply {
-            action = GhostVpnService.ACTION_DISCONNECT
-        }
-        context.startService(intent)
-        updateState(VpnConnectionState.Disconnected)
-    }
+    private fun cancelConnect() = disconnect()
 
     private fun startSessionTimer() {
-        timerJob?.cancel()
+        if (timerJob?.isActive == true) return
         timerJob = viewModelScope.launch {
             while (true) {
-                val elapsed = System.currentTimeMillis() - sessionStartTime
-                _uiState.update { it.copy(sessionElapsed = elapsed) }
-                delay(1000L)
+                if (sessionStartTime > 0) {
+                    _uiState.update { it.copy(sessionElapsed = System.currentTimeMillis() - sessionStartTime) }
+                }
+                delay(1_000L)
             }
         }
     }
@@ -188,9 +179,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun selectProfile(profileId: String) {
-        viewModelScope.launch {
-            repository.setActiveProfileId(profileId)
-        }
+        viewModelScope.launch { repository.setActiveProfileId(profileId) }
     }
 
     private fun updateState(state: VpnConnectionState) {
@@ -202,8 +191,8 @@ class DashboardViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        super.onCleared()
         stopSessionTimer()
+        super.onCleared()
     }
 }
 
@@ -212,15 +201,15 @@ data class DashboardUiState(
     val activeProfile: VpnProfile? = null,
     val hasProfiles: Boolean = false,
     val sessionElapsed: Long = 0L,
+    val traffic: VpnTrafficStats = VpnTrafficStats(),
     val snackbarMessage: String? = null,
     val pendingVpnPermissionIntent: Intent? = null,
     val recentLogs: List<LogEntry> = emptyList()
 ) {
     val isConnected: Boolean get() = connectionState is VpnConnectionState.Connected
-    val isConnecting: Boolean get() = connectionState is VpnConnectionState.Connecting
+    val isReconnecting: Boolean get() = connectionState is VpnConnectionState.Reconnecting
+    val isConnecting: Boolean get() = connectionState is VpnConnectionState.Connecting || isReconnecting
     val isDisconnected: Boolean get() = connectionState is VpnConnectionState.Disconnected
     val hasError: Boolean get() = connectionState is VpnConnectionState.Error
-
-    val serverIp: String
-        get() = (connectionState as? VpnConnectionState.Connected)?.serverIp ?: "--"
+    val serverIp: String get() = (connectionState as? VpnConnectionState.Connected)?.serverIp ?: activeProfile?.host ?: "--"
 }
