@@ -79,7 +79,7 @@ class CreateEditViewModel @Inject constructor(
             it.copy(
                 connectionMode = mode.id,
                 method = mode.family,
-                sslEnabled = mode.usesTls,
+                sslEnabled = if (mode == ConnectionMode.V2RAY) it.sslEnabled else mode.usesTls,
                 proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType,
                 tags = nextTags,
                 error = null
@@ -130,6 +130,9 @@ class CreateEditViewModel @Inject constructor(
         if (error == null && mode.requiresSni && s.sni.isBlank()) {
             error = "El modo seleccionado requiere un SNI"
         }
+        if (error == null && mode == ConnectionMode.V2RAY && s.sslEnabled && s.sni.isBlank()) {
+            error = "V2Ray con TLS requiere SNI"
+        }
         if (error == null && mode.requiresProxy) {
             error = when {
                 s.proxyHost.isBlank() -> "El modo seleccionado requiere proxy"
@@ -170,7 +173,7 @@ class CreateEditViewModel @Inject constructor(
                 password = s.password.trim(),
                 method = mode.family,
                 connectionMode = mode.id,
-                sslEnabled = mode.usesTls,
+                sslEnabled = if (mode == ConnectionMode.V2RAY) s.sslEnabled else mode.usesTls,
                 sni = s.sni.trim(),
                 payload = s.payload.trim(),
                 proxy = ProxyConfig(
