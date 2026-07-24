@@ -6,12 +6,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Convierte un perfil de Ghost Nexora en una configuración autocontenida de
- * Xray Core con inbound TUN. El primer outbound siempre es el transporte VPN,
- * de modo que no existe un fallback silencioso a conexión directa.
+ * Genera una configuración Xray sin salida directa de respaldo.
+ *
+ * Se emiten `method` (esquema Xray moderno) y `network` (compatibilidad con
+ * cores Android anteriores) donde procede. Los dos describen el mismo
+ * transporte y no crean rutas de bypass.
  */
 object XrayConfigFactory {
-
     fun build(profile: VpnProfile, sshSocksPort: Int? = null): String {
         val primaryOutbound = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
@@ -21,7 +22,7 @@ object XrayConfigFactory {
             else -> error("No hay outbound Xray para ${profile.connectionModeLabel}")
         }
 
-        val config = JSONObject()
+        return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning").put("dnsLog", false))
             .put("stats", JSONObject())
             .put(
@@ -52,16 +53,10 @@ object XrayConfigFactory {
                 JSONArray()
                     .put(primaryOutbound)
                     .put(JSONObject().put("tag", "dns-out").put("protocol", "dns").put("settings", JSONObject()))
-                    .put(
-                        JSONObject()
-                            .put("tag", "block")
-                            .put("protocol", "blackhole")
-                            .put("settings", JSONObject())
-                    )
+                    .put(JSONObject().put("tag", "block").put("protocol", "blackhole").put("settings", JSONObject()))
             )
             .put("routing", routing())
-
-        return config.toString()
+            .toString()
     }
 
     private fun tunInbound(): JSONObject = JSONObject()
@@ -71,6 +66,7 @@ object XrayConfigFactory {
             "settings",
             JSONObject()
                 .put("name", "ghostnexora0")
+                .put("mtu", 1500)
                 .put("MTU", 1500)
                 .put("userLevel", 8)
         )
@@ -134,13 +130,16 @@ object XrayConfigFactory {
             else -> "vless"
         }
         val security = options["security"].orEmpty().lowercase()
+        val vlessEncryption = options["encryption"].orEmpty().ifBlank { "none" }
 
-        if (protocol == "vless") {
+        if (protocol == "vless" && vlessEncryption.equals("none", true)) {
             require(profile.sslEnabled || security == "tls" || security == "reality") {
-                "VLESS sin TLS/Reality está bloqueado porque el transporte no queda cifrado"
+                "VLESS sin cifrado de protocolo requiere TLS o REALITY"
             }
+        }
+        if (protocol == "vless" && (profile.sslEnabled || security == "tls" || security == "reality")) {
             require(profile.sni.isNotBlank() || options["sni"].orEmpty().isNotBlank()) {
-                "VLESS con TLS/Reality requiere SNI"
+                "VLESS con TLS/REALITY requiere SNI"
             }
         }
 
@@ -153,8 +152,8 @@ object XrayConfigFactory {
         if (protocol == "vmess") {
             settings.put("security", options["cipher"].orEmpty().ifBlank { "auto" })
         } else {
-            settings.put("encryption", options["encryption"].orEmpty().ifBlank { "none" })
-            options["flow"]?.takeIf { it.isNotBlank() }?.let { settings.put("flow", it) }
+            settings.put("encryption", vlessEncryption)
+            options["flow"]?.takeIf(String::isNotBlank)?.let { settings.put("flow", it) }
         }
 
         return JSONObject()
@@ -187,17 +186,22 @@ object XrayConfigFactory {
     }
 
     private fun hysteria2Outbound(profile: VpnProfile): JSONObject {
-        require(profile.host.isNotBlank()) { "El servidor UDP/Hysteria2 es obligatorio" }
-        require(profile.password.isNotBlank()) { "La autenticación UDP/Hysteria2 es obligatoria" }
-        require(profile.sni.isNotBlank()) { "UDP/Hysteria2 requiere SNI para TLS" }
+        require(profile.host.isNotBlank()) { "El servidor Hysteria2 es obligatorio" }
+        require(profile.password.isNotBlank()) { "La autenticación Hysteria2 es obligatoria" }
+        require(profile.sni.isNotBlank()) { "Hysteria2 requiere SNI para TLS" }
 
         val options = parseOptions(profile.payload)
         val hysteriaSettings = JSONObject()
             .put("version", 2)
             .put("auth", profile.password)
-        options["udpIdleTimeout"]?.toIntOrNull()?.let { hysteriaSettings.put("udpIdleTimeout", it) }
+        options["udpIdleTimeout"]?.toIntOrNull()?.let { hysteriaSettings.put("udpIdleTimeout", it.coerceIn(10, 600)) }
+        options["obfs"]?.takeIf(String::isNotBlank)?.let { hysteriaSettings.put("obfs", it) }
+        (options["obfs-password"] ?: options["obfsPassword"])
+            ?.takeIf(String::isNotBlank)
+            ?.let { hysteriaSettings.put("obfsPassword", it) }
 
         val stream = JSONObject()
+            .put("method", "hysteria")
             .put("network", "hysteria")
             .put("security", "tls")
             .put("hysteriaSettings", hysteriaSettings)
@@ -222,13 +226,14 @@ object XrayConfigFactory {
         options: Map<String, String>,
         forceTls: Boolean = false
     ): JSONObject {
-        val network = (options["net"] ?: options["type"] ?: options["network"] ?: "tcp")
-            .lowercase()
-            .let { if (it == "raw") "tcp" else it }
+        val requested = (options["net"] ?: options["type"] ?: options["network"] ?: "tcp").lowercase()
+        val transport = normalizeTransport(requested)
+        val stream = JSONObject()
+            .put("method", transport.modern)
+            .put("network", transport.legacy)
 
-        val stream = JSONObject().put("network", network)
-        when (network) {
-            "ws" -> stream.put(
+        when (transport.modern) {
+            "websocket" -> stream.put(
                 "wsSettings",
                 JSONObject()
                     .put("host", options["host"].orEmpty())
@@ -243,22 +248,34 @@ object XrayConfigFactory {
                     .put("multiMode", options["mode"]?.equals("multi", true) == true)
             )
 
-            "h2", "http" -> {
-                stream.put("network", "h2")
-                stream.put(
-                    "httpSettings",
-                    JSONObject()
-                        .put("host", JSONArray(splitHosts(options["host"])))
-                        .put("path", options["path"].orEmpty().ifBlank { "/" })
-                )
+            "xhttp" -> {
+                val xhttp = JSONObject()
+                    .put("host", options["host"].orEmpty())
+                    .put("path", options["path"].orEmpty().ifBlank { "/" })
+                    .putOpt("mode", options["mode"]?.takeIf(String::isNotBlank))
+                stream.put("xhttpSettings", xhttp)
+                if (requested in setOf("h2", "http")) {
+                    stream.put(
+                        "httpSettings",
+                        JSONObject()
+                            .put("host", JSONArray(splitHosts(options["host"])))
+                            .put("path", options["path"].orEmpty().ifBlank { "/" })
+                    )
+                }
             }
 
-            "xhttp" -> stream.put(
-                "xhttpSettings",
+            "httpupgrade" -> stream.put(
+                "httpupgradeSettings",
                 JSONObject()
                     .put("host", options["host"].orEmpty())
                     .put("path", options["path"].orEmpty().ifBlank { "/" })
-                    .putOpt("mode", options["mode"]?.takeIf { it.isNotBlank() })
+            )
+
+            "mkcp" -> stream.put(
+                "kcpSettings",
+                JSONObject()
+                    .put("header", JSONObject().put("type", options["headerType"].orEmpty().ifBlank { "none" }))
+                    .putOpt("seed", options["seed"]?.takeIf(String::isNotBlank))
             )
         }
 
@@ -274,37 +291,52 @@ object XrayConfigFactory {
             val sni = profile.sni.ifBlank { options["sni"].orEmpty() }.ifBlank { profile.host }
             stream.put("security", security)
             if (security == "reality") {
+                require(transport.modern in setOf("raw", "xhttp", "grpc")) {
+                    "REALITY solo se permite con Raw, XHTTP o gRPC"
+                }
                 val reality = tlsSettings(sni, options)
-                options["pbk"]?.takeIf { it.isNotBlank() }?.let { reality.put("publicKey", it) }
-                options["sid"]?.takeIf { it.isNotBlank() }?.let { reality.put("shortId", it) }
-                options["spx"]?.takeIf { it.isNotBlank() }?.let { reality.put("spiderX", it) }
+                require(options["pbk"].orEmpty().isNotBlank()) { "REALITY requiere public key (pbk)" }
+                reality.put("publicKey", options["pbk"])
+                options["sid"]?.takeIf(String::isNotBlank)?.let { reality.put("shortId", it) }
+                options["spx"]?.takeIf(String::isNotBlank)?.let { reality.put("spiderX", it) }
                 stream.put("realitySettings", reality)
             } else {
                 stream.put("tlsSettings", tlsSettings(sni, options))
             }
         }
-
         return stream
     }
 
     private fun tlsSettings(sni: String, options: Map<String, String>): JSONObject = JSONObject()
         .put("allowInsecure", false)
         .put("serverName", sni)
-        .putOpt("fingerprint", (options["fp"] ?: options["fingerprint"])?.takeIf { it.isNotBlank() })
+        .putOpt("fingerprint", (options["fp"] ?: options["fingerprint"])?.takeIf(String::isNotBlank))
         .putOpt(
             "alpn",
-            options["alpn"]?.takeIf { it.isNotBlank() }?.let { JSONArray(it.split(',').map(String::trim)) }
+            options["alpn"]?.takeIf(String::isNotBlank)?.let {
+                JSONArray(it.split(',').map(String::trim).filter(String::isNotBlank))
+            }
         )
+
+    private fun normalizeTransport(raw: String): Transport = when (raw) {
+        "ws", "websocket" -> Transport("websocket", "ws")
+        "grpc" -> Transport("grpc", "grpc")
+        "xhttp" -> Transport("xhttp", "xhttp")
+        "h2", "http" -> Transport("xhttp", "h2")
+        "httpupgrade" -> Transport("httpupgrade", "httpupgrade")
+        "kcp", "mkcp" -> Transport("mkcp", "kcp")
+        "hysteria" -> Transport("hysteria", "hysteria")
+        else -> Transport("raw", "tcp")
+    }
 
     private fun parseOptions(raw: String): Map<String, String> {
         if (raw.isBlank()) return emptyMap()
         if (raw.trimStart().startsWith("{")) {
             return runCatching {
                 val json = JSONObject(raw)
-                json.keys().asSequence().associateWith { key -> json.optString(key) }
+                json.keys().asSequence().associateWith(json::optString)
             }.getOrDefault(emptyMap())
         }
-
         return raw
             .split('|', ';', '\n')
             .mapNotNull { token ->
@@ -321,4 +353,6 @@ object XrayConfigFactory {
         .split(',')
         .map(String::trim)
         .filter(String::isNotEmpty)
+
+    private data class Transport(val modern: String, val legacy: String)
 }
