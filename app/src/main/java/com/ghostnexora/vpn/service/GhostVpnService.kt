@@ -134,7 +134,11 @@ class GhostVpnService : VpnService() {
             val tun = buildTunInterface(profile)
                 ?: error("Android no pudo establecer la interfaz VPN")
             tunInterface = tun
-            logSafe(LogLevel.INFO, "TUN activo · IPv4 10.20.0.2/30 · ruta 0.0.0.0/0", profile.id)
+            logSafe(
+                LogLevel.INFO,
+                "TUN activo · IPv4/IPv6 · rutas 0.0.0.0/0 y ::/0",
+                profile.id
+            )
 
             tunnelRuntime = tunnelManager.start(profile, tun.fd)
             logTransportReady(profile)
@@ -213,6 +217,9 @@ class GhostVpnService : VpnService() {
         }
         if (profile.selectedMode == ConnectionMode.V2RAY) {
             require(profile.username.isNotBlank()) { "V2Ray requiere UUID / User ID" }
+            if (profile.sslEnabled) {
+                require(profile.sni.isNotBlank()) { "V2Ray con TLS/Reality requiere SNI" }
+            }
         }
         if (profile.selectedMode == ConnectionMode.TROJAN || profile.selectedMode == ConnectionMode.UDP) {
             require(profile.password.isNotBlank()) { "El método seleccionado requiere contraseña/auth" }
@@ -235,12 +242,15 @@ class GhostVpnService : VpnService() {
             .setSession(profile.name)
             .setMtu(1500)
             .addAddress("10.20.0.2", 30)
+            .addAddress("fd00:20::2", 126)
             .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
             .addDnsServer("1.1.1.1")
+            .addDnsServer("2606:4700:4700::1111")
             .setBlocking(true)
 
-        // El propio proceso debe salir por la red física para que el core no se
-        // capture a sí mismo y cree un bucle de routing.
+        // El proceso de la aplicación debe salir por la red física para que el
+        // core y los sockets SSH no sean recapturados por su propio TUN.
         runCatching { builder.addDisallowedApplication(packageName) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
@@ -370,7 +380,7 @@ class GhostVpnService : VpnService() {
         logSafe(LogLevel.INFO, "Ghost Nexora VPN ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", profile.id)
         logSafe(LogLevel.INFO, describeNetworkState(), profile.id)
         logSafe(LogLevel.INFO, "Servidor ${profile.host}:${profile.port}", profile.id)
-        if (profile.selectedMode.usesTls) {
+        if (profile.selectedMode.usesTls || profile.sslEnabled) {
             logSafe(LogLevel.INFO, "TLS/SNI ${profile.sni.ifBlank { profile.host }} · verificación estricta", profile.id)
         }
         if (profile.selectedMode.requiresProxy) {
