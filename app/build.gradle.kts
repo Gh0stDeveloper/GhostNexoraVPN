@@ -42,7 +42,8 @@ android {
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
+                "xray-proguard-rules.pro"
             )
         }
     }
@@ -63,7 +64,6 @@ android {
 
     packaging {
         jniLibs {
-            // AndroidLibXrayLite distribuye librerías nativas dentro del AAR.
             useLegacyPackaging = true
         }
         resources {
@@ -78,11 +78,8 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
 
-    // Core VPN nativo. GitHub Actions descarga app/libs/libv2ray.aar desde
-    // el release fijado de AndroidLibXrayLite antes de ejecutar Gradle.
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 
-    // Core Android
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
@@ -90,7 +87,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // Compose
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -98,38 +94,28 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Hilt
     implementation("com.google.dagger:hilt-android:2.51.1")
     ksp("com.google.dagger:hilt-android-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // JSON
     implementation("com.google.code.gson:gson:2.11.0")
 
-    // SSH / Crypto
     implementation("com.github.mwiede:jsch:0.2.25")
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
 
-    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
