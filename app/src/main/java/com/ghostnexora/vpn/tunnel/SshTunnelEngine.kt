@@ -9,7 +9,6 @@ import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.SocketFactory
 import com.jcraft.jsch.UserInfo
-import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -65,7 +64,10 @@ class SshTunnelEngine(
         session.setConfig("StrictHostKeyChecking", "ask")
         session.setConfig("PreferredAuthentications", "password,keyboard-interactive")
         session.setConfig("MaxAuthTries", "3")
-        session.setConfig("server_host_key", "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256")
+        session.setConfig(
+            "server_host_key",
+            "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256"
+        )
         session.setServerAliveInterval(15_000)
         session.setServerAliveCountMax(3)
         session.setTimeout(25_000)
@@ -182,6 +184,10 @@ private class TunnelSocketFactory(
         connect(InetSocketAddress(host, port), 20_000)
     }
 
+    /**
+     * Lee la cabecera HTTP byte a byte. No usa BufferedReader porque su buffer
+     * puede adelantarse hasta el banner SSH/TLS y perder bytes del túnel.
+     */
     private fun performHttpConnectHandshake(socket: Socket, host: String, port: Int) {
         val request = buildString {
             append("CONNECT $host:$port HTTP/1.1\r\n")
@@ -194,16 +200,40 @@ private class TunnelSocketFactory(
             flush()
         }
 
-        val reader = BufferedReader(socket.getInputStream().reader())
-        val statusLine = reader.readLine().orEmpty()
+        val header = readHttpHeader(socket.getInputStream())
+        val statusLine = header.lineSequence().firstOrNull().orEmpty()
         val code = statusLine.split(' ').getOrNull(1)?.toIntOrNull()
         if (code !in 200..299) {
             throw IOException("HTTP proxy rechazó la conexión: $statusLine")
         }
-        while (true) {
-            val line = reader.readLine() ?: break
-            if (line.isEmpty()) break
+    }
+
+    private fun readHttpHeader(input: InputStream): String {
+        val captured = ByteArrayOutputStream()
+        var previous = -1
+        var beforePrevious = -1
+        var thirdPrevious = -1
+
+        while (captured.size() < MAX_HANDSHAKE_BYTES) {
+            val current = input.read()
+            if (current < 0) throw IOException("El proxy cerró la conexión durante el handshake")
+            captured.write(current)
+
+            val crlfEnd = thirdPrevious == '\r'.code &&
+                beforePrevious == '\n'.code &&
+                previous == '\r'.code &&
+                current == '\n'.code
+            val lfEnd = previous == '\n'.code && current == '\n'.code
+            if (crlfEnd || lfEnd) {
+                return captured.toByteArray().toString(Charsets.ISO_8859_1)
+            }
+
+            thirdPrevious = beforePrevious
+            beforePrevious = previous
+            previous = current
         }
+
+        throw IOException("Cabecera HTTP demasiado grande")
     }
 
     private fun performSocks5Handshake(socket: Socket, host: String, port: Int) {
@@ -371,7 +401,7 @@ class SshSocksServer(
                     clients += client
                     executor.execute { handleClient(client) }
                 } catch (_: SocketException) {
-                    if (running.get()) throw IllegalStateException("Falló el servidor SOCKS SSH")
+                    if (running.get()) break
                 }
             }
         }
@@ -490,8 +520,6 @@ private class ProfileUserInfo(
 
     override fun promptYesNo(message: String?): Boolean {
         val text = message.orEmpty().lowercase()
-        // TOFU: se acepta una clave nueva para poder guardarla en known_hosts,
-        // pero nunca se acepta automáticamente una clave que cambió.
         return !text.contains("changed") &&
             !text.contains("man-in-the-middle") &&
             !text.contains("warning: remote host identification")
