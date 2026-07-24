@@ -58,7 +58,6 @@ android {
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
-                // Permite validar R8/NDK en pull requests sin exponer la keystore.
                 signingConfigs.getByName("debug")
             }
             proguardFiles(
@@ -134,6 +133,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
