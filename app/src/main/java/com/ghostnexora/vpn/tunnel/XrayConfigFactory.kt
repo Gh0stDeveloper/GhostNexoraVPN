@@ -133,6 +133,16 @@ object XrayConfigFactory {
             options["protocol"]?.equals("vmess", true) == true -> "vmess"
             else -> "vless"
         }
+        val security = options["security"].orEmpty().lowercase()
+
+        if (protocol == "vless") {
+            require(profile.sslEnabled || security == "tls" || security == "reality") {
+                "VLESS sin TLS/Reality está bloqueado porque el transporte no queda cifrado"
+            }
+            require(profile.sni.isNotBlank() || options["sni"].orEmpty().isNotBlank()) {
+                "VLESS con TLS/Reality requiere SNI"
+            }
+        }
 
         val settings = JSONObject()
             .put("address", profile.host.trim())
