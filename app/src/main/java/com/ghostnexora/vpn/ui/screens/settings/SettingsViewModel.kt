@@ -4,105 +4,82 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.security.KnownHostStore
 import com.ghostnexora.vpn.util.PermissionHelper
 import com.ghostnexora.vpn.util.PermissionStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: ProfileRepository,
+    private val knownHostStore: KnownHostStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-
-    // ── UI State ──────────────────────────────────────────────────────────
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    // ══════════════════════════════════════════════════════════════════════
-    // INIT — Cargar preferencias actuales
-    // ══════════════════════════════════════════════════════════════════════
-
     init {
         loadSettings()
-        loadPermissionStatus()
+        refreshPermissions()
+        refreshKnownHosts()
     }
 
     private fun loadSettings() {
         viewModelScope.launch {
             combine(
                 repository.autoReconnect,
+                repository.killSwitch,
                 repository.floatingWindow,
                 repository.notifications,
-                repository.reconnectOnBoot,
-                repository.logsMaxEntries
-            ) { reconnect, floating, notifs, boot, maxLogs ->
-                SettingsSnapshot(
-                    autoReconnect = reconnect,
-                    floatingWindow = floating,
-                    notifications = notifs,
-                    reconnectOnBoot = boot,
-                    logsMaxEntries = maxLogs
-                )
-            }.combine(repository.isFirstLaunch) { snapshot, firstLaunch ->
+                repository.reconnectOnBoot
+            ) { reconnect, killSwitch, floating, notifications, boot ->
+                SettingsSnapshot(reconnect, killSwitch, floating, notifications, boot)
+            }.combine(repository.logsMaxEntries) { snapshot, maxLogs ->
+                snapshot to maxLogs
+            }.combine(repository.isFirstLaunch) { pair, firstLaunch ->
+                val (snapshot, maxLogs) = pair
                 SettingsUiState(
-                    autoReconnect    = snapshot.autoReconnect,
-                    floatingWindow   = snapshot.floatingWindow,
-                    notifications    = snapshot.notifications,
-                    reconnectOnBoot  = snapshot.reconnectOnBoot,
-                    logsMaxEntries   = snapshot.logsMaxEntries,
+                    autoReconnect = snapshot.autoReconnect,
+                    killSwitch = snapshot.killSwitch,
+                    floatingWindow = snapshot.floatingWindow,
+                    notifications = snapshot.notifications,
+                    reconnectOnBoot = snapshot.reconnectOnBoot,
+                    logsMaxEntries = maxLogs,
                     permissionStatus = PermissionHelper.permissionStatus(context),
-                    firstLaunch      = firstLaunch
+                    knownHostCount = knownHostStore.count(),
+                    firstLaunch = firstLaunch
                 )
-            }.collectLatest { state ->
-                _uiState.value = state
-            }
+            }.collectLatest { state -> _uiState.value = state }
         }
-    }
-
-    private fun loadPermissionStatus() {
-        _uiState.update {
-            it.copy(permissionStatus = PermissionHelper.permissionStatus(context))
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // TOGGLE SETTINGS
-    // ══════════════════════════════════════════════════════════════════════
-
-    fun setAutoReconnect(enabled: Boolean) {
-        viewModelScope.launch { repository.setAutoReconnect(enabled) }
     }
 
     fun toggleAutoReconnect() {
-        setAutoReconnect(!_uiState.value.autoReconnect)
+        viewModelScope.launch { repository.setAutoReconnect(!_uiState.value.autoReconnect) }
     }
 
-    fun setFloatingWindow(enabled: Boolean) {
-        viewModelScope.launch { repository.setFloatingWindow(enabled) }
+    fun toggleKillSwitch() {
+        viewModelScope.launch { repository.setKillSwitch(!_uiState.value.killSwitch) }
     }
 
     fun toggleFloatingWindow() {
-        setFloatingWindow(!_uiState.value.floatingWindow)
-    }
-
-    fun setNotifications(enabled: Boolean) {
-        viewModelScope.launch { repository.setNotifications(enabled) }
+        viewModelScope.launch { repository.setFloatingWindow(!_uiState.value.floatingWindow) }
     }
 
     fun toggleNotifications() {
-        setNotifications(!_uiState.value.notifications)
-    }
-
-    fun setReconnectOnBoot(enabled: Boolean) {
-        viewModelScope.launch { repository.setReconnectOnBoot(enabled) }
+        viewModelScope.launch { repository.setNotifications(!_uiState.value.notifications) }
     }
 
     fun toggleReconnectOnBoot() {
-        setReconnectOnBoot(!_uiState.value.reconnectOnBoot)
+        viewModelScope.launch { repository.setReconnectOnBoot(!_uiState.value.reconnectOnBoot) }
     }
 
     fun setLogsMaxEntries(max: Int) {
@@ -110,42 +87,37 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.setLogsMaxEntries(clamped)
             repository.trimLogs(clamped)
-            _uiState.update { it.copy(logsMaxEntries = clamped, snackbarMessage = "Límite de registros actualizado a $clamped") }
+            _uiState.update { it.copy(logsMaxEntries = clamped, snackbarMessage = "Límite actualizado a $clamped") }
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // LIMPIAR DATOS
-    // ══════════════════════════════════════════════════════════════════════
-
-    fun requestClearAll() {
-        _uiState.update { it.copy(showClearDialog = true) }
-    }
-
-    fun dismissClearDialog() {
-        _uiState.update { it.copy(showClearDialog = false) }
-    }
-
-    fun confirmClearAll() {
+    fun clearLogs() {
         viewModelScope.launch {
-            repository.clearAllData()
-            _uiState.update {
-                it.copy(
-                    showClearDialog = false,
-                    snackbarMessage = "Todos los datos eliminados"
-                )
-            }
+            repository.clearLogs()
+            _uiState.update { it.copy(snackbarMessage = "Registros eliminados") }
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // PERMISOS
-    // ══════════════════════════════════════════════════════════════════════
+    fun refreshKnownHosts() {
+        _uiState.update { it.copy(knownHostCount = knownHostStore.count()) }
+    }
+
+    fun clearKnownHosts() {
+        val cleared = knownHostStore.clear()
+        _uiState.update {
+            it.copy(
+                knownHostCount = knownHostStore.count(),
+                snackbarMessage = if (cleared) {
+                    "Servidores SSH confiables eliminados. Se verificará su identidad en la próxima conexión."
+                } else {
+                    "No se pudo limpiar el almacén de servidores SSH"
+                }
+            )
+        }
+    }
 
     fun refreshPermissions() {
-        _uiState.update {
-            it.copy(permissionStatus = PermissionHelper.permissionStatus(context))
-        }
+        _uiState.update { it.copy(permissionStatus = PermissionHelper.permissionStatus(context)) }
     }
 
     fun completeFirstLaunch() {
@@ -153,54 +125,33 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(firstLaunch = false) }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // HELPERS
-    // ══════════════════════════════════════════════════════════════════════
-
-    fun clearLogs() {
-        viewModelScope.launch {
-            repository.clearLogs()
-            _uiState.update {
-                it.copy(snackbarMessage = "Registros eliminados")
-            }
-        }
-    }
-
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// UI STATE
-// ══════════════════════════════════════════════════════════════════════════
-
 private data class SettingsSnapshot(
     val autoReconnect: Boolean,
+    val killSwitch: Boolean,
     val floatingWindow: Boolean,
     val notifications: Boolean,
-    val reconnectOnBoot: Boolean,
-    val logsMaxEntries: Int
+    val reconnectOnBoot: Boolean
 )
 
 data class SettingsUiState(
-    // Preferencias
-    val autoReconnect: Boolean      = false,
-    val floatingWindow: Boolean     = true,
-    val notifications: Boolean      = true,
-    val reconnectOnBoot: Boolean    = false,
-    val logsMaxEntries: Int         = 500,
-
-    // Permisos
+    val autoReconnect: Boolean = true,
+    val killSwitch: Boolean = true,
+    val floatingWindow: Boolean = true,
+    val notifications: Boolean = true,
+    val reconnectOnBoot: Boolean = false,
+    val logsMaxEntries: Int = 500,
+    val knownHostCount: Int = 0,
     val permissionStatus: PermissionStatus = PermissionStatus(
-        vpn          = false,
-        overlay      = false,
+        vpn = false,
+        overlay = false,
         notification = false,
-        battery      = false
+        battery = false
     ),
-
-    // UI
-    val showClearDialog: Boolean    = false,
-    val snackbarMessage: String?    = null,
-    val firstLaunch: Boolean         = true
+    val snackbarMessage: String? = null,
+    val firstLaunch: Boolean = true
 )
