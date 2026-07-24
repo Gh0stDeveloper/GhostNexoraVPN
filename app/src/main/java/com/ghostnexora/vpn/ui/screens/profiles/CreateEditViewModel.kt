@@ -79,7 +79,9 @@ class CreateEditViewModel @Inject constructor(
             it.copy(
                 connectionMode = mode.id,
                 method = mode.family,
-                sslEnabled = if (mode == ConnectionMode.V2RAY) it.sslEnabled else mode.usesTls,
+                // Los perfiles V2Ray nuevos se crean como VLESS+TLS. El usuario
+                // puede desactivar TLS únicamente si configura VMess.
+                sslEnabled = if (mode == ConnectionMode.V2RAY) true else mode.usesTls,
                 proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType,
                 tags = nextTags,
                 error = null
@@ -130,8 +132,14 @@ class CreateEditViewModel @Inject constructor(
         if (error == null && mode.requiresSni && s.sni.isBlank()) {
             error = "El modo seleccionado requiere un SNI"
         }
-        if (error == null && mode == ConnectionMode.V2RAY && s.sslEnabled && s.sni.isBlank()) {
-            error = "V2Ray con TLS requiere SNI"
+        if (error == null && mode == ConnectionMode.V2RAY) {
+            when {
+                !s.isVmess && !s.sslEnabled && !s.isReality ->
+                    error = "VLESS debe usar TLS o Reality para mantener el transporte cifrado"
+
+                (s.sslEnabled || s.isReality) && s.sni.isBlank() ->
+                    error = "V2Ray con TLS/Reality requiere SNI"
+            }
         }
         if (error == null && mode.requiresProxy) {
             error = when {
@@ -227,6 +235,11 @@ data class CreateEditUiState(
     val title: String get() = if (isEditMode) "Editar Perfil" else "Nuevo Perfil"
     val hasErrors: Boolean get() = nameError != null || hostError != null || portError != null
     val selectedMode: ConnectionMode get() = ConnectionMode.fromStored(connectionMode, method, sslEnabled)
+    val isVmess: Boolean
+        get() = tags.split(',').any { it.trim().equals("vmess", ignoreCase = true) } ||
+            payload.contains("protocol=vmess", ignoreCase = true)
+    val isReality: Boolean
+        get() = payload.contains("security=reality", ignoreCase = true)
 }
 
 val PROXY_TYPES = listOf("", "http", "socks5")
