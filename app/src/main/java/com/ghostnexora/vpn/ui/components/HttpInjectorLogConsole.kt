@@ -1,9 +1,7 @@
 package com.ghostnexora.vpn.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,11 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,34 +45,28 @@ import com.ghostnexora.vpn.ui.theme.NeonAmber
 import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.NeonGreen
 import com.ghostnexora.vpn.ui.theme.NeonRed
-import com.ghostnexora.vpn.ui.theme.SurfaceVariant
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.httpInjectorLine
 
 /**
- * Consola interactiva estilo HTTP Injector.
+ * Consola de conexión en un único contenedor visual.
  *
- * - No trunca el contenido de la línea.
- * - Permite desplazar hacia arriba/abajo libremente.
- * - Mantiene auto-scroll solo mientras el usuario está en el borde inferior.
- * - Permite seleccionar una entrada para verla con más calma.
+ * El usuario puede pausar el auto-scroll tocando una línea, volver al final y
+ * copiar el registro completo sin abrir un segundo panel de detalle.
  */
 @Composable
 fun HttpInjectorLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
-    maxHeight: Int = 360
+    maxHeight: Int = 460,
+    onCopyAll: (() -> Unit)? = null
 ) {
     val listState = rememberLazyListState()
     val orderedLogs = remember(logs) { logs.sortedBy { it.timestamp } }
     var selectedLogId by remember { mutableStateOf<Long?>(null) }
     var followTail by remember { mutableStateOf(true) }
-
-    val selectedEntry = remember(orderedLogs, selectedLogId) {
-        orderedLogs.firstOrNull { it.id == selectedLogId }
-    }
 
     val isAtBottom by remember {
         derivedStateOf {
@@ -95,13 +88,15 @@ fun HttpInjectorLogConsole(
 
     GhostCard(
         modifier = modifier,
-        backgroundColor = SurfaceVariant,
+        backgroundColor = Color(0xFF0B1220),
         borderColor = BorderSubtle,
-        contentPadding = PaddingValues(Dimens.SpaceMD)
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+        Column {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -110,60 +105,75 @@ fun HttpInjectorLogConsole(
                     horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
                 ) {
                     Icon(Icons.Filled.Terminal, contentDescription = null, tint = NeonCyan)
-                    Text(
-                        text = "Registro de conexión",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary
-                    )
+                    Column {
+                        Text(
+                            text = "Registro de conexión",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (orderedLogs.isEmpty()) "Sin eventos" else "${orderedLogs.size} eventos · ${if (followTail) "seguimiento activo" else "seguimiento pausado"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
                 }
 
-                IconButton(onClick = {
-                    selectedLogId = orderedLogs.lastOrNull()?.id
-                    followTail = true
-                }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Ir al final", tint = NeonCyan)
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp, max = maxHeight.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF0B1220))
-                    .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)
-            ) {
-                if (orderedLogs.isEmpty()) {
-                    Text(
-                        text = "Sin eventos todavía",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                        color = TextTertiary
-                    )
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row {
+                    IconButton(
+                        onClick = {
+                            followTail = true
+                            selectedLogId = null
+                        },
+                        enabled = orderedLogs.isNotEmpty()
                     ) {
-                        itemsIndexed(orderedLogs, key = { _, entry -> entry.id }) { index, entry ->
-                            HttpLogLine(
-                                entry = entry,
-                                isLast = index == orderedLogs.lastIndex,
-                                isSelected = entry.id == selectedLogId,
-                                onClick = {
-                                    selectedLogId = if (selectedLogId == entry.id) null else entry.id
-                                }
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Ir al final",
+                            tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
+                        )
+                    }
+                    if (onCopyAll != null) {
+                        IconButton(onClick = onCopyAll, enabled = orderedLogs.isNotEmpty()) {
+                            Icon(
+                                Icons.Filled.ContentCopy,
+                                contentDescription = "Copiar registro",
+                                tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
                             )
                         }
-                        item { Spacer(modifier = Modifier.height(4.dp)) }
                     }
                 }
             }
 
-            if (selectedEntry != null) {
-                SelectedLogPreview(
-                    entry = selectedEntry,
-                    onDismiss = { selectedLogId = null }
+            if (orderedLogs.isEmpty()) {
+                Text(
+                    text = "Los eventos del túnel aparecerán aquí cuando inicies una conexión.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    color = TextTertiary,
+                    modifier = Modifier.padding(Dimens.SpaceMD)
                 )
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = maxHeight.dp)
+                        .padding(horizontal = Dimens.SpaceMD),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(bottom = Dimens.SpaceMD)
+                ) {
+                    items(orderedLogs, key = { it.id }) { entry ->
+                        HttpLogLine(
+                            entry = entry,
+                            isSelected = entry.id == selectedLogId,
+                            onClick = {
+                                selectedLogId = if (selectedLogId == entry.id) null else entry.id
+                                followTail = false
+                            }
+                        )
+                    }
+                    item { Spacer(modifier = Modifier.height(2.dp)) }
+                }
             }
         }
     }
@@ -172,7 +182,6 @@ fun HttpInjectorLogConsole(
 @Composable
 private fun HttpLogLine(
     entry: LogEntry,
-    isLast: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -180,11 +189,8 @@ private fun HttpLogLine(
         entry.level == LogLevel.ERROR -> NeonRed
         entry.level == LogLevel.WARNING -> NeonAmber
         entry.level == LogLevel.SUCCESS -> NeonGreen
-        entry.message.contains("[START]", ignoreCase = true) -> NeonCyan
-        entry.message.contains("[STOP]", ignoreCase = true) -> NeonAmber
-        entry.message.contains("Conectado", ignoreCase = true) -> NeonGreen
-        entry.message.contains("Desconectado", ignoreCase = true) -> TextTertiary
-        entry.message.contains("Error", ignoreCase = true) -> NeonRed
+        entry.message.contains("Conexión VPN establecida", ignoreCase = true) -> NeonGreen
+        entry.message.contains("desconectada", ignoreCase = true) -> TextTertiary
         else -> TextSecondary
     }
 
@@ -196,47 +202,8 @@ private fun HttpLogLine(
         overflow = TextOverflow.Clip,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 2.dp, horizontal = 4.dp)
+            .padding(vertical = 5.dp, horizontal = 6.dp)
     )
-}
-
-@Composable
-private fun SelectedLogPreview(
-    entry: LogEntry,
-    onDismiss: () -> Unit
-) {
-    GhostCard(
-        backgroundColor = Color(0xFF0B1220),
-        borderColor = NeonCyan.copy(alpha = 0.5f),
-        contentPadding = PaddingValues(Dimens.SpaceMD)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Detalle del registro",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "Cerrar",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NeonCyan,
-                    modifier = Modifier.clickable(onClick = onDismiss)
-                )
-            }
-
-            Text(
-                text = entry.httpInjectorLine(),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = TextSecondary,
-                softWrap = true
-            )
-        }
-    }
 }
