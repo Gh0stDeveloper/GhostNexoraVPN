@@ -14,10 +14,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -74,19 +74,16 @@ fun CreateEditProfileScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scrollState = rememberScrollState()
 
     LaunchedEffect(profileId) {
         viewModel.loadProfile(profileId)
     }
-
     LaunchedEffect(state.error) {
         state.error?.let { error ->
             snackbarHostState.showSnackbar(error)
             viewModel.clearError()
         }
     }
-
     LaunchedEffect(state.savedSuccessfully) {
         if (state.savedSuccessfully) onBack()
     }
@@ -116,85 +113,76 @@ fun CreateEditProfileScreen(
                 .fillMaxSize()
                 .background(BackgroundDark)
                 .padding(padding)
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
         ) {
             GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
+                    Text("Servidor y protocolo", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+
                     OutlinedTextField(
                         value = state.name,
                         onValueChange = viewModel::onNameChange,
-                        label = { Text("Nombre del Perfil") },
+                        label = { Text("Nombre del perfil") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = state.nameError != null,
                         supportingText = { state.nameError?.let { Text(it, color = Color.Red) } }
                     )
 
+                    ModeSelector(
+                        selectedMode = state.selectedMode,
+                        onModeSelected = viewModel::onConnectionModeChange,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    ModeInfoPanel(mode = state.selectedMode)
+
                     OutlinedTextField(
                         value = state.host,
                         onValueChange = viewModel::onHostChange,
-                        label = { Text("Servidor (Host)") },
+                        label = { Text("Servidor / Host") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = state.hostError != null,
                         supportingText = { state.hostError?.let { Text(it, color = Color.Red) } }
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-                        OutlinedTextField(
-                            value = state.port,
-                            onValueChange = viewModel::onPortChange,
-                            label = { Text("Puerto") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                            isError = state.portError != null,
-                            supportingText = { state.portError?.let { Text(it, color = Color.Red) } }
-                        )
-
-                        ModeSelector(
-                            selectedMode = state.selectedMode,
-                            onModeSelected = viewModel::onConnectionModeChange,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    ModeInfoCard(mode = state.selectedMode)
-
                     OutlinedTextField(
-                        value = state.username,
-                        onValueChange = viewModel::onUsernameChange,
-                        label = { Text("Usuario SSH") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = state.password,
-                        onValueChange = viewModel::onPasswordChange,
-                        label = { Text("Contraseña SSH") },
+                        value = state.port,
+                        onValueChange = viewModel::onPortChange,
+                        label = { Text("Puerto") },
                         modifier = Modifier.fillMaxWidth(),
-                        visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = viewModel::togglePasswordVisible) {
-                                Icon(
-                                    if (state.passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (state.passwordVisible) "Ocultar" else "Mostrar"
-                                )
-                            }
-                        }
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = state.portError != null,
+                        supportingText = { state.portError?.let { Text(it, color = Color.Red) } }
                     )
+
+                    ProtocolCredentialFields(state = state, viewModel = viewModel)
                 }
             }
 
             GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-                    Text("Opciones del modo", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+                    Text("Transporte y seguridad", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
 
-                    if (state.selectedMode.requiresSni) {
+                    if (state.selectedMode == ConnectionMode.V2RAY) {
+                        SwitchRow(
+                            title = "Usar TLS",
+                            subtitle = "Verifica el certificado del servidor; no se permite insecure por defecto.",
+                            checked = state.sslEnabled,
+                            onCheckedChange = viewModel::onSslChange
+                        )
+                    }
+
+                    if (state.selectedMode.requiresSni || (state.selectedMode == ConnectionMode.V2RAY && state.sslEnabled)) {
                         OutlinedTextField(
                             value = state.sni,
                             onValueChange = viewModel::onSniChange,
                             label = { Text("SNI / Host TLS") },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            supportingText = {
+                                Text("Debe coincidir con un nombre válido del certificado TLS.")
+                            }
                         )
                     }
 
@@ -205,13 +193,28 @@ fun CreateEditProfileScreen(
                             sni = state.sni.ifBlank { state.host },
                             onUsePayload = viewModel::onPayloadChange
                         )
-
                         OutlinedTextField(
                             value = state.payload,
                             onValueChange = viewModel::onPayloadChange,
-                            label = { Text("Payload") },
+                            label = { Text("Payload HTTP") },
                             modifier = Modifier.fillMaxWidth(),
-                            minLines = 4
+                            minLines = 5,
+                            supportingText = {
+                                Text("Variables: [host], [host_port], [port], [sni], [crlf].")
+                            }
+                        )
+                    }
+
+                    if (state.selectedMode == ConnectionMode.V2RAY) {
+                        OutlinedTextField(
+                            value = state.payload,
+                            onValueChange = viewModel::onPayloadChange,
+                            label = { Text("Parámetros V2Ray / Xray") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            supportingText = {
+                                Text("Ejemplo: net=ws | host=cdn.example.com | path=/ws | security=tls | fp=chrome")
+                            }
                         )
                     }
 
@@ -226,14 +229,13 @@ fun CreateEditProfileScreen(
                             OutlinedTextField(
                                 value = state.proxyPort,
                                 onValueChange = viewModel::onProxyPortChange,
-                                label = { Text("Proxy Puerto") },
+                                label = { Text("Puerto") },
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
-                            OutlinedTextField(
-                                value = state.proxyType,
-                                onValueChange = viewModel::onProxyTypeChange,
-                                label = { Text("Tipo") },
+                            ProxyTypeSelector(
+                                selected = state.proxyType,
+                                onSelected = viewModel::onProxyTypeChange,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -241,6 +243,7 @@ fun CreateEditProfileScreen(
 
                     SwitchRow(
                         title = "Perfil habilitado",
+                        subtitle = "Permite seleccionar y usar este perfil para conectar.",
                         checked = state.enabled,
                         onCheckedChange = viewModel::onEnabledChange
                     )
@@ -249,13 +252,14 @@ fun CreateEditProfileScreen(
 
             GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
+                    Text("Metadatos", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
                     OutlinedTextField(
                         value = state.tags,
                         onValueChange = viewModel::onTagsChange,
-                        label = { Text("Tags (separados por coma)") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Tags") },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("Para V2Ray usa vmess o vless para indicar el protocolo.") }
                     )
-
                     OutlinedTextField(
                         value = state.notes,
                         onValueChange = viewModel::onNotesChange,
@@ -267,7 +271,7 @@ fun CreateEditProfileScreen(
             }
 
             GhostButton(
-                text = if (state.isSaving) "Guardando..." else if (state.isEditMode) "Guardar Cambios" else "Crear Perfil",
+                text = if (state.isSaving) "Guardando..." else if (state.isEditMode) "Guardar cambios" else "Crear perfil",
                 onClick = viewModel::save,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isSaving,
@@ -281,6 +285,48 @@ fun CreateEditProfileScreen(
 }
 
 @Composable
+private fun ProtocolCredentialFields(
+    state: CreateEditUiState,
+    viewModel: CreateEditViewModel
+) {
+    val mode = state.selectedMode
+
+    if (mode.isSsh || mode == ConnectionMode.V2RAY) {
+        OutlinedTextField(
+            value = state.username,
+            onValueChange = viewModel::onUsernameChange,
+            label = {
+                Text(if (mode == ConnectionMode.V2RAY) "UUID / User ID" else "Usuario SSH")
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    if (mode.isSsh || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP) {
+        val label = when (mode) {
+            ConnectionMode.TROJAN -> "Contraseña Trojan"
+            ConnectionMode.UDP -> "Auth / Contraseña Hysteria2"
+            else -> "Contraseña SSH"
+        }
+        OutlinedTextField(
+            value = state.password,
+            onValueChange = viewModel::onPasswordChange,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = viewModel::togglePasswordVisible) {
+                    Icon(
+                        if (state.passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (state.passwordVisible) "Ocultar" else "Mostrar"
+                    )
+                }
+            }
+        )
+    }
+}
+
+@Composable
 private fun ModeSelector(
     selectedMode: ConnectionMode,
     onModeSelected: (ConnectionMode) -> Unit,
@@ -288,11 +334,8 @@ private fun ModeSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(selectedMode.label)
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selectedMode.label, modifier = Modifier.weight(1f))
             Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -301,20 +344,13 @@ private fun ModeSelector(
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(mode.label)
-                            Text(
-                                mode.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (mode.supported) TextSecondary else NeonAmber
-                            )
+                            Text(mode.description, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                         }
                     },
                     onClick = {
-                        if (mode.supported) {
-                            expanded = false
-                            onModeSelected(mode)
-                        }
-                    },
-                    enabled = mode.supported
+                        expanded = false
+                        onModeSelected(mode)
+                    }
                 )
             }
         }
@@ -322,24 +358,44 @@ private fun ModeSelector(
 }
 
 @Composable
-private fun ModeInfoCard(
-    mode: ConnectionMode
+private fun ModeInfoPanel(mode: ConnectionMode) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NeonCyan.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .padding(Dimens.SpaceMD),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
+    ) {
+        Text(mode.label, style = MaterialTheme.typography.titleSmall, color = NeonCyan)
+        Text(mode.description, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Text(
+            "Requiere: ${mode.requiredFields.joinToString(" · ")}",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary
+        )
+    }
+}
+
+@Composable
+private fun ProxyTypeSelector(
+    selected: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-            Text("Método seleccionado", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
-            Text(mode.label, style = MaterialTheme.typography.titleMedium, color = NeonCyan)
-            Text(mode.description, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            Text(
-                "Campos requeridos: ${mode.requiredFields.joinToString(" · ")}",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
-            if (!mode.supported) {
-                Text(
-                    "Este método está documentado pero todavía no está habilitado en el motor actual.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NeonAmber
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selected.ifBlank { "HTTP" }, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            listOf("http", "socks5").forEach { type ->
+                DropdownMenuItem(
+                    text = { Text(if (type == "http") "HTTP CONNECT" else "SOCKS5") },
+                    onClick = {
+                        expanded = false
+                        onSelected(type)
+                    }
                 )
             }
         }
@@ -349,18 +405,22 @@ private fun ModeInfoCard(
 @Composable
 private fun SwitchRow(
     title: String,
+    subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
     ) {
-        Text(title, modifier = Modifier.weight(1f), color = TextPrimary)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
-
 
 @Composable
 private fun PayloadPresetPanel(
@@ -371,48 +431,42 @@ private fun PayloadPresetPanel(
 ) {
     var preset by remember { mutableStateOf(PayloadUseCase.BROWSING) }
 
-    GhostCard(
-        backgroundColor = NeonCyan.copy(alpha = 0.04f),
-        borderColor = BorderSubtle,
-        contentPadding = PaddingValues(Dimens.SpaceMD)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NeonCyan.copy(alpha = 0.04f), RoundedCornerShape(16.dp))
+            .padding(Dimens.SpaceMD),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Text("Generador de payload", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Elige un preset y la app llenará el campo Payload con una plantilla base editable.",
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
+        Text("Plantillas de payload", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Generan una base editable; el servidor o proxy debe ser compatible con la estrategia de inyección elegida.",
+            color = TextSecondary,
+            style = MaterialTheme.typography.bodySmall
+        )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                TextButton(onClick = {
-                    preset = PayloadUseCase.BROWSING
-                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.BROWSING, host, port, sni = sni))
-                }) { Text("Navegación") }
-
-                TextButton(onClick = {
-                    preset = PayloadUseCase.STREAMING
-                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.STREAMING, host, port, sni = sni))
-                }) { Text("Streaming") }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                TextButton(onClick = {
-                    preset = PayloadUseCase.GAMING
-                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.GAMING, host, port, sni = sni))
-                }) { Text("Gaming") }
-
-                TextButton(onClick = {
-                    preset = PayloadUseCase.CUSTOM
-                    onUsePayload(PayloadGenerator.generate(PayloadUseCase.CUSTOM, host, port, sni = sni))
-                }) { Text("Custom") }
-            }
-
-            Text(
-                text = "Preset actual: ${preset.label}",
-                color = NeonAmber,
-                style = MaterialTheme.typography.labelSmall
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            TextButton(onClick = {
+                preset = PayloadUseCase.BROWSING
+                onUsePayload(PayloadGenerator.generate(PayloadUseCase.BROWSING, host, port, sni = sni))
+            }) { Text("Navegación") }
+            TextButton(onClick = {
+                preset = PayloadUseCase.STREAMING
+                onUsePayload(PayloadGenerator.generate(PayloadUseCase.STREAMING, host, port, sni = sni))
+            }) { Text("Streaming") }
         }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            TextButton(onClick = {
+                preset = PayloadUseCase.GAMING
+                onUsePayload(PayloadGenerator.generate(PayloadUseCase.GAMING, host, port, sni = sni))
+            }) { Text("Gaming") }
+            TextButton(onClick = {
+                preset = PayloadUseCase.CUSTOM
+                onUsePayload(PayloadGenerator.generate(PayloadUseCase.CUSTOM, host, port, sni = sni))
+            }) { Text("Custom") }
+        }
+
+        Text("Preset actual: ${preset.label}", color = NeonAmber, style = MaterialTheme.typography.labelSmall)
     }
 }
