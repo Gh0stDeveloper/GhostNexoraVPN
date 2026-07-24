@@ -7,16 +7,17 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.ghostnexora.vpn.BuildConfig
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonSyntaxException
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.VpnProfile
-import com.ghostnexora.vpn.util.ProtocolLinkParser
+import com.ghostnexora.vpn.security.NativeGuard
+import com.ghostnexora.vpn.security.SecureConfigCodec
+import com.ghostnexora.vpn.security.SecureConfigException
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonSyntaxException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
-import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,115 +30,56 @@ import javax.inject.Singleton
 class JsonManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val gson: Gson = GsonBuilder()
-        .setPrettyPrinting()
-        .serializeNulls()
-        .create()
+    private val gson: Gson = GsonBuilder().serializeNulls().create()
 
-    fun importFromUri(uri: Uri): ImportResult {
+    fun importFromUri(uri: Uri, passphrase: CharArray? = null): ImportResult {
         return try {
-            val inputStream: InputStream = context.contentResolver.openInputStream(uri)
-                ?: return ImportResult.Error("No se pudo abrir el archivo")
+            val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                input.readBytesLimited(MAX_IMPORT_BYTES)
+            } ?: return ImportResult.Error("No se pudo abrir el archivo")
+            parseImportBytes(bytes, passphrase)
+        } catch (error: Throwable) {
+            ImportResult.Error("Error al leer el archivo: ${safeError(error)}")
+        }
+    }
 
-            val rawText = inputStream.bufferedReader().use { it.readText() }
+    fun importFromString(rawText: String, passphrase: CharArray? = null): ImportResult {
+        if (rawText.isBlank()) return ImportResult.Error("El contenido está vacío")
+        return if (SecureConfigCodec.isTextEnvelope(rawText)) {
+            val password = passphrase ?: return ImportResult.PasswordRequired("La configuración GNX2 requiere contraseña")
+            runCatching { SecureConfigCodec.decodeTextEnvelope(rawText) }
+                .fold(
+                    onSuccess = { parseEncrypted(it, password) },
+                    onFailure = { ImportResult.Error(safeError(it)) }
+                )
+        } else {
             parseImportText(rawText)
-        } catch (e: Exception) {
-            ImportResult.Error("Error al leer el archivo: ${e.message}")
         }
     }
 
-    fun importFromString(jsonString: String): ImportResult = parseImportText(jsonString)
-
-    private fun parseImportText(rawText: String): ImportResult {
-        if (rawText.isBlank()) return ImportResult.Error("El archivo está vacío")
-
-        parseJson(rawText)?.let { return it }
-
-        val protocolProfiles = ProtocolLinkParser.parseText(rawText)
-        if (protocolProfiles.isNotEmpty()) {
-            val source = when {
-                rawText.contains("vmess://", ignoreCase = true) -> "Enlaces vmess"
-                rawText.contains("vless://", ignoreCase = true) -> "Enlaces vless"
-                rawText.contains("trojan://", ignoreCase = true) -> "Enlaces trojan"
-                else -> "Enlaces compatibles"
-            }
-            return ImportResult.Success(protocolProfiles, source)
-        }
-
-        return ImportResult.Error("Formato JSON o enlace no reconocido")
-    }
-
-    private fun parseJson(jsonString: String): ImportResult? {
-        val trimmed = jsonString.trim()
-        if (trimmed.isBlank()) return ImportResult.Error("El archivo está vacío")
-        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null
-
-        return try {
-            val document = gson.fromJson(trimmed, VpnProfileDocument::class.java)
-
-            if (document?.profiles.isNullOrEmpty()) {
-                val profiles = gson.fromJson(trimmed, Array<VpnProfileJson>::class.java)
-                    ?.toList()
-                    ?: return ImportResult.Error("Formato JSON no reconocido")
-
-                val mapped = profiles.mapNotNull { it.toVpnProfile() }
-                if (mapped.isEmpty()) ImportResult.Error("No se encontraron perfiles válidos")
-                else ImportResult.Success(mapped, document?.appName ?: "Importación externa")
-            } else {
-                val mapped = document.profiles!!.mapNotNull { it.toVpnProfile() }
-                ImportResult.Success(mapped, document.appName ?: "Ghost Nexora VPN")
-            }
-        } catch (e: JsonSyntaxException) {
-            ImportResult.Error("JSON malformado: ${e.message?.take(80)}")
-        } catch (e: Exception) {
-            ImportResult.Error("Error inesperado: ${e.message}")
-        }
-    }
-
-    fun exportToFile(profiles: List<VpnProfile>): File? {
-        return try {
-            val jsonString = exportToString(profiles)
-            val fileName = "ghost_nexora_export_${System.currentTimeMillis()}.json"
-            val outputDir = File(context.filesDir, "exports").apply { mkdirs() }
-            val outputFile = File(outputDir, fileName)
-            outputFile.writeText(jsonString)
-            outputFile
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Guarda el JSON directamente en Descargas/GhostNexoraVPN.
-     * Devuelve la Uri del archivo creado o null si falla.
-     */
     fun exportToDownloads(
         profiles: List<VpnProfile>,
+        passphrase: CharArray,
         fileName: String = defaultExportFileName()
     ): Uri? {
         return try {
-            val jsonString = exportToString(profiles)
-            val mimeType = "application/json"
-
+            val encrypted = encryptProfiles(profiles, passphrase)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, ensureGnxExtension(fileName))
+                    put(MediaStore.MediaColumns.MIME_TYPE, MIME_GNX)
                     put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
                         Environment.DIRECTORY_DOWNLOADS + File.separator + "GhostNexoraVPN"
                     )
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-
                 val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val uri = context.contentResolver.insert(collection, values) ?: return null
-
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(jsonString.toByteArray())
-                    out.flush()
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(encrypted)
+                    output.flush()
                 } ?: return null
-
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 context.contentResolver.update(uri, values, null, null)
@@ -146,75 +88,151 @@ class JsonManager @Inject constructor(
                 @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val targetDir = File(dir, "GhostNexoraVPN").apply { mkdirs() }
-                val outputFile = File(targetDir, fileName)
-                outputFile.writeText(jsonString)
+                val outputFile = File(targetDir, ensureGnxExtension(fileName))
+                outputFile.writeBytes(encrypted)
                 Uri.fromFile(outputFile)
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             null
         }
     }
 
-    /**
-     * Escribe el JSON exportado en un Uri elegido manualmente con SAF.
-     */
-    fun exportToUri(
-        uri: Uri,
-        profiles: List<VpnProfile>
-    ): Boolean {
+    fun exportToUri(uri: Uri, profiles: List<VpnProfile>, passphrase: CharArray): Boolean {
         return try {
-            val jsonString = exportToString(profiles)
-            context.contentResolver.openOutputStream(uri, "w")?.use { out ->
-                out.write(jsonString.toByteArray())
-                out.flush()
+            val encrypted = encryptProfiles(profiles, passphrase)
+            context.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                output.write(encrypted)
+                output.flush()
             } ?: return false
             true
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             false
         }
     }
 
-    fun exportToString(profiles: List<VpnProfile>): String {
+    fun exportToTextEnvelope(profiles: List<VpnProfile>, passphrase: CharArray): String =
+        SecureConfigCodec.encodeTextEnvelope(encryptProfiles(profiles, passphrase))
+
+    fun validatePassphrase(passphrase: CharArray): ValidationResult =
+        if (SecureConfigCodec.validatePassphrase(passphrase)) {
+            ValidationResult(true, "Contraseña de protección válida", 0)
+        } else {
+            ValidationResult(false, "Usa al menos 10 caracteres", 0)
+        }
+
+    private fun parseImportBytes(bytes: ByteArray, passphrase: CharArray?): ImportResult {
+        if (bytes.isEmpty()) return ImportResult.Error("El archivo está vacío")
+        return if (SecureConfigCodec.isEncrypted(bytes)) {
+            val password = passphrase ?: return ImportResult.PasswordRequired("Este archivo .gnx requiere contraseña")
+            parseEncrypted(bytes, password)
+        } else {
+            parseImportText(bytes.toString(Charsets.UTF_8))
+        }
+    }
+
+    private fun parseEncrypted(bytes: ByteArray, passphrase: CharArray): ImportResult {
+        return try {
+            val json = SecureConfigCodec.decrypt(bytes, passphrase)
+            parseJson(json)?.let { result ->
+                when (result) {
+                    is ImportResult.Success -> result.copy(sourceName = "Ghost Nexora cifrado GNX2")
+                    else -> result
+                }
+            } ?: ImportResult.Error("El contenido descifrado no contiene perfiles válidos")
+        } catch (error: SecureConfigException) {
+            ImportResult.Error(error.message ?: "No se pudo descifrar la configuración")
+        } catch (error: Throwable) {
+            ImportResult.Error(safeError(error))
+        }
+    }
+
+    private fun parseImportText(rawText: String): ImportResult {
+        if (rawText.isBlank()) return ImportResult.Error("El archivo está vacío")
+        parseJson(rawText)?.let { return it }
+
+        val protocolProfiles = ProtocolLinkParser.parseText(rawText)
+        if (protocolProfiles.isNotEmpty()) {
+            val source = when {
+                rawText.contains("vmess://", true) -> "Enlaces VMess"
+                rawText.contains("vless://", true) -> "Enlaces VLESS"
+                rawText.contains("trojan://", true) -> "Enlaces Trojan"
+                rawText.contains("hysteria2://", true) || rawText.contains("hy2://", true) -> "Enlaces Hysteria2"
+                else -> "Enlaces compatibles"
+            }
+            return ImportResult.Success(protocolProfiles, source)
+        }
+        return ImportResult.Error("Formato GNX2, JSON legado o enlace de protocolo no reconocido")
+    }
+
+    private fun parseJson(jsonString: String): ImportResult? {
+        val trimmed = jsonString.trim()
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null
+        return try {
+            if (trimmed.startsWith("[")) {
+                val profiles = gson.fromJson(trimmed, Array<VpnProfileJson>::class.java)?.toList().orEmpty()
+                val mapped = profiles.mapNotNull(VpnProfileJson::toVpnProfile)
+                if (mapped.isEmpty()) ImportResult.Error("No se encontraron perfiles válidos")
+                else ImportResult.Success(mapped, "Importación JSON legado")
+            } else {
+                val document = gson.fromJson(trimmed, VpnProfileDocument::class.java)
+                val mapped = document?.profiles.orEmpty().mapNotNull(VpnProfileJson::toVpnProfile)
+                if (mapped.isEmpty()) ImportResult.Error("No se encontraron perfiles válidos")
+                else ImportResult.Success(mapped, document?.appName ?: "Importación externa")
+            }
+        } catch (error: JsonSyntaxException) {
+            ImportResult.Error("JSON malformado: ${error.message?.take(80).orEmpty()}")
+        } catch (error: Throwable) {
+            ImportResult.Error(safeError(error))
+        }
+    }
+
+    private fun encryptProfiles(profiles: List<VpnProfile>, passphrase: CharArray): ByteArray {
+        val jsonBytes = exportPlainJson(profiles).toByteArray(Charsets.UTF_8)
+        return try {
+            SecureConfigCodec.encrypt(jsonBytes.toString(Charsets.UTF_8), passphrase)
+        } finally {
+            NativeGuard.wipe(jsonBytes)
+        }
+    }
+
+    private fun exportPlainJson(profiles: List<VpnProfile>): String {
         val document = VpnProfileDocument(
             appName = "Ghost Nexora VPN",
             version = BuildConfig.VERSION_NAME,
-            exportedAt = SimpleDateFormat(
-                "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                Locale.getDefault()
-            ).apply {
+            exportedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
                 timeZone = TimeZone.getTimeZone("UTC")
             }.format(Date()),
-            profiles = profiles.map { it.toJson() }
+            profiles = profiles.map(VpnProfile::toJson)
         )
         return gson.toJson(document)
     }
 
-    fun validateJson(jsonString: String): ValidationResult {
-        if (jsonString.isBlank()) return ValidationResult(false, "Archivo vacío", 0)
+    private fun defaultExportFileName(): String = "ghost_nexora_${System.currentTimeMillis()}.gnx"
 
-        val raw = jsonString.trim()
-        if (ProtocolLinkParser.supportsProtocolLinks(raw)) {
-            return ValidationResult(true, "Enlace(s) de protocolo detectados", ProtocolLinkParser.parseText(raw).size)
-        }
+    private fun ensureGnxExtension(name: String): String =
+        if (name.endsWith(".gnx", ignoreCase = true)) name else "$name.gnx"
 
-        return try {
-            val doc = gson.fromJson(raw, VpnProfileDocument::class.java)
-            val count = doc?.profiles?.size ?: 0
-            if (count > 0) {
-                ValidationResult(true, "Formato válido", count)
-            } else {
-                val arr = gson.fromJson(raw, Array<VpnProfileJson>::class.java)
-                val arrCount = arr?.size ?: 0
-                if (arrCount > 0) ValidationResult(true, "Formato array válido", arrCount)
-                else ValidationResult(false, "No se encontraron perfiles", 0)
-            }
-        } catch (_: JsonSyntaxException) {
-            ValidationResult(false, "JSON malformado", 0)
+    private fun java.io.InputStream.readBytesLimited(maxBytes: Int): ByteArray {
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0
+        while (true) {
+            val read = read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= maxBytes) { "El archivo excede el límite permitido" }
+            output.write(buffer, 0, read)
         }
+        return output.toByteArray()
     }
 
-    private fun defaultExportFileName(): String =
-        "ghost_nexora_export_${System.currentTimeMillis()}.json"
+    private fun safeError(error: Throwable): String =
+        error.message?.take(160)?.takeIf(String::isNotBlank) ?: "Operación no disponible"
+
+    private companion object {
+        const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
+        const val MIME_GNX = "application/octet-stream"
+    }
 }
 
 data class VpnProfileDocument(
@@ -243,30 +261,29 @@ data class VpnProfileJson(
     val lastUsed: String? = ""
 ) {
     fun toVpnProfile(): VpnProfile? {
-        val resolvedHost = host?.trim() ?: return null
+        val resolvedHost = host?.trim().orEmpty()
         if (resolvedHost.isEmpty()) return null
-
         return VpnProfile(
-            id = if (id.isNullOrBlank()) UUID.randomUUID().toString() else id,
+            id = id?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString(),
             name = name?.trim()?.ifEmpty { resolvedHost } ?: resolvedHost,
             host = resolvedHost,
             port = port?.takeIf { it in 1..65535 } ?: 443,
-            username = username ?: "",
-            password = password ?: "",
+            username = username.orEmpty(),
+            password = password.orEmpty(),
             method = method ?: "ssh",
             connectionMode = ConnectionMode.fromStored(connectionMode, method, sslEnabled).id,
             sslEnabled = sslEnabled ?: false,
-            sni = sni ?: "",
-            payload = payload ?: "",
+            sni = sni.orEmpty(),
+            payload = payload.orEmpty(),
             proxy = ProxyConfig(
-                host = proxy?.host ?: "",
+                host = proxy?.host.orEmpty(),
                 port = proxy?.port ?: 0,
-                type = proxy?.type ?: ""
+                type = proxy?.type.orEmpty()
             ),
-            tagsRaw = tags?.joinToString(",") ?: "",
-            notes = notes ?: "",
+            tagsRaw = tags?.joinToString(",").orEmpty(),
+            notes = notes.orEmpty(),
             enabled = enabled ?: true,
-            lastUsed = lastUsed ?: "",
+            lastUsed = lastUsed.orEmpty(),
             createdAt = System.currentTimeMillis()
         )
     }
@@ -286,15 +303,11 @@ fun VpnProfile.toJson() = VpnProfileJson(
     username = username,
     password = password,
     method = method,
-    connectionMode = connectionMode ?: VpnProfile.empty().selectedMode.id,
+    connectionMode = connectionMode,
     sslEnabled = sslEnabled,
     sni = sni,
     payload = payload,
-    proxy = ProxyJson(
-        host = proxy.host,
-        port = proxy.port,
-        type = proxy.type
-    ),
+    proxy = ProxyJson(proxy.host, proxy.port, proxy.type),
     tags = tags,
     notes = notes,
     enabled = enabled,
@@ -303,9 +316,9 @@ fun VpnProfile.toJson() = VpnProfileJson(
 
 sealed class ImportResult {
     data class Success(val profiles: List<VpnProfile>, val sourceName: String) : ImportResult()
+    data class PasswordRequired(val message: String) : ImportResult()
     data class Error(val message: String) : ImportResult()
 }
-
 
 data class ValidationResult(
     val isValid: Boolean,
