@@ -3,24 +3,64 @@
 package com.ghostnexora.vpn.ui.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.ghostnexora.vpn.ui.theme.*
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.BuildConfig
+import com.ghostnexora.vpn.ui.theme.BackgroundDark
+import com.ghostnexora.vpn.ui.theme.BorderNormal
+import com.ghostnexora.vpn.ui.theme.Dimens
+import com.ghostnexora.vpn.ui.theme.GhostButton
+import com.ghostnexora.vpn.ui.theme.GhostCard
+import com.ghostnexora.vpn.ui.theme.NeonCyan
+import com.ghostnexora.vpn.ui.theme.NeonGreen
+import com.ghostnexora.vpn.ui.theme.SurfaceVariant
+import com.ghostnexora.vpn.ui.theme.TextOnAccent
+import com.ghostnexora.vpn.ui.theme.TextPrimary
+import com.ghostnexora.vpn.ui.theme.TextSecondary
+import com.ghostnexora.vpn.ui.theme.TextTertiary
 
 @Composable
 fun SettingsScreen(
@@ -29,28 +69,25 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbar = remember { SnackbarHostState() }
+    var showClearLogs by remember { mutableStateOf(false) }
+    var showLogsLimit by remember { mutableStateOf(false) }
+    var showClearHosts by remember { mutableStateOf(false) }
 
-    // Snackbar
     LaunchedEffect(state.snackbarMessage) {
-        state.snackbarMessage?.let { message ->
-            snackbarHostState.showSnackbar(message)
+        state.snackbarMessage?.let {
+            snackbar.showSnackbar(it)
             viewModel.clearSnackbar()
         }
     }
 
-    var showClearDialog by remember { mutableStateOf(false) }
-    var showLogsLimitDialog by remember { mutableStateOf(false) }
-
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Configuración") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Volver") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
@@ -66,247 +103,213 @@ fun SettingsScreen(
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
         ) {
-            // General Section
-            SettingsSection(title = "General") {
+            SettingsSection("Protección") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+                ) {
+                    Icon(Icons.Filled.Security, null, tint = NeonGreen)
+                    Column(Modifier.weight(1f)) {
+                        Text("Almacenamiento seguro", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Credenciales de perfiles cifradas con Android Keystore y AES-GCM", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 SwitchSetting(
-                    title = "Reconexión automática",
-                    subtitle = "Reconectar automáticamente si se pierde la conexión",
-                    checked = state.autoReconnect,
-                    onCheckedChange = { viewModel.toggleAutoReconnect() }
-                )
-
+                    "Kill Switch",
+                    "Mantiene el TUN activo y bloquea salida directa si el transporte se cae",
+                    state.killSwitch
+                ) { viewModel.toggleKillSwitch() }
                 SwitchSetting(
-                    title = "Reconectar al iniciar",
-                    subtitle = "Iniciar VPN automáticamente al encender el dispositivo",
-                    checked = state.reconnectOnBoot,
-                    onCheckedChange = { viewModel.toggleReconnectOnBoot() }
-                )
-
-                SwitchSetting(
-                    title = "Ventana flotante",
-                    subtitle = "Mostrar indicador flotante de conexión",
-                    checked = state.floatingWindow,
-                    onCheckedChange = { viewModel.toggleFloatingWindow() }
-                )
-
-                SwitchSetting(
-                    title = "Notificaciones",
-                    subtitle = "Mostrar notificaciones persistentes",
-                    checked = state.notifications,
-                    onCheckedChange = { viewModel.toggleNotifications() }
-                )
-            }
-
-            // Logs Section
-            SettingsSection(title = "Registros") {
-                ListSetting(
-                    title = "Máximo de entradas",
-                    value = "${state.logsMaxEntries}",
-                    onClick = { showLogsLimitDialog = true }
-                )
-
+                    "Reconexión automática",
+                    "Recupera el transporte con backoff 1s, 2s, 5s, 10s y 30s",
+                    state.autoReconnect
+                ) { viewModel.toggleAutoReconnect() }
+                InfoRow("Servidores SSH confiables", state.knownHostCount.toString())
                 GhostButton(
-                    text = "Limpiar Registros",
-                    onClick = { showClearDialog = true },
-                    containerColor = Color.Red.copy(0.8f),
-                    contentColor = Color.White,
-                    modifier = Modifier.fillMaxWidth()
+                    text = "Restablecer huellas SSH",
+                    onClick = { showClearHosts = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+                    containerColor = Color.Red.copy(alpha = 0.75f),
+                    contentColor = Color.White
                 )
             }
 
-            // Update Section
-            SettingsSection(title = "Actualizaciones") {
-                InfoRow("Verificación automática", "Al abrir la app")
-                InfoRow("Instalación", "Desde GitHub Releases")
+            SettingsSection("General") {
+                SwitchSetting(
+                    "Reconectar al iniciar",
+                    "Restaurar la VPN cuando Android reinicia el servicio",
+                    state.reconnectOnBoot
+                ) { viewModel.toggleReconnectOnBoot() }
+                SwitchSetting(
+                    "Ventana flotante",
+                    "Mostrar indicador flotante de conexión",
+                    state.floatingWindow
+                ) { viewModel.toggleFloatingWindow() }
+                SwitchSetting(
+                    "Notificaciones",
+                    "Mostrar estado persistente de la VPN",
+                    state.notifications
+                ) { viewModel.toggleNotifications() }
+            }
 
+            SettingsSection("Registros") {
+                ListSetting("Máximo de entradas", state.logsMaxEntries.toString()) { showLogsLimit = true }
+                Text(
+                    "Las entradas se saneean antes de almacenarse o copiarse para ocultar contraseñas, tokens y cabeceras de autorización.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)
+                )
+                GhostButton(
+                    text = "Limpiar registros",
+                    onClick = { showClearLogs = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+                    containerColor = Color.Red.copy(alpha = 0.75f),
+                    contentColor = Color.White
+                )
+            }
+
+            SettingsSection("Configuraciones") {
+                InfoRow("Exportación", "GNX2 cifrado")
+                InfoRow("Cifrado", "AES-256-GCM")
+                InfoRow("Derivación", "PBKDF2-SHA256")
+                Text(
+                    "Los archivos nuevos requieren contraseña. JSON sin cifrar se conserva únicamente para importar configuraciones antiguas.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)
+                )
+            }
+
+            SettingsSection("Actualizaciones") {
                 GhostButton(
                     text = "Buscar actualizaciones",
                     onClick = onCheckUpdates,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
                     containerColor = NeonCyan,
                     contentColor = TextOnAccent
                 )
-
-                Text(
-                    text = "La comprobación consulta la última release publicada y compara el versionCode.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
             }
 
-            // About Section
-            SettingsSection(title = "Acerca de") {
+            SettingsSection("Acerca de") {
                 InfoRow("Versión", BuildConfig.VERSION_NAME)
                 InfoRow("Desarrollado por", "Ghost Developer")
             }
-
-            Spacer(modifier = Modifier.height(Dimens.Space3XL))
+            Spacer(Modifier.height(Dimens.Space3XL))
         }
     }
 
-    if (showLogsLimitDialog) {
+    if (showLogsLimit) {
         AlertDialog(
-            onDismissRequest = { showLogsLimitDialog = false },
+            onDismissRequest = { showLogsLimit = false },
             title = { Text("Máximo de entradas") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Selecciona un límite para conservar el historial visible.")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = {
-                            viewModel.setLogsMaxEntries(250)
-                            showLogsLimitDialog = false
-                        }, label = { Text("250") })
-                        AssistChip(onClick = {
-                            viewModel.setLogsMaxEntries(500)
-                            showLogsLimitDialog = false
-                        }, label = { Text("500") })
-                        AssistChip(onClick = {
-                            viewModel.setLogsMaxEntries(1000)
-                            showLogsLimitDialog = false
-                        }, label = { Text("1000") })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(250, 500, 1000).forEach { value ->
+                        AssistChip(
+                            onClick = {
+                                viewModel.setLogsMaxEntries(value)
+                                showLogsLimit = false
+                            },
+                            label = { Text(value.toString()) }
+                        )
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.setLogsMaxEntries(2000)
-                    showLogsLimitDialog = false
+                    showLogsLimit = false
                 }) { Text("2000") }
             },
-            dismissButton = {
-                TextButton(onClick = { showLogsLimitDialog = false }) { Text("Cerrar") }
-            }
+            dismissButton = { TextButton(onClick = { showLogsLimit = false }) { Text("Cerrar") } }
         )
     }
 
-    // Clear logs confirmation dialog
-    if (showClearDialog) {
+    if (showClearLogs) {
         AlertDialog(
-            onDismissRequest = { showClearDialog = false },
-            title = { Text("Limpiar Registros") },
-            text = { Text("¿Estás seguro de que deseas eliminar todos los registros?") },
+            onDismissRequest = { showClearLogs = false },
+            title = { Text("Limpiar registros") },
+            text = { Text("Se eliminará el historial local de eventos.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearLogs()
-                        showClearDialog = false
-                    }
-                ) {
-                    Text("Limpiar", color = Color.Red)
-                }
+                TextButton(onClick = {
+                    viewModel.clearLogs()
+                    showClearLogs = false
+                }) { Text("Limpiar", color = Color.Red) }
             },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showClearLogs = false }) { Text("Cancelar") } }
+        )
+    }
+
+    if (showClearHosts) {
+        AlertDialog(
+            onDismissRequest = { showClearHosts = false },
+            icon = { Icon(Icons.Filled.DeleteSweep, null) },
+            title = { Text("Restablecer confianza SSH") },
+            text = { Text("Se eliminarán las huellas conocidas. La identidad de cada servidor tendrá que aceptarse y guardarse de nuevo.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearKnownHosts()
+                    showClearHosts = false
+                }) { Text("Restablecer", color = Color.Red) }
+            },
+            dismissButton = { TextButton(onClick = { showClearHosts = false }) { Text("Cancelar") } }
         )
     }
 }
 
-// ==================== COMPONENTES REUTILIZABLES ====================
-
 @Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable () -> Unit
-) {
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
         Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            ),
+            title.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp),
             color = NeonCyan
         )
-        GhostCard(
-            backgroundColor = SurfaceVariant,
-            borderColor = BorderNormal
-        ) {
-            Column {
-                content()
-            }
+        GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
+            Column { content() }
         }
     }
 }
 
 @Composable
-private fun SwitchSetting(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
+private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = NeonCyan,
-                checkedTrackColor = NeonCyan.copy(0.5f)
-            )
+            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan, checkedTrackColor = NeonCyan.copy(alpha = 0.5f))
         )
     }
 }
 
 @Composable
-private fun ListSetting(
-    title: String,
-    value: String,
-    onClick: () -> Unit
-) {
+private fun ListSetting(title: String, value: String, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceMD),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceMD),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-        }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NeonCyan
-        )
-        Icon(
-            Icons.Filled.ChevronRight,
-            null,
-            tint = TextTertiary,
-            modifier = Modifier.padding(start = Dimens.SpaceSM)
-        )
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
+        Icon(Icons.Filled.ChevronRight, null, tint = TextTertiary)
     }
 }
 
 @Composable
 private fun InfoRow(title: String, value: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceMD),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceMD),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = TextSecondary,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary
-        )
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = TextSecondary, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
     }
 }
