@@ -70,11 +70,19 @@ class CreateEditViewModel @Inject constructor(
 
     fun onConnectionModeChange(mode: ConnectionMode) {
         _uiState.update {
+            val nextTags = when (mode) {
+                ConnectionMode.V2RAY -> it.tags.ifBlank { "vless,v2ray" }
+                ConnectionMode.TROJAN -> it.tags.ifBlank { "trojan" }
+                ConnectionMode.UDP -> it.tags.ifBlank { "hysteria2,udp" }
+                else -> it.tags
+            }
             it.copy(
                 connectionMode = mode.id,
                 method = mode.family,
                 sslEnabled = mode.usesTls,
-                proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType
+                proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType,
+                tags = nextTags,
+                error = null
             )
         }
     }
@@ -95,58 +103,54 @@ class CreateEditViewModel @Inject constructor(
     private fun validate(): Boolean {
         val s = _uiState.value
         val mode = s.selectedMode
-        var valid = true
+        var error: String? = null
 
-        if (s.name.isBlank()) {
-            _uiState.update { it.copy(nameError = "El nombre es obligatorio") }
-            valid = false
-        }
+        var nameError: String? = null
+        var hostError: String? = null
+        var portError: String? = null
+
+        if (s.name.isBlank()) nameError = "El nombre es obligatorio"
         if (s.host.isBlank()) {
-            _uiState.update { it.copy(hostError = "El host es obligatorio") }
-            valid = false
+            hostError = "El host es obligatorio"
         } else if (!s.host.trim().isValidHost()) {
-            _uiState.update { it.copy(hostError = "Host inválido (dominio o IP)") }
-            valid = false
+            hostError = "Host inválido (dominio o IP)"
         }
         if (s.port.isBlank() || !s.port.isValidPort()) {
-            _uiState.update { it.copy(portError = "Puerto inválido (1–65535)") }
-            valid = false
+            portError = "Puerto inválido (1–65535)"
         }
 
-        if (mode.family == "ssh" || mode.family == "ssl") {
-            if (s.username.isBlank()) {
-                _uiState.update { it.copy(error = "El usuario SSH es obligatorio") }
-                valid = false
-            }
-            if (s.password.isBlank()) {
-                _uiState.update { it.copy(error = "La contraseña SSH es obligatoria") }
-                valid = false
-            }
+        when {
+            mode.isSsh && s.username.isBlank() -> error = "El usuario SSH es obligatorio"
+            mode.isSsh && s.password.isBlank() -> error = "La contraseña SSH es obligatoria"
+            mode == ConnectionMode.V2RAY && s.username.isBlank() -> error = "V2Ray requiere UUID / User ID"
+            mode == ConnectionMode.TROJAN && s.password.isBlank() -> error = "Trojan requiere contraseña"
+            mode == ConnectionMode.UDP && s.password.isBlank() -> error = "UDP/Hysteria2 requiere contraseña o auth"
         }
 
-        if (mode.requiresSni && s.sni.isBlank()) {
-            _uiState.update { it.copy(error = "El modo seleccionado requiere un SNI") }
-            valid = false
+        if (error == null && mode.requiresSni && s.sni.isBlank()) {
+            error = "El modo seleccionado requiere un SNI"
         }
-        if (mode.requiresProxy) {
-            if (s.proxyHost.isBlank()) {
-                _uiState.update { it.copy(error = "El modo seleccionado requiere proxy") }
-                valid = false
-            }
-            if (s.proxyPort.isBlank()) {
-                _uiState.update { it.copy(error = "El puerto del proxy es obligatorio") }
-                valid = false
-            } else if (!s.proxyPort.isValidPort()) {
-                _uiState.update { it.copy(error = "Puerto de proxy inválido") }
-                valid = false
+        if (error == null && mode.requiresProxy) {
+            error = when {
+                s.proxyHost.isBlank() -> "El modo seleccionado requiere proxy"
+                s.proxyPort.isBlank() -> "El puerto del proxy es obligatorio"
+                !s.proxyPort.isValidPort() -> "Puerto de proxy inválido"
+                else -> null
             }
         }
-        if (mode.requiresPayload && s.payload.isBlank()) {
-            _uiState.update { it.copy(error = "El modo seleccionado requiere payload") }
-            valid = false
+        if (error == null && mode.requiresPayload && s.payload.isBlank()) {
+            error = "El modo seleccionado requiere payload"
         }
 
-        return valid
+        _uiState.update {
+            it.copy(
+                nameError = nameError,
+                hostError = hostError,
+                portError = portError,
+                error = error
+            )
+        }
+        return nameError == null && hostError == null && portError == null && error == null
     }
 
     fun save() {
@@ -183,15 +187,10 @@ class CreateEditViewModel @Inject constructor(
             )
 
             if (s.isEditMode) repository.updateProfile(profile) else repository.saveProfile(profile)
-
             _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
         }
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════
-// UI STATE
-// ══════════════════════════════════════════════════════════════════════════
 
 data class CreateEditUiState(
     val isEditMode: Boolean = false,
@@ -199,9 +198,7 @@ data class CreateEditUiState(
     val isSaving: Boolean = false,
     val savedSuccessfully: Boolean = false,
     val error: String? = null,
-
     val profileId: String = VpnProfile.empty().id,
-
     val name: String = "",
     val host: String = "",
     val port: String = "443",
@@ -218,10 +215,8 @@ data class CreateEditUiState(
     val tags: String = "",
     val notes: String = "",
     val enabled: Boolean = true,
-
     val passwordVisible: Boolean = false,
     val showAdvanced: Boolean = false,
-
     val nameError: String? = null,
     val hostError: String? = null,
     val portError: String? = null
@@ -231,5 +226,4 @@ data class CreateEditUiState(
     val selectedMode: ConnectionMode get() = ConnectionMode.fromStored(connectionMode, method, sslEnabled)
 }
 
-val VPN_METHODS = listOf("ssh", "v2ray", "shadowsocks", "wireguard", "trojan", "vless")
 val PROXY_TYPES = listOf("", "http", "socks5")
