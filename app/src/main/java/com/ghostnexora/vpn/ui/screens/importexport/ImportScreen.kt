@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -60,6 +59,7 @@ import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.launch
 
 @Composable
@@ -71,6 +71,7 @@ fun ImportScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val qrScanner = remember(context) { GmsBarcodeScanning.getClient(context) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::onFilePicked)
     }
@@ -123,7 +124,7 @@ fun ImportScreen(
                             Text("Importación protegida GNX2", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         }
                         Text(
-                            "Los archivos .gnx se autentican y descifran únicamente con la contraseña usada al exportarlos. También se mantienen compatibles los JSON antiguos y enlaces de protocolo.",
+                            "Los archivos .gnx se autentican y descifran con la contraseña de exportación. También puedes escanear QR de VLESS, VMess, Trojan o Hysteria2 y migrar JSON antiguos.",
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -150,6 +151,29 @@ fun ImportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
                     containerColor = NeonCyan,
+                    contentColor = TextOnAccent
+                )
+            }
+
+            item {
+                GhostButton(
+                    text = "Escanear código QR",
+                    onClick = {
+                        qrScanner.startScan()
+                            .addOnSuccessListener { barcode ->
+                                val raw = barcode.rawValue.orEmpty().trim()
+                                if (raw.isNotEmpty()) viewModel.onTextProvided(raw, "QR")
+                                else scope.launch { snackbar.showSnackbar("El QR no contiene una configuración legible") }
+                            }
+                            .addOnFailureListener { error ->
+                                scope.launch {
+                                    snackbar.showSnackbar(error.message?.take(120) ?: "No se pudo abrir el escáner QR")
+                                }
+                            }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.isLoading,
+                    containerColor = NeonGreen,
                     contentColor = TextOnAccent
                 )
             }
