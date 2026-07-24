@@ -14,8 +14,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.0.26"
+        versionCode = 27
+        versionName = "1.0.27"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -25,14 +25,10 @@ android {
 
     signingConfigs {
         create("release") {
-            // Ruta del .jks que reconstruyes en GitHub Actions
             storeFile = file("ghostnexora-release.jks")
-            // Variables de entorno / GitHub Secrets
             storePassword = System.getenv("KEYSTORE_PASSWORD")
             keyAlias = System.getenv("KEY_ALIAS")
             keyPassword = System.getenv("KEY_PASSWORD")
-
-            // Firmas APK
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -44,7 +40,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
-
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -67,6 +62,10 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // AndroidLibXrayLite distribuye librerías nativas dentro del AAR.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
@@ -79,7 +78,11 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
 
-    // Core
+    // Core VPN nativo. GitHub Actions descarga app/libs/libv2ray.aar desde
+    // el release fijado de AndroidLibXrayLite antes de ejecutar Gradle.
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+
+    // Core Android
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
@@ -87,7 +90,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // Compose BOM
+    // Compose
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -111,7 +114,7 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Gson
+    // JSON
     implementation("com.google.code.gson:gson:2.11.0")
 
     // SSH / Crypto
