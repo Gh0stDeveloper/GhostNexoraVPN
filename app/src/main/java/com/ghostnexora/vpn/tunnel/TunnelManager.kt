@@ -1,31 +1,57 @@
 package com.ghostnexora.vpn.tunnel
 
+import android.content.Context
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.VpnProfile
-import com.ghostnexora.vpn.tunnel.strategy.SshTunnelStrategy
-import com.ghostnexora.vpn.tunnel.strategy.TunnelStrategy
-import com.jcraft.jsch.Session
 
 /**
- * Resuelve la estrategia de conexión a partir del modo del perfil.
+ * Orquesta el transporte seleccionado y Xray TUN.
  *
- * Mantiene el punto de entrada único para el servicio VPN.
+ * - SSH: sesión cifrada -> SOCKS5 local -> Xray TUN.
+ * - V2Ray/Trojan/UDP: Xray TUN -> outbound nativo.
  */
 class TunnelManager(
-    private val strategies: List<TunnelStrategy> = listOf(
-        SshTunnelStrategy()
-    )
+    context: Context,
+    private val onCoreStatus: (String) -> Unit = {}
 ) {
+    private val sshEngine = SshTunnelEngine(context.applicationContext)
+    private val xrayEngine = XrayCoreEngine(context.applicationContext, onCoreStatus)
 
-    fun connect(profile: VpnProfile): Session {
-        val strategy = strategies.firstOrNull { it.supports(profile.selectedMode) }
-            ?: error("No hay estrategia disponible para el modo ${profile.selectedMode.label}")
-        return strategy.connect(profile)
+    @Synchronized
+    fun start(profile: VpnProfile, tunFd: Int): TunnelRuntime {
+        require(profile.selectedMode.supported) {
+            "El modo ${profile.connectionModeLabel} no está habilitado"
+        }
+
+        return if (profile.selectedMode.isSsh) {
+            val sshHandle = sshEngine.connectWithSocks(profile)
+            try {
+                val config = XrayConfigFactory.build(profile, sshHandle.socksPort)
+                xrayEngine.start(config, tunFd)
+                TunnelRuntime(profile.selectedMode, sshHandle)
+            } catch (error: Throwable) {
+                sshHandle.close()
+                throw error
+            }
+        } else {
+            val config = XrayConfigFactory.build(profile)
+            xrayEngine.start(config, tunFd)
+            TunnelRuntime(profile.selectedMode, null)
+        }
     }
 
-    fun disconnect(session: Session?) {
-        runCatching { session?.disconnect() }
+    @Synchronized
+    fun stop(runtime: TunnelRuntime?) {
+        runCatching { xrayEngine.stop() }
+        runCatching { runtime?.sshHandle?.close() }
     }
 
-    fun isSupported(mode: ConnectionMode): Boolean = strategies.any { it.supports(mode) }
+    fun coreVersion(): String = xrayEngine.version()
+
+    fun isSupported(mode: ConnectionMode): Boolean = mode.supported
 }
+
+data class TunnelRuntime(
+    val mode: ConnectionMode,
+    val sshHandle: SshTunnelHandle?
+)
