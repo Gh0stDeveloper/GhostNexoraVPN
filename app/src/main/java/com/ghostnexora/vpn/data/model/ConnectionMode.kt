@@ -4,8 +4,8 @@ package com.ghostnexora.vpn.data.model
  * Modos de conexión disponibles para un perfil.
  *
  * Todos los modos se resuelven a un túnel TUN real. Los modos SSH usan una
- * sesión SSH como transporte y un bridge SOCKS local; V2Ray, Trojan y UDP
- * usan Xray Core como motor de datos.
+ * sesión SSH como transporte y un bridge SOCKS local; V2Ray, Trojan y
+ * Hysteria2 usan Xray Core como motor de datos.
  */
 enum class ConnectionMode(
     val id: String,
@@ -83,18 +83,18 @@ enum class ConnectionMode(
     ),
     UDP(
         id = "udp",
-        label = "UDP",
+        label = "Hysteria2 / UDP",
         family = "udp",
-        description = "Túnel UDP cifrado mediante Hysteria2 sobre QUIC/TLS.",
+        description = "Túnel UDP dedicado mediante Hysteria2 sobre QUIC/TLS. No representa UDP genérico sobre SSH.",
         usesTls = true,
         requiresSni = true,
         requiredFields = listOf("Host/IP", "Puerto", "Contraseña/Auth", "SNI")
     ),
     V2RAY(
         id = "v2ray",
-        label = "V2Ray",
+        label = "V2Ray / Xray",
         family = "v2ray",
-        description = "Motor Xray compatible con perfiles VLESS y VMess.",
+        description = "Motor Xray compatible con perfiles VLESS y VMess y transportes modernos.",
         requiredFields = listOf("Host/IP", "Puerto", "UUID / User ID")
     ),
     TROJAN(
@@ -107,8 +107,7 @@ enum class ConnectionMode(
         requiredFields = listOf("Host/IP", "Puerto", "Password", "SNI")
     );
 
-    val isSsh: Boolean
-        get() = family == "ssh"
+    val isSsh: Boolean get() = family == "ssh"
 
     companion object {
         fun fromId(id: String?): ConnectionMode? = entries.firstOrNull { it.id == id }
@@ -119,7 +118,6 @@ enum class ConnectionMode(
             sslEnabled: Boolean? = null
         ): ConnectionMode {
             fromId(storedMode)?.let { return it }
-
             val method = legacyMethod?.lowercase().orEmpty()
             return when {
                 method.contains("v2ray") || method.contains("vless") || method.contains("vmess") -> V2RAY
