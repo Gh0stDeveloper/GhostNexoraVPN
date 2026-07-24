@@ -25,11 +25,11 @@ object LogSanitizer {
         return message
             .replace(privateKeyBlock, "[CLAVE_PRIVADA_OCULTA]")
             .replace(uriUserInfo) { result -> "${result.groupValues[1]}***@" }
+            .replace(bearer, "Bearer [OCULTO]")
+            .replace(basicAuth, "Basic [OCULTO]")
             .replace(keyValueSecret) { result ->
                 "${result.groupValues[1]}${result.groupValues[2]}[OCULTO]"
             }
-            .replace(bearer, "Bearer [OCULTO]")
-            .replace(basicAuth, "Basic [OCULTO]")
             .replace(longOpaqueToken, "[TOKEN_OCULTO]")
             .take(MAX_LOG_MESSAGE)
     }
