@@ -2,7 +2,14 @@ package com.ghostnexora.vpn.data.local
 
 import android.content.Context
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -12,143 +19,62 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// Extensión de Context para DataStore (solo una instancia por proceso)
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
-    name = "ghost_nexora_prefs"
-)
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "ghost_nexora_prefs")
 
-/**
- * Gestor de preferencias persistentes con DataStore.
- * Todas las preferencias del usuario y estado de la app se guardan aquí.
- */
 @Singleton
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val dataStore = context.dataStore
 
-    // ── Keys ──────────────────────────────────────────────────────────────
-
     companion object Keys {
-        val ACTIVE_PROFILE_ID    = stringPreferencesKey("active_profile_id")
-        val AUTO_RECONNECT       = booleanPreferencesKey("auto_reconnect")
-        val FLOATING_WINDOW      = booleanPreferencesKey("floating_window_enabled")
-        val NOTIFICATIONS        = booleanPreferencesKey("notifications_enabled")
-        val DARK_THEME           = booleanPreferencesKey("dark_theme")
-        val RECONNECT_ON_BOOT    = booleanPreferencesKey("reconnect_on_boot")
-        val LAST_CONNECTED_TIME  = longPreferencesKey("last_connected_time")
-        val APP_LANGUAGE         = stringPreferencesKey("app_language")
-        val SHOW_FLOATING_HINT   = booleanPreferencesKey("show_floating_hint")
-        val LOGS_MAX_ENTRIES     = intPreferencesKey("logs_max_entries")
-        val FIRST_LAUNCH         = booleanPreferencesKey("first_launch")
+        val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
+        val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
+        val KILL_SWITCH = booleanPreferencesKey("kill_switch")
+        val FLOATING_WINDOW = booleanPreferencesKey("floating_window_enabled")
+        val NOTIFICATIONS = booleanPreferencesKey("notifications_enabled")
+        val DARK_THEME = booleanPreferencesKey("dark_theme")
+        val RECONNECT_ON_BOOT = booleanPreferencesKey("reconnect_on_boot")
+        val LAST_CONNECTED_TIME = longPreferencesKey("last_connected_time")
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
+        val SHOW_FLOATING_HINT = booleanPreferencesKey("show_floating_hint")
+        val LOGS_MAX_ENTRIES = intPreferencesKey("logs_max_entries")
+        val FIRST_LAUNCH = booleanPreferencesKey("first_launch")
     }
 
-    // ── Flows de lectura ──────────────────────────────────────────────────
+    val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
+    val autoReconnect: Flow<Boolean> = dataStore.data.safeCatch().map { it[AUTO_RECONNECT] ?: true }
+    val killSwitch: Flow<Boolean> = dataStore.data.safeCatch().map { it[KILL_SWITCH] ?: true }
+    val floatingWindowEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[FLOATING_WINDOW] ?: true }
+    val notificationsEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[NOTIFICATIONS] ?: true }
+    val darkTheme: Flow<Boolean> = dataStore.data.safeCatch().map { it[DARK_THEME] ?: true }
+    val reconnectOnBoot: Flow<Boolean> = dataStore.data.safeCatch().map { it[RECONNECT_ON_BOOT] ?: false }
+    val showFloatingHint: Flow<Boolean> = dataStore.data.safeCatch().map { it[SHOW_FLOATING_HINT] ?: true }
+    val logsMaxEntries: Flow<Int> = dataStore.data.safeCatch().map { it[LOGS_MAX_ENTRIES] ?: 500 }
+    val isFirstLaunch: Flow<Boolean> = dataStore.data.safeCatch().map { it[FIRST_LAUNCH] ?: true }
 
-    /** ID del perfil activo seleccionado */
-    val activeProfileId: Flow<String> = dataStore.data
-        .safeCatch()
-        .map { it[ACTIVE_PROFILE_ID] ?: "" }
+    suspend fun setActiveProfileId(id: String) = edit { it[ACTIVE_PROFILE_ID] = id }
+    suspend fun setAutoReconnect(enabled: Boolean) = edit { it[AUTO_RECONNECT] = enabled }
+    suspend fun setKillSwitch(enabled: Boolean) = edit { it[KILL_SWITCH] = enabled }
+    suspend fun setFloatingWindowEnabled(enabled: Boolean) = edit { it[FLOATING_WINDOW] = enabled }
+    suspend fun setNotificationsEnabled(enabled: Boolean) = edit { it[NOTIFICATIONS] = enabled }
+    suspend fun setDarkTheme(enabled: Boolean) = edit { it[DARK_THEME] = enabled }
+    suspend fun setReconnectOnBoot(enabled: Boolean) = edit { it[RECONNECT_ON_BOOT] = enabled }
+    suspend fun setLastConnectedTime(time: Long) = edit { it[LAST_CONNECTED_TIME] = time }
+    suspend fun setShowFloatingHint(show: Boolean) = edit { it[SHOW_FLOATING_HINT] = show }
+    suspend fun setLogsMaxEntries(max: Int) = edit { it[LOGS_MAX_ENTRIES] = max }
+    suspend fun setFirstLaunchDone() = edit { it[FIRST_LAUNCH] = false }
+    suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
-    /** Reconexión automática al perder conexión */
-    val autoReconnect: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[AUTO_RECONNECT] ?: false }
-
-    /** Ventana flotante habilitada */
-    val floatingWindowEnabled: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[FLOATING_WINDOW] ?: true }
-
-    /** Notificaciones habilitadas */
-    val notificationsEnabled: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[NOTIFICATIONS] ?: true }
-
-    /** Tema oscuro (siempre true por defecto según doc) */
-    val darkTheme: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[DARK_THEME] ?: true }
-
-    /** Reconectar al arrancar el sistema */
-    val reconnectOnBoot: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[RECONNECT_ON_BOOT] ?: false }
-
-    /** Mostrar hint de ventana flotante la primera vez */
-    val showFloatingHint: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[SHOW_FLOATING_HINT] ?: true }
-
-    /** Máximo de entradas en logs (default 500) */
-    val logsMaxEntries: Flow<Int> = dataStore.data
-        .safeCatch()
-        .map { it[LOGS_MAX_ENTRIES] ?: 500 }
-
-    /** Primera ejecución de la app */
-    val isFirstLaunch: Flow<Boolean> = dataStore.data
-        .safeCatch()
-        .map { it[FIRST_LAUNCH] ?: true }
-
-    // ── Escritura ─────────────────────────────────────────────────────────
-
-    suspend fun setActiveProfileId(id: String) = edit {
-        it[ACTIVE_PROFILE_ID] = id
-    }
-
-    suspend fun setAutoReconnect(enabled: Boolean) = edit {
-        it[AUTO_RECONNECT] = enabled
-    }
-
-    suspend fun setFloatingWindowEnabled(enabled: Boolean) = edit {
-        it[FLOATING_WINDOW] = enabled
-    }
-
-    suspend fun setNotificationsEnabled(enabled: Boolean) = edit {
-        it[NOTIFICATIONS] = enabled
-    }
-
-    suspend fun setDarkTheme(enabled: Boolean) = edit {
-        it[DARK_THEME] = enabled
-    }
-
-    suspend fun setReconnectOnBoot(enabled: Boolean) = edit {
-        it[RECONNECT_ON_BOOT] = enabled
-    }
-
-    suspend fun setLastConnectedTime(time: Long) = edit {
-        it[LAST_CONNECTED_TIME] = time
-    }
-
-    suspend fun setShowFloatingHint(show: Boolean) = edit {
-        it[SHOW_FLOATING_HINT] = show
-    }
-
-    suspend fun setLogsMaxEntries(max: Int) = edit {
-        it[LOGS_MAX_ENTRIES] = max
-    }
-
-    suspend fun setFirstLaunchDone() = edit {
-        it[FIRST_LAUNCH] = false
-    }
-
-    suspend fun clearActiveProfile() = edit {
-        it.remove(ACTIVE_PROFILE_ID)
-    }
-
-    /** Resetea todas las preferencias a valores por defecto */
     suspend fun clearAll() {
         dataStore.edit { it.clear() }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
 
     private suspend fun edit(transform: suspend (MutablePreferences) -> Unit) {
         dataStore.edit(transform)
     }
 
-    /** Captura IOExceptions sin romper el Flow */
-    private fun Flow<Preferences>.safeCatch() = catch { e ->
-        if (e is IOException) emit(emptyPreferences()) else throw e
+    private fun Flow<Preferences>.safeCatch() = catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
     }
 }
