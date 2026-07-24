@@ -6,112 +6,93 @@ import com.ghostnexora.vpn.data.local.ProfileDao
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.security.LocalSecretCipher
+import com.ghostnexora.vpn.security.LogSanitizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Repositorio central de Ghost Nexora VPN.
- *
- * Actúa como única fuente de verdad (Single Source of Truth) para:
- * - Perfiles VPN (Room)
- * - Logs (Room)
- * - Preferencias de usuario (DataStore)
- *
- * Los ViewModels nunca acceden a DAOs directamente; siempre pasan por aquí.
- */
 @Singleton
 class ProfileRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val logDao: LogDao,
-    private val dataStore: DataStoreManager
+    private val dataStore: DataStoreManager,
+    private val secretCipher: LocalSecretCipher
 ) {
-
-    // ══════════════════════════════════════════════════════════════════════
-    // PERFILES
-    // ══════════════════════════════════════════════════════════════════════
-
-    val allProfiles: Flow<List<VpnProfile>> = profileDao.getAllProfiles()
-    val enabledProfiles: Flow<List<VpnProfile>> = profileDao.getEnabledProfiles()
-    val favoriteProfiles: Flow<List<VpnProfile>> = profileDao.getFavoriteProfiles()
+    val allProfiles: Flow<List<VpnProfile>> = profileDao.getAllProfiles().map(::revealAll)
+    val enabledProfiles: Flow<List<VpnProfile>> = profileDao.getEnabledProfiles().map(::revealAll)
+    val favoriteProfiles: Flow<List<VpnProfile>> = profileDao.getFavoriteProfiles().map(::revealAll)
     val profileCount: Flow<Int> = profileDao.getProfileCount()
 
     fun searchProfiles(query: String): Flow<List<VpnProfile>> =
-        profileDao.searchProfiles(query)
+        profileDao.searchProfiles(query).map(::revealAll)
 
     fun observeProfile(id: String): Flow<VpnProfile?> =
-        profileDao.observeProfileById(id)
+        profileDao.observeProfileById(id).map { it?.let(secretCipher::reveal) }
 
     suspend fun getProfileById(id: String): VpnProfile? =
-        profileDao.getProfileById(id)
+        profileDao.getProfileById(id)?.let(secretCipher::reveal)
 
     suspend fun getLastUsedProfile(): VpnProfile? =
-        profileDao.getLastUsedProfile()
+        profileDao.getLastUsedProfile()?.let(secretCipher::reveal)
 
     suspend fun saveProfile(profile: VpnProfile) {
-        profileDao.insertProfile(profile)
-        log(LogLevel.INFO, "Perfil guardado: ${profile.name}", profile.id)
+        profileDao.insertProfile(secretCipher.protect(profile))
+        log(LogLevel.INFO, "Perfil guardado: ${profile.name}", profile.id, tag = "PROFILE")
     }
 
     suspend fun saveProfiles(profiles: List<VpnProfile>) {
-        profileDao.insertProfiles(profiles)
-        log(LogLevel.INFO, "${profiles.size} perfiles importados")
+        profileDao.insertProfiles(profiles.map(secretCipher::protect))
+        log(LogLevel.INFO, "${profiles.size} perfiles importados", tag = "PROFILE")
     }
 
     suspend fun updateProfile(profile: VpnProfile) {
-        profileDao.updateProfile(profile)
-        log(LogLevel.INFO, "Perfil actualizado: ${profile.name}", profile.id)
+        profileDao.updateProfile(secretCipher.protect(profile))
+        log(LogLevel.INFO, "Perfil actualizado: ${profile.name}", profile.id, tag = "PROFILE")
     }
 
     suspend fun deleteProfile(profile: VpnProfile) {
-        profileDao.deleteProfile(profile)
-        log(LogLevel.WARNING, "Perfil eliminado: ${profile.name}")
+        profileDao.deleteProfileById(profile.id)
+        log(LogLevel.WARNING, "Perfil eliminado: ${profile.name}", tag = "PROFILE")
     }
 
     suspend fun deleteAllProfiles() {
         profileDao.deleteAllProfiles()
-        log(LogLevel.WARNING, "Todos los perfiles eliminados")
+        log(LogLevel.WARNING, "Todos los perfiles eliminados", tag = "PROFILE")
     }
 
-    suspend fun setFavorite(id: String, isFavorite: Boolean) =
-        profileDao.setFavorite(id, isFavorite)
-
-    suspend fun setEnabled(id: String, enabled: Boolean) =
-        profileDao.setEnabled(id, enabled)
+    suspend fun setFavorite(id: String, isFavorite: Boolean) = profileDao.setFavorite(id, isFavorite)
+    suspend fun setEnabled(id: String, enabled: Boolean) = profileDao.setEnabled(id, enabled)
 
     suspend fun markLastUsed(id: String) {
         profileDao.updateLastUsed(id, Instant.now().toString())
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // LOGS
-    // ══════════════════════════════════════════════════════════════════════
+    /** Migra perfiles creados por versiones antiguas que guardaban secretos en texto claro. */
+    suspend fun migrateLegacySecrets(): Int {
+        val legacy = profileDao.getAllProfilesOnce().filterNot(secretCipher::isProtected)
+        legacy.forEach { profileDao.insertProfile(secretCipher.protect(secretCipher.reveal(it))) }
+        if (legacy.isNotEmpty()) {
+            log(LogLevel.SUCCESS, "${legacy.size} perfiles migrados a almacenamiento cifrado", tag = "SECURITY")
+        }
+        return legacy.size
+    }
 
     val allLogs: Flow<List<LogEntry>> = logDao.getAllLogs()
+    fun getRecentLogs(limit: Int = 50): Flow<List<LogEntry>> = logDao.getRecentLogs(limit)
+    fun getLogsForProfile(profileId: String): Flow<List<LogEntry>> = logDao.getLogsForProfile(profileId)
 
-    fun getRecentLogs(limit: Int = 50): Flow<List<LogEntry>> =
-        logDao.getRecentLogs(limit)
+    suspend fun clearLogs() = logDao.clearAllLogs()
+    suspend fun trimLogs(maxEntries: Int = 500) = logDao.keepOnly(maxEntries)
 
-    fun getLogsForProfile(profileId: String): Flow<List<LogEntry>> =
-        logDao.getLogsForProfile(profileId)
-
-    suspend fun clearLogs() {
-        logDao.clearAllLogs()
-    }
-
-    suspend fun trimLogs(maxEntries: Int = 500) {
-        logDao.keepOnly(maxEntries)
-    }
-
-    /** Inserta un log directamente */
     suspend fun insertLog(entry: LogEntry) {
-        logDao.insertLog(entry)
+        logDao.insertLog(entry.copy(message = LogSanitizer.sanitize(entry.message)))
         trimLogsIfNeeded()
     }
 
-    /** Shortcut para loggear desde el repositorio o servicios */
     suspend fun log(
         level: LogLevel,
         message: String,
@@ -121,45 +102,43 @@ class ProfileRepository @Inject constructor(
         insertLog(
             LogEntry(
                 level = level,
-                tag = tag,
-                message = message,
+                tag = tag.take(32),
+                message = LogSanitizer.sanitize(message),
                 profileId = profileId,
                 timestamp = System.currentTimeMillis()
             )
         )
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // PREFERENCIAS (DataStore)
-    // ══════════════════════════════════════════════════════════════════════
-
-    val activeProfileId: Flow<String>      = dataStore.activeProfileId
-    val autoReconnect: Flow<Boolean>       = dataStore.autoReconnect
-    val floatingWindow: Flow<Boolean>      = dataStore.floatingWindowEnabled
-    val notifications: Flow<Boolean>       = dataStore.notificationsEnabled
-    val darkTheme: Flow<Boolean>           = dataStore.darkTheme
-    val reconnectOnBoot: Flow<Boolean>     = dataStore.reconnectOnBoot
-    val showFloatingHint: Flow<Boolean>    = dataStore.showFloatingHint
-    val logsMaxEntries: Flow<Int>          = dataStore.logsMaxEntries
-    val isFirstLaunch: Flow<Boolean>       = dataStore.isFirstLaunch
+    val activeProfileId: Flow<String> = dataStore.activeProfileId
+    val autoReconnect: Flow<Boolean> = dataStore.autoReconnect
+    val killSwitch: Flow<Boolean> = dataStore.killSwitch
+    val floatingWindow: Flow<Boolean> = dataStore.floatingWindowEnabled
+    val notifications: Flow<Boolean> = dataStore.notificationsEnabled
+    val darkTheme: Flow<Boolean> = dataStore.darkTheme
+    val reconnectOnBoot: Flow<Boolean> = dataStore.reconnectOnBoot
+    val showFloatingHint: Flow<Boolean> = dataStore.showFloatingHint
+    val logsMaxEntries: Flow<Int> = dataStore.logsMaxEntries
+    val isFirstLaunch: Flow<Boolean> = dataStore.isFirstLaunch
 
     suspend fun setActiveProfileId(id: String) = dataStore.setActiveProfileId(id)
-    suspend fun clearActiveProfile()            = dataStore.clearActiveProfile()
-    suspend fun setAutoReconnect(v: Boolean)    = dataStore.setAutoReconnect(v)
-    suspend fun setFloatingWindow(v: Boolean)   = dataStore.setFloatingWindowEnabled(v)
-    suspend fun setNotifications(v: Boolean)    = dataStore.setNotificationsEnabled(v)
-    suspend fun setReconnectOnBoot(v: Boolean)  = dataStore.setReconnectOnBoot(v)
-    suspend fun setShowFloatingHint(v: Boolean) = dataStore.setShowFloatingHint(v)
-    suspend fun setLogsMaxEntries(v: Int)        = dataStore.setLogsMaxEntries(v)
-    suspend fun setFirstLaunchDone()            = dataStore.setFirstLaunchDone()
+    suspend fun clearActiveProfile() = dataStore.clearActiveProfile()
+    suspend fun setAutoReconnect(value: Boolean) = dataStore.setAutoReconnect(value)
+    suspend fun setKillSwitch(value: Boolean) = dataStore.setKillSwitch(value)
+    suspend fun setFloatingWindow(value: Boolean) = dataStore.setFloatingWindowEnabled(value)
+    suspend fun setNotifications(value: Boolean) = dataStore.setNotificationsEnabled(value)
+    suspend fun setReconnectOnBoot(value: Boolean) = dataStore.setReconnectOnBoot(value)
+    suspend fun setShowFloatingHint(value: Boolean) = dataStore.setShowFloatingHint(value)
+    suspend fun setLogsMaxEntries(value: Int) = dataStore.setLogsMaxEntries(value)
+    suspend fun setFirstLaunchDone() = dataStore.setFirstLaunchDone()
 
-    /** Limpia todo: perfiles, logs y preferencias */
     suspend fun clearAllData() {
         profileDao.deleteAllProfiles()
         logDao.clearAllLogs()
         dataStore.clearAll()
-        log(LogLevel.WARNING, "Todos los datos eliminados")
     }
+
+    private fun revealAll(profiles: List<VpnProfile>): List<VpnProfile> = profiles.map(secretCipher::reveal)
 
     private suspend fun trimLogsIfNeeded() {
         val maxEntries = logsMaxEntries.first().coerceIn(100, 5_000)
