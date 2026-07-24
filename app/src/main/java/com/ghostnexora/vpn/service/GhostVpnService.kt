@@ -65,6 +65,10 @@ class GhostVpnService : VpnService() {
     private var intentionalDisconnect = false
     private var sessionConnectedSince = 0L
     private var reconnectCount = 0
+    private var baselineRx = 0L
+    private var baselineTx = 0L
+    private var lastRx = 0L
+    private var lastTx = 0L
 
     @Volatile
     private var physicalNetworkAvailable = false
@@ -118,6 +122,8 @@ class GhostVpnService : VpnService() {
         const val ACTION_CONNECT = "com.ghostnexora.vpn.CONNECT"
         const val ACTION_DISCONNECT = "com.ghostnexora.vpn.DISCONNECT"
         const val EXTRA_PROFILE_ID = "extra_profile_id"
+
+        private val RECONNECT_DELAYS = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
 
         private val _connectionState = MutableStateFlow<VpnConnectionState>(VpnConnectionState.Disconnected)
         val connectionState: StateFlow<VpnConnectionState> = _connectionState.asStateFlow()
@@ -309,7 +315,7 @@ class GhostVpnService : VpnService() {
             updateNotification(state)
 
             if (!physicalNetworkAvailable) {
-                delay(1_000)
+                delay(1_000L)
                 physicalNetworkAvailable = hasUsablePhysicalNetwork()
                 continue
             }
@@ -352,7 +358,7 @@ class GhostVpnService : VpnService() {
         healthJob?.cancel()
         healthJob = serviceScope.launch {
             while (isActive && !intentionalDisconnect) {
-                delay(3_000)
+                delay(3_000L)
                 if (connectionState.value is VpnConnectionState.Connected && !tunnelManager.isAlive(tunnelRuntime)) {
                     logSafe(LogLevel.WARNING, "El transporte dejó de responder", profile.id, "CORE")
                     triggerReconnect("Fallo detectado en el transporte")
@@ -383,7 +389,7 @@ class GhostVpnService : VpnService() {
         statsJob = serviceScope.launch {
             var tick = 0
             while (isActive && !intentionalDisconnect) {
-                delay(1_000)
+                delay(1_000L)
                 val rx = safeUidRxBytes()
                 val tx = safeUidTxBytes()
                 val downSpeed = (rx - lastRx).coerceAtLeast(0)
@@ -609,14 +615,5 @@ class GhostVpnService : VpnService() {
 
     inner class GhostVpnBinder : Binder() {
         fun getService(): GhostVpnService = this@GhostVpnService
-    }
-
-    private var baselineRx = 0L
-    private var baselineTx = 0L
-    private var lastRx = 0L
-    private var lastTx = 0L
-
-    private companion object {
-        val RECONNECT_DELAYS = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
     }
 }
