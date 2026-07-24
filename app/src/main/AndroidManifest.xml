@@ -1,49 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ═══════════════════════════════════════
-         PERMISOS PRINCIPALES
-    ═══════════════════════════════════════ -->
-
-    <!-- VPN: Permiso principal para crear interfaz TUN -->
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
-
-    <!-- Red -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-
-    <!-- Foreground Service (VPN + Floating Window) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-
-    <!-- Ventana flotante sobre otras apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-    <!-- Arrancar al inicio del sistema (reconexión automática) -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- Ignorar optimizaciones de batería -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- Notificaciones (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Actualizaciones online / instalación de APKs -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
-    <!-- Almacenamiento: Import/Export JSON -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-
-    <!-- Vibración para notificaciones -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.VIBRATE" />
-
-    <!-- ═══════════════════════════════════════
-         APLICACIÓN
-    ═══════════════════════════════════════ -->
 
     <application
         android:name="GhostNexoraApp"
@@ -60,7 +31,10 @@
         tools:targetApi="31"
         xmlns:tools="http://schemas.android.com/tools">
 
-        <!-- ─── ACTIVIDAD PRINCIPAL ─── -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -73,7 +47,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ─── VPN SERVICE ─── -->
         <service
             android:name=".service.GhostVpnService"
             android:exported="false"
@@ -89,7 +62,6 @@
                 tools:targetApi="34" />
         </service>
 
-        <!-- ─── FLOATING WINDOW SERVICE ─── -->
         <service
             android:name=".service.FloatingWindowService"
             android:exported="false"
@@ -101,7 +73,6 @@
                 tools:targetApi="34" />
         </service>
 
-        <!-- ─── BOOT RECEIVER (Reconexión automática) ─── -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="true"
@@ -112,7 +83,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- ─── PROVEEDOR DE ARCHIVOS ─── -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -122,7 +92,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
-
     </application>
-
 </manifest>
