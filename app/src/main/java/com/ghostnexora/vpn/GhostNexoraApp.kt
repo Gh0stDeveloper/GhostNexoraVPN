@@ -4,42 +4,39 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import java.io.File
+import com.ghostnexora.vpn.data.repository.ProfileRepository
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.io.File
+import javax.inject.Inject
 
-/**
- * Clase Application principal de Ghost Nexora VPN.
- *
- * Responsabilidades:
- * - Inicializar Hilt (inyección de dependencias)
- * - Crear los canales de notificación obligatorios (Android 8+)
- */
 @HiltAndroidApp
 class GhostNexoraApp : Application() {
+    @Inject
+    lateinit var repository: ProfileRepository
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
         prepareEmbeddedGeoData()
         createNotificationChannels()
+        appScope.launch {
+            runCatching { repository.migrateLegacySecrets() }
+        }
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // CANALES DE NOTIFICACIÓN
-    // Android 8+ requiere canales antes de mostrar cualquier notificación.
-    // Se crean una sola vez; si ya existen, la llamada es ignorada.
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val notificationManager =
-            getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-        // ── Canal 1: Estado VPN ───────────────────────────────────────────
         val vpnChannel = NotificationChannel(
             CHANNEL_VPN_STATUS,
             getString(R.string.notif_channel_vpn),
-            NotificationManager.IMPORTANCE_LOW  // Sin sonido; es persistente
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = getString(R.string.notif_channel_vpn_desc)
             setShowBadge(false)
@@ -47,11 +44,10 @@ class GhostNexoraApp : Application() {
             setSound(null, null)
         }
 
-        // ── Canal 2: Ventana flotante ─────────────────────────────────────
         val floatingChannel = NotificationChannel(
             CHANNEL_FLOATING_WINDOW,
             getString(R.string.notif_channel_floating),
-            NotificationManager.IMPORTANCE_MIN   // Completamente silencioso
+            NotificationManager.IMPORTANCE_MIN
         ).apply {
             description = getString(R.string.notif_channel_floating_desc)
             setShowBadge(false)
@@ -59,32 +55,25 @@ class GhostNexoraApp : Application() {
             setSound(null, null)
         }
 
-        notificationManager.createNotificationChannels(
-            listOf(vpnChannel, floatingChannel)
-        )
+        notificationManager.createNotificationChannels(listOf(vpnChannel, floatingChannel))
     }
 
     private fun prepareEmbeddedGeoData() {
         listOf("geoip.dat", "geosite.dat").forEach { fileName ->
             val destination = File(filesDir, fileName)
             if (destination.exists()) return@forEach
-
             runCatching {
                 assets.open(fileName).use { input ->
-                    destination.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
+                    destination.outputStream().use(input::copyTo)
                 }
             }
         }
     }
 
     companion object {
-        const val CHANNEL_VPN_STATUS      = "ghost_nexora_vpn_status"
+        const val CHANNEL_VPN_STATUS = "ghost_nexora_vpn_status"
         const val CHANNEL_FLOATING_WINDOW = "ghost_nexora_floating"
-
-        // IDs de notificación
-        const val NOTIF_ID_VPN      = 1001
+        const val NOTIF_ID_VPN = 1001
         const val NOTIF_ID_FLOATING = 1002
     }
 }
