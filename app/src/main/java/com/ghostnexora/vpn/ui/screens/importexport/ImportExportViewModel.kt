@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
-import com.ghostnexora.vpn.security.NativeGuard
 import com.ghostnexora.vpn.util.ImportResult
 import com.ghostnexora.vpn.util.JsonManager
 import com.ghostnexora.vpn.util.ValidationResult
@@ -51,13 +50,16 @@ class ImportExportViewModel @Inject constructor(
     fun onFilePicked(uri: Uri) {
         viewModelScope.launch {
             val password = _importState.value.password.toCharArray()
-            loadImportResult(
-                fileName = resolveFileName(uri),
-                sourceLabel = "Archivo",
-                loader = { jsonManager.importFromUri(uri, password.takeIf { it.isNotEmpty() }) },
-                selectedUri = uri
-            )
-            NativeGuard.wipe(password.toByteArray())
+            try {
+                loadImportResult(
+                    fileName = resolveFileName(uri),
+                    sourceLabel = "Archivo",
+                    loader = { jsonManager.importFromUri(uri, password.takeIf { it.isNotEmpty() }) },
+                    selectedUri = uri
+                )
+            } finally {
+                password.fill('\u0000')
+            }
         }
     }
 
@@ -69,13 +71,16 @@ class ImportExportViewModel @Inject constructor(
     fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") {
         viewModelScope.launch {
             val password = _importState.value.password.toCharArray()
-            loadImportResult(
-                fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
-                sourceLabel = sourceLabel,
-                loader = { jsonManager.importFromString(rawText, password.takeIf { it.isNotEmpty() }) },
-                selectedUri = null
-            )
-            NativeGuard.wipe(password.toByteArray())
+            try {
+                loadImportResult(
+                    fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
+                    sourceLabel = sourceLabel,
+                    loader = { jsonManager.importFromString(rawText, password.takeIf { it.isNotEmpty() }) },
+                    selectedUri = null
+                )
+            } finally {
+                password.fill('\u0000')
+            }
         }
     }
 
@@ -178,12 +183,15 @@ class ImportExportViewModel @Inject constructor(
             val selection = resolveExportSelection(allProfiles)
             val password = validateExport(selection) ?: return@launch
             _exportState.update { it.copy(isLoading = true, error = null) }
-            val uri = jsonManager.exportToDownloads(selection, password)
-            password.fill('\u0000')
-            if (uri != null) {
-                markExportSuccess(selection.size)
-            } else {
-                _exportState.update { it.copy(isLoading = false, error = "No se pudo guardar el archivo cifrado") }
+            try {
+                val uri = jsonManager.exportToDownloads(selection, password)
+                if (uri != null) {
+                    markExportSuccess(selection.size)
+                } else {
+                    _exportState.update { it.copy(isLoading = false, error = "No se pudo guardar el archivo cifrado") }
+                }
+            } finally {
+                password.fill('\u0000')
             }
         }
     }
@@ -193,10 +201,13 @@ class ImportExportViewModel @Inject constructor(
             val selection = resolveExportSelection(allProfiles)
             val password = validateExport(selection) ?: return@launch
             _exportState.update { it.copy(isLoading = true, error = null) }
-            val ok = jsonManager.exportToUri(uri, selection, password)
-            password.fill('\u0000')
-            if (ok) markExportSuccess(selection.size)
-            else _exportState.update { it.copy(isLoading = false, error = "No se pudo escribir el archivo cifrado") }
+            try {
+                val ok = jsonManager.exportToUri(uri, selection, password)
+                if (ok) markExportSuccess(selection.size)
+                else _exportState.update { it.copy(isLoading = false, error = "No se pudo escribir el archivo cifrado") }
+            } finally {
+                password.fill('\u0000')
+            }
         }
     }
 
