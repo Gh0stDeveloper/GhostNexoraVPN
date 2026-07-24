@@ -36,10 +36,19 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Instalar NDK y CMake
+        shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
 
       - name: Descargar AndroidLibXrayLite
         uses: robinraju/release-downloader@v1.13
