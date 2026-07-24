@@ -15,9 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,36 +30,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
-import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
-import com.ghostnexora.vpn.ui.theme.GhostCard
 import com.ghostnexora.vpn.ui.theme.NeonAmber
 import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.NeonGreen
 import com.ghostnexora.vpn.ui.theme.NeonRed
-import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.httpInjectorLine
 
 /**
- * Consola de conexión en un único contenedor visual.
+ * Contenido de la consola de conexión.
  *
- * El usuario puede pausar el auto-scroll tocando una línea, volver al final y
- * copiar el registro completo sin abrir un segundo panel de detalle.
+ * No crea una tarjeta propia: el dashboard aporta el único contenedor visual,
+ * evitando el antiguo efecto de "log dentro de otro log".
  */
 @Composable
 fun HttpInjectorLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
-    maxHeight: Int = 460,
-    onCopyAll: (() -> Unit)? = null
+    maxHeight: Int = 460
 ) {
     val listState = rememberLazyListState()
     val orderedLogs = remember(logs) { logs.sortedBy { it.timestamp } }
@@ -86,94 +79,67 @@ fun HttpInjectorLogConsole(
         }
     }
 
-    GhostCard(
+    Column(
         modifier = modifier,
-        backgroundColor = Color(0xFF0B1220),
-        borderColor = BorderSubtle,
-        contentPadding = PaddingValues(0.dp)
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
     ) {
-        Column {
-            Row(
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = if (orderedLogs.isEmpty()) {
+                    "Sin eventos"
+                } else {
+                    "${orderedLogs.size} eventos · ${if (followTail) "seguimiento activo" else "seguimiento pausado"}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary
+            )
+
+            IconButton(
+                onClick = {
+                    followTail = true
+                    selectedLogId = null
+                },
+                enabled = orderedLogs.isNotEmpty()
+            ) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Ir al final",
+                    tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
+                )
+            }
+        }
+
+        if (orderedLogs.isEmpty()) {
+            Text(
+                text = "Los eventos del túnel aparecerán aquí cuando inicies una conexión.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = TextTertiary,
+                modifier = Modifier.padding(vertical = Dimens.SpaceLG)
+            )
+        } else {
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .heightIn(min = 180.dp, max = maxHeight.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                contentPadding = PaddingValues(bottom = Dimens.SpaceSM)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-                ) {
-                    Icon(Icons.Filled.Terminal, contentDescription = null, tint = NeonCyan)
-                    Column {
-                        Text(
-                            text = "Registro de conexión",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = if (orderedLogs.isEmpty()) "Sin eventos" else "${orderedLogs.size} eventos · ${if (followTail) "seguimiento activo" else "seguimiento pausado"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextTertiary
-                        )
-                    }
-                }
-
-                Row {
-                    IconButton(
+                items(orderedLogs, key = { it.id }) { entry ->
+                    HttpLogLine(
+                        entry = entry,
+                        isSelected = entry.id == selectedLogId,
                         onClick = {
-                            followTail = true
-                            selectedLogId = null
-                        },
-                        enabled = orderedLogs.isNotEmpty()
-                    ) {
-                        Icon(
-                            Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "Ir al final",
-                            tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
-                        )
-                    }
-                    if (onCopyAll != null) {
-                        IconButton(onClick = onCopyAll, enabled = orderedLogs.isNotEmpty()) {
-                            Icon(
-                                Icons.Filled.ContentCopy,
-                                contentDescription = "Copiar registro",
-                                tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
-                            )
+                            selectedLogId = if (selectedLogId == entry.id) null else entry.id
+                            followTail = false
                         }
-                    }
+                    )
                 }
-            }
-
-            if (orderedLogs.isEmpty()) {
-                Text(
-                    text = "Los eventos del túnel aparecerán aquí cuando inicies una conexión.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    color = TextTertiary,
-                    modifier = Modifier.padding(Dimens.SpaceMD)
-                )
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 180.dp, max = maxHeight.dp)
-                        .padding(horizontal = Dimens.SpaceMD),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    contentPadding = PaddingValues(bottom = Dimens.SpaceMD)
-                ) {
-                    items(orderedLogs, key = { it.id }) { entry ->
-                        HttpLogLine(
-                            entry = entry,
-                            isSelected = entry.id == selectedLogId,
-                            onClick = {
-                                selectedLogId = if (selectedLogId == entry.id) null else entry.id
-                                followTail = false
-                            }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(2.dp)) }
-                }
+                item { Spacer(modifier = Modifier.height(2.dp)) }
             }
         }
     }
