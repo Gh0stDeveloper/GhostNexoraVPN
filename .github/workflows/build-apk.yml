@@ -71,14 +71,36 @@ jobs:
           chmod +x ./gradlew
 
       - name: Ejecutar pruebas unitarias
-        run: ./gradlew testDebugUnitTest --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee gradle-test.log
 
       - name: Compilar APK Debug con JNI
-        run: ./gradlew assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-debug.log
 
       - name: Validar R8 y shrinking de Release
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        run: ./gradlew assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee gradle-release.log
+
+      - name: Subir diagnósticos Gradle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhostNexoraVPN-gradle-diagnostics-${{ github.run_number }}
+          path: |
+            gradle-test.log
+            gradle-debug.log
+            gradle-release.log
+            app/build/reports/tests/**
+            app/build/outputs/mapping/**
+          if-no-files-found: warn
 
       - name: Subir APK Debug
         uses: actions/upload-artifact@v4
