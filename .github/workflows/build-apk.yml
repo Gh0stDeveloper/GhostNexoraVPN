@@ -17,10 +17,12 @@ concurrency:
 
 env:
   XRAY_LIB_TAG: v26.5.19
+  ANDROID_NDK_VERSION: 27.0.12077973
+  CMAKE_VERSION: 3.22.1
 
 jobs:
   build:
-    name: Compilar y validar APK
+    name: Compilar, probar y validar protección
     runs-on: ubuntu-latest
 
     steps:
@@ -34,6 +36,11 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Instalar NDK y CMake
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+
       - name: Descargar AndroidLibXrayLite
         uses: robinraju/release-downloader@v1.13
         with:
@@ -42,9 +49,11 @@ jobs:
           fileName: libv2ray.aar
           out-file-path: app/libs/
 
-      - name: Verificar core Xray
+      - name: Verificar dependencias nativas
         run: |
           test -s app/libs/libv2ray.aar
+          test -s app/src/main/cpp/CMakeLists.txt
+          test -s app/src/main/cpp/native_guard.cpp
           ls -lh app/libs/libv2ray.aar
 
       - name: Preparar Gradle
@@ -52,14 +61,29 @@ jobs:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x ./gradlew
 
-      - name: Compilar APK Debug
+      - name: Ejecutar pruebas unitarias
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Compilar APK Debug con JNI
         run: ./gradlew assembleDebug --stacktrace
+
+      - name: Validar R8 y shrinking de Release
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Subir APK Debug
         uses: actions/upload-artifact@v4
         with:
           name: GhostNexoraVPN-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Subir Release de validación R8
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhostNexoraVPN-r8-validation-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Restaurar keystore Release
@@ -76,14 +100,14 @@ jobs:
             -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
             -alias "${{ secrets.KEY_ALIAS }}" >/dev/null
 
-      - name: Compilar APK Release
+      - name: Compilar APK Release firmado
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew clean assembleRelease --stacktrace
 
       - name: Obtener APK Release y hash
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
