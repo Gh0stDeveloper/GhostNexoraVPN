@@ -8,7 +8,7 @@ import com.ghostnexora.vpn.data.model.VpnProfile
  * Orquesta el transporte seleccionado y Xray TUN.
  *
  * - SSH: sesión cifrada -> SOCKS5 local -> Xray TUN.
- * - V2Ray/Trojan/UDP: Xray TUN -> outbound nativo.
+ * - V2Ray/Trojan/Hysteria2: Xray TUN -> outbound nativo.
  */
 class TunnelManager(
     context: Context,
@@ -26,16 +26,14 @@ class TunnelManager(
         return if (profile.selectedMode.isSsh) {
             val sshHandle = sshEngine.connectWithSocks(profile)
             try {
-                val config = XrayConfigFactory.build(profile, sshHandle.socksPort)
-                xrayEngine.start(config, tunFd)
+                xrayEngine.start(XrayConfigFactory.build(profile, sshHandle.socksPort), tunFd)
                 TunnelRuntime(profile.selectedMode, sshHandle)
             } catch (error: Throwable) {
                 sshHandle.close()
                 throw error
             }
         } else {
-            val config = XrayConfigFactory.build(profile)
-            xrayEngine.start(config, tunFd)
+            xrayEngine.start(XrayConfigFactory.build(profile), tunFd)
             TunnelRuntime(profile.selectedMode, null)
         }
     }
@@ -46,8 +44,13 @@ class TunnelManager(
         runCatching { runtime?.sshHandle?.close() }
     }
 
-    fun coreVersion(): String = xrayEngine.version()
+    fun isAlive(runtime: TunnelRuntime?): Boolean {
+        if (runtime == null || !xrayEngine.isRunning) return false
+        val ssh = runtime.sshHandle?.session
+        return ssh == null || ssh.isConnected
+    }
 
+    fun coreVersion(): String = xrayEngine.version()
     fun isSupported(mode: ConnectionMode): Boolean = mode.supported
 }
 
