@@ -1,6 +1,8 @@
 package com.ghostnexora.vpn.tunnel
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.DnsMode
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,15 +17,19 @@ import org.json.JSONObject
  * traffic.
  */
 object StableXrayConfigFactory {
-    const val TUN_MTU = 1400
+    const val TUN_MTU = NetworkPreferences.DEFAULT_MTU
 
-    fun build(profile: VpnProfile, sshSocksPort: Int? = null): String {
+    fun build(
+        profile: VpnProfile,
+        sshSocksPort: Int? = null,
+        preferences: NetworkPreferences = NetworkPreferences()
+    ): String {
         val options = parseOptions(profile.payload)
         val proxy = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
-            profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options)
-            profile.selectedMode == ConnectionMode.TROJAN -> trojanOutbound(profile, options)
-            profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options)
+            profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options, preferences)
+            profile.selectedMode == ConnectionMode.TROJAN -> trojanOutbound(profile, options, preferences)
+            profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
             else -> error("No Xray outbound for ${profile.connectionModeLabel}")
         }
 
@@ -31,13 +37,13 @@ object StableXrayConfigFactory {
             .put("log", JSONObject().put("loglevel", "warning").put("dnsLog", true))
             .put("stats", JSONObject())
             .put("policy", policy())
-            .put("dns", protectedDns())
-            .put("inbounds", JSONArray().put(tunInbound()))
+            .put("dns", protectedDns(preferences))
+            .put("inbounds", JSONArray().put(tunInbound(preferences)))
             .put(
                 "outbounds",
                 JSONArray()
                     .put(proxy)
-                    .put(dnsOutbound())
+                    .put(dnsOutbound(preferences))
                     .put(directOutbound())
                     .put(blockOutbound())
             )
@@ -45,7 +51,7 @@ object StableXrayConfigFactory {
             .toString()
     }
 
-    fun summary(profile: VpnProfile): String {
+    fun summary(profile: VpnProfile, preferences: NetworkPreferences = NetworkPreferences()): String {
         val options = parseOptions(profile.payload)
         val network = normalizeNetwork(options["net"] ?: options["type"] ?: options["network"] ?: "tcp")
         val security = when {
@@ -53,7 +59,7 @@ object StableXrayConfigFactory {
             profile.sslEnabled || options["security"].equals("tls", true) || profile.selectedMode.usesTls -> "TLS"
             else -> "none"
         }
-        return "${profile.connectionModeLabel} · $network · $security · MTU $TUN_MTU"
+        return "${profile.connectionModeLabel} · $network · $security · ${preferences.ipMode.label} · MTU ${preferences.validatedMtu}"
     }
 
     private fun policy(): JSONObject = JSONObject()
@@ -75,14 +81,14 @@ object StableXrayConfigFactory {
                 .put("statsOutboundDownlink", true)
         )
 
-    private fun tunInbound(): JSONObject = JSONObject()
+    private fun tunInbound(preferences: NetworkPreferences): JSONObject = JSONObject()
         .put("tag", "tun")
         .put("protocol", "tun")
         .put(
             "settings",
             JSONObject()
                 .put("name", "ghostnexora0")
-                .put("MTU", TUN_MTU)
+                .put("MTU", preferences.validatedMtu)
                 .put("userLevel", 8)
         )
         .put(
@@ -93,40 +99,45 @@ object StableXrayConfigFactory {
                 .put("destOverride", JSONArray(listOf("http", "tls", "quic")))
         )
 
-    private fun protectedDns(): JSONObject = JSONObject()
-        .put("queryStrategy", "UseIPv4")
-        .put("disableCache", false)
-        .put(
-            "hosts",
-            JSONObject()
-                .put("cloudflare-dns.com", JSONArray(listOf("1.1.1.1", "1.0.0.1")))
-                .put("dns.google", JSONArray(listOf("8.8.8.8", "8.8.4.4")))
-        )
-        .put(
-            "servers",
-            JSONArray()
-                .put(
-                    JSONObject()
-                        .put("address", "https://cloudflare-dns.com/dns-query")
-                        .put("queryStrategy", "UseIPv4")
-                        .put("skipFallback", false)
-                )
-                .put(
-                    JSONObject()
-                        .put("address", "https://dns.google/dns-query")
-                        .put("queryStrategy", "UseIPv4")
-                        .put("skipFallback", false)
-                )
-        )
+    private fun protectedDns(preferences: NetworkPreferences): JSONObject {
+        val strategy = preferences.ipMode.xrayQueryStrategy
+        val servers = JSONArray()
+        when (preferences.dnsMode) {
+            DnsMode.AUTOMATIC -> {
+                servers.put(dohServer("https://cloudflare-dns.com/dns-query", strategy))
+                servers.put(dohServer("https://dns.google/dns-query", strategy))
+            }
+            DnsMode.CLOUDFLARE -> servers.put(dohServer("https://cloudflare-dns.com/dns-query", strategy))
+            DnsMode.GOOGLE -> servers.put(dohServer("https://dns.google/dns-query", strategy))
+            DnsMode.CUSTOM -> preferences.dnsServers().forEach { address ->
+                servers.put(JSONObject().put("address", address).put("queryStrategy", strategy))
+            }
+        }
+        return JSONObject()
+            .put("queryStrategy", strategy)
+            .put("disableCache", false)
+            .put(
+                "hosts",
+                JSONObject()
+                    .put("cloudflare-dns.com", JSONArray(listOf("1.1.1.1", "1.0.0.1")))
+                    .put("dns.google", JSONArray(listOf("8.8.8.8", "8.8.4.4")))
+            )
+            .put("servers", servers)
+    }
 
-    private fun dnsOutbound(): JSONObject = JSONObject()
+    private fun dohServer(address: String, strategy: String): JSONObject = JSONObject()
+        .put("address", address)
+        .put("queryStrategy", strategy)
+        .put("skipFallback", false)
+
+    private fun dnsOutbound(preferences: NetworkPreferences): JSONObject = JSONObject()
         .put("tag", "dns-out")
         .put("protocol", "dns")
         .put(
             "settings",
             JSONObject()
                 .put("network", "tcp")
-                .put("address", "1.1.1.1")
+                .put("address", preferences.dnsServers().first())
                 .put("port", 53)
                 .put("userLevel", 8)
         )
@@ -182,7 +193,7 @@ object StableXrayConfigFactory {
             )
     }
 
-    private fun v2rayOutbound(profile: VpnProfile, options: Map<String, String>): JSONObject {
+    private fun v2rayOutbound(profile: VpnProfile, options: Map<String, String>, preferences: NetworkPreferences): JSONObject {
         require(profile.host.isNotBlank()) { "V2Ray server is required" }
         require(profile.port in 1..65535) { "V2Ray port is invalid" }
         require(profile.username.isNotBlank()) { "V2Ray UUID/User ID is required" }
@@ -224,11 +235,11 @@ object StableXrayConfigFactory {
             .put("tag", "proxy")
             .put("protocol", protocol)
             .put("settings", settings)
-            .put("streamSettings", streamSettings(profile, options))
+            .put("streamSettings", streamSettings(profile, options, preferences))
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
     }
 
-    private fun trojanOutbound(profile: VpnProfile, options: Map<String, String>): JSONObject {
+    private fun trojanOutbound(profile: VpnProfile, options: Map<String, String>, preferences: NetworkPreferences): JSONObject {
         require(profile.host.isNotBlank()) { "Trojan server is required" }
         require(profile.password.isNotBlank()) { "Trojan password is required" }
         return JSONObject()
@@ -247,11 +258,11 @@ object StableXrayConfigFactory {
                     )
                 )
             )
-            .put("streamSettings", streamSettings(profile, options, forceTls = true))
+            .put("streamSettings", streamSettings(profile, options, preferences, forceTls = true))
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
     }
 
-    private fun hysteria2Outbound(profile: VpnProfile, options: Map<String, String>): JSONObject {
+    private fun hysteria2Outbound(profile: VpnProfile, options: Map<String, String>, preferences: NetworkPreferences): JSONObject {
         require(profile.host.isNotBlank()) { "Hysteria2 server is required" }
         require(profile.password.isNotBlank()) { "Hysteria2 authentication is required" }
         val hysteria = JSONObject()
@@ -286,6 +297,7 @@ object StableXrayConfigFactory {
     private fun streamSettings(
         profile: VpnProfile,
         options: Map<String, String>,
+        preferences: NetworkPreferences,
         forceTls: Boolean = false
     ): JSONObject {
         val requested = options["net"] ?: options["type"] ?: options["network"] ?: "tcp"
@@ -320,7 +332,7 @@ object StableXrayConfigFactory {
                     .put("host", options["host"].orEmpty())
                     .put("path", options["path"].orEmpty().ifBlank { "/" })
             )
-            "kcp" -> stream.put("kcpSettings", JSONObject().put("mtu", TUN_MTU))
+            "kcp" -> stream.put("kcpSettings", JSONObject().put("mtu", preferences.validatedMtu))
             "tcp" -> if (options["headerType"].equals("http", true)) {
                 stream.put(
                     "tcpSettings",

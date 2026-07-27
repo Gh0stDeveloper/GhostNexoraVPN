@@ -28,8 +28,10 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -52,6 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.BuildConfig
+import com.ghostnexora.vpn.data.model.DnsMode
+import com.ghostnexora.vpn.data.model.IpMode
+import com.ghostnexora.vpn.data.model.NetworkPreferences
+import com.ghostnexora.vpn.diagnostics.DiagnosticStatus
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.Dimens
 import com.ghostnexora.vpn.ui.theme.GhostButton
@@ -77,6 +83,13 @@ fun SettingsScreen(
     var showClearLogs by remember { mutableStateOf(false) }
     var showLogsLimit by remember { mutableStateOf(false) }
     var showClearHosts by remember { mutableStateOf(false) }
+    var showIpMode by remember { mutableStateOf(false) }
+    var showMtu by remember { mutableStateOf(false) }
+    var showDnsMode by remember { mutableStateOf(false) }
+    var showCustomDns by remember { mutableStateOf(false) }
+    var showReconnectLimit by remember { mutableStateOf(false) }
+    var customDnsPrimary by remember { mutableStateOf(state.networkPreferences.customDnsPrimary) }
+    var customDnsSecondary by remember { mutableStateOf(state.networkPreferences.customDnsSecondary) }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,6 +185,65 @@ fun SettingsScreen(
                     containerColor = Color.Red.copy(alpha = 0.75f),
                     contentColor = Color.White
                 )
+            }
+
+            SettingsSection("Connection engine") {
+                ListSetting("IP mode", state.networkPreferences.ipMode.label) { showIpMode = true }
+                ListSetting("TUN MTU", state.networkPreferences.validatedMtu.toString()) { showMtu = true }
+                ListSetting("DNS", state.networkPreferences.dnsMode.label) { showDnsMode = true }
+                if (state.networkPreferences.dnsMode == DnsMode.CUSTOM) {
+                    InfoRow("Primary DNS", state.networkPreferences.customDnsPrimary)
+                    InfoRow("Secondary DNS", state.networkPreferences.customDnsSecondary.ifBlank { "Not set" })
+                }
+                ListSetting(
+                    "Reconnect attempts",
+                    state.networkPreferences.validatedReconnectAttempts.toString()
+                ) { showReconnectLimit = true }
+                Text(
+                    "IPv6 routes are created only when the selected IP mode enables them. Android and Xray always share the same MTU and DNS configuration.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)
+                )
+                GhostButton(
+                    text = if (state.diagnosticRunning) "Running diagnostics…" else "Run connection diagnostics",
+                    onClick = viewModel::runDiagnostics,
+                    enabled = !state.diagnosticRunning,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+                    containerColor = NeonCyan,
+                    contentColor = TextOnAccent
+                )
+                if (state.diagnosticRunning) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(Dimens.SpaceMD),
+                        horizontalArrangement = Arrangement.Center
+                    ) { CircularProgressIndicator(color = NeonCyan) }
+                }
+                state.diagnosticSteps.forEach { step ->
+                    val color = when (step.status) {
+                        DiagnosticStatus.PASSED -> NeonGreen
+                        DiagnosticStatus.FAILED -> Color.Red
+                        DiagnosticStatus.SKIPPED -> TextSecondary
+                        DiagnosticStatus.RUNNING -> NeonCyan
+                    }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = 6.dp)) {
+                        Text("${step.id} · ${step.label}", color = color, fontWeight = FontWeight.SemiBold)
+                        Text(step.detail, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                        step.errorCode?.let { Text("Code: $it", color = color, style = MaterialTheme.typography.labelSmall) }
+                        step.solution?.let { Text(it, color = TextSecondary, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+                state.diagnosticReport?.let { report ->
+                    Text(
+                        if (report.successful) "Diagnostic result: PASSED" else "Diagnostic result: FAILED",
+                        color = if (report.successful) NeonGreen else Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(Dimens.SpaceMD)
+                    )
+                    TextButton(onClick = viewModel::clearDiagnosticReport) { Text("Clear diagnostic result") }
+                }
             }
 
             SettingsSection("Permissions and special access") {
@@ -357,6 +429,62 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { showClearHosts = false }) { Text("Cancel") } }
         )
     }
+    if (showIpMode) {
+        AlertDialog(
+            onDismissRequest = { showIpMode = false },
+            title = { Text("IP mode") },
+            text = { Column { IpMode.entries.forEach { mode -> TextButton(onClick = { viewModel.setIpMode(mode); showIpMode = false }) { Text(mode.label) } } } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showIpMode = false }) { Text("Close") } }
+        )
+    }
+
+    if (showMtu) {
+        AlertDialog(
+            onDismissRequest = { showMtu = false },
+            title = { Text("TUN MTU") },
+            text = { Column { NetworkPreferences.MTU_PRESETS.forEach { value -> TextButton(onClick = { viewModel.setTunMtu(value); showMtu = false }) { Text(value.toString()) } } } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showMtu = false }) { Text("Close") } }
+        )
+    }
+
+    if (showDnsMode) {
+        AlertDialog(
+            onDismissRequest = { showDnsMode = false },
+            title = { Text("DNS mode") },
+            text = { Column { DnsMode.entries.forEach { mode -> TextButton(onClick = { if (mode == DnsMode.CUSTOM) { customDnsPrimary = state.networkPreferences.customDnsPrimary; customDnsSecondary = state.networkPreferences.customDnsSecondary; showCustomDns = true } else viewModel.setDnsMode(mode); showDnsMode = false }) { Text(mode.label) } } } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showDnsMode = false }) { Text("Close") } }
+        )
+    }
+
+    if (showCustomDns) {
+        AlertDialog(
+            onDismissRequest = { showCustomDns = false },
+            title = { Text("Custom DNS") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = customDnsPrimary, onValueChange = { customDnsPrimary = it }, label = { Text("Primary resolver") }, singleLine = true)
+                    OutlinedTextField(value = customDnsSecondary, onValueChange = { customDnsSecondary = it }, label = { Text("Secondary resolver") }, singleLine = true)
+                    Text("Use literal IPv4 or IPv6 resolver addresses.", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.setCustomDns(customDnsPrimary, customDnsSecondary); showCustomDns = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showCustomDns = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showReconnectLimit) {
+        AlertDialog(
+            onDismissRequest = { showReconnectLimit = false },
+            title = { Text("Reconnect attempts") },
+            text = { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(3, 5, 8, 12).forEach { value -> AssistChip(onClick = { viewModel.setReconnectMaxAttempts(value); showReconnectLimit = false }, label = { Text(value.toString()) }) } } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showReconnectLimit = false }) { Text("Close") } }
+        )
+    }
+
 }
 
 @Composable
