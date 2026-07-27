@@ -8,18 +8,39 @@
 
 Ghost Nexora VPN is a native Android VPN client focused on verified routing, encrypted profile management, secure diagnostics, and modern SSH/Xray transports. The app does not report a connection merely because a core process started: it validates the remote outbound before creating the Android TUN interface and verifies Internet access again through the active tunnel.
 
-Current application version: **1.0.31 (31)**.
+Current application version: **1.0.33 (33)**.
 
 ## Core capabilities
 
-- Real Android `VpnService` TUN routing for IPv4 and IPv6.
+- Real Android `VpnService` TUN routing with configurable IPv4/IPv6 behavior.
 - Physical network tracking across cellular data, Wi-Fi, and Ethernet.
 - Preflight server validation before Android routes device traffic into the VPN.
 - Active outbound verification after Xray starts.
+- Automatic non-destructive connection diagnostics.
+- Configurable DNS, TUN MTU, IP mode, and reconnect limit.
 - Kill Switch for a previously verified VPN that loses its transport.
-- Protected automatic reconnection with backoff.
+- Protected automatic reconnection with outbound revalidation and bounded retries.
+- Structured support error codes with corrective actions.
 - Local traffic statistics, latency, duration, and reconnect counters.
-- Secure and filterable diagnostic logs.
+- Secure, filterable, and exportable diagnostic logs.
+
+## Phase 1 stability milestone
+
+Version 1.0.33 implements the complete first stability phase:
+
+- physical-network, DNS, TCP, TLS/SNI, settings, and outbound diagnostics;
+- IPv4-only, IPv4-preferred, and dual-stack modes;
+- MTU presets from 1280 to 1500, shared by Android and Xray;
+- protected automatic, Cloudflare, Google, and custom DNS;
+- bounded reconnection with preflight and active outbound verification;
+- stable error codes such as `TLS-004`, `SSH-401`, `ROUTE-204`, and `RECONNECT-408`;
+- Android Storage Access Framework export of complete sanitized reports;
+- Android Lint, unit-test, Debug/JNI, Release/R8, deprecation, and DEX validation in CI.
+
+Detailed documentation:
+
+- [Phase 1 stability and diagnostics](docs/PHASE-1-STABILITY.md)
+- [Post-Phase 1 roadmap](docs/ROADMAP.md)
 
 ## Supported transports
 
@@ -68,12 +89,29 @@ There is no embedded master password or fixed master key in Kotlin or C++. IVs a
 - Android NDK/CMake library: `libghostguard.so`.
 - Native stack protection, hidden visibility, RELRO/NOW, and dead-code elimination.
 - R8 minification and resource shrinking for Release builds.
-- Explicit R8 preservation for JSch cryptographic providers loaded through reflection.
+- Direct JSch random-provider injection without reflective initialization.
+- Explicit R8 preservation for JSch cryptographic providers and diagnostic support classes.
 - Supported native ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
 
 ### Log protection
 
 Logs are sanitized before storage, display, copying, or export. The sanitizer redacts passwords, tokens, API keys, Bearer/Basic authorization values, credentials embedded in URIs, private-key blocks, and long opaque secrets.
+
+## Connection diagnostics
+
+The diagnostic engine is available under **Settings > Connection engine**. It does not establish Android VPN routes while testing.
+
+It checks:
+
+1. Physical non-VPN network availability.
+2. Server DNS resolution.
+3. TCP reachability to the server or configured proxy.
+4. TLS/SNI validation where applicable.
+5. Current IP, DNS, MTU, and reconnect configuration.
+6. Complete temporary SSH or Xray outbound preflight.
+7. Real Internet response through the selected outbound.
+
+Each failed stage provides a stable code and a corrective action. Temporary SSH sessions, SOCKS bridges, and Xray test instances are closed after the diagnostic run.
 
 ## Android permissions
 
@@ -87,7 +125,7 @@ Special access is requested contextually instead of being forced during onboardi
 
 - Display over other apps is used only by the optional floating control.
 - Install unknown apps is requested only when installing a verified APK update.
-- File import and export use Android's Storage Access Framework on current Android versions.
+- File import and export use Android's Storage Access Framework without legacy storage permissions.
 
 All permission and special-access screens can also be opened manually from **Settings > Permissions and special access**.
 
@@ -118,10 +156,11 @@ The CI release body includes `versionName`, `versionCode`, the Xray library tag,
 app/src/main/java/com/ghostnexora/vpn/
 ├── data/
 │   ├── local/          Room and DataStore
-│   ├── model/          Profiles, state, logs, traffic statistics
+│   ├── model/          Profiles, network preferences, state and logs
 │   └── repository/     ProfileRepository
+├── diagnostics/        Non-destructive staged connection diagnostics
 ├── security/           Keystore encryption, GNX2, log sanitizer, SSH known hosts
-├── tunnel/             SSH engine, Xray engine, configuration factory
+├── tunnel/             SSH engine, Xray engine, routing and error catalog
 ├── service/            VPN and optional floating foreground services
 ├── update/             GitHub release discovery, validation, download and install
 ├── ui/                 Compose screens, components and theme
@@ -147,6 +186,7 @@ AndroidLibXrayLite is downloaded by CI. For a local build, place `libv2ray.aar` 
 ```bash
 chmod +x gradlew
 ./gradlew testDebugUnitTest
+./gradlew lintDebug
 ./gradlew assembleDebug
 ./gradlew assembleRelease
 ```
@@ -164,11 +204,12 @@ KEY_PASSWORD
 
 GitHub Actions performs the following checks:
 
-- unit tests;
+- unit tests for network preferences, Xray configuration, updater logic, encryption, and error classification;
+- Android Lint with errors treated as build failures;
 - Debug APK and JNI compilation;
 - Release compilation with R8 and resource shrinking;
 - rejection of tracked Kotlin/Android deprecation warnings;
-- DEX inspection for JSch reflection-loaded cryptographic providers;
+- DEX inspection for JSch providers, the direct random bridge, diagnostics, and error catalog;
 - artifact upload for diagnostics, Debug, and R8 validation builds;
 - signed Release publication on `main` when the APK hash changes.
 
@@ -176,7 +217,7 @@ The workflow uses Node.js 24-compatible official actions and publishes determini
 
 ## Runtime validation status
 
-Compilation, unit tests, JNI packaging, R8 processing, encrypted configuration tests, and updater version tests are automated. Real protocol interoperability still depends on matching the remote server's credentials, transport, TLS/REALITY, SNI, Host, path, and authentication configuration.
+Compilation, unit tests, Android Lint, JNI packaging, R8 processing, encrypted configuration tests, updater version tests, network-setting tests, and diagnostic-class packaging are automated. Real protocol interoperability still depends on matching the remote server's credentials, transport, TLS/REALITY, SNI, Host, path, and authentication configuration.
 
 A core reporting `running` is not treated as proof of connectivity. Ghost Nexora VPN verifies actual outbound Internet access before reporting the VPN as connected.
 
