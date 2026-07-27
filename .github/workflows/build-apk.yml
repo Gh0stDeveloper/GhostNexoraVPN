@@ -29,6 +29,42 @@ jobs:
         run: |
           set -uo pipefail
           cat scripts/modernize_repo.py.gz.b64.part* | base64 --decode | gzip --decompress > /tmp/modernize_repo.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/modernize_repo.py')
+          source = path.read_text(encoding='utf-8')
+          old = '''for file_path, patches in icon_patches.items():
+              for old, new in patches:
+                  replace_exact(file_path, old, new)
+          '''
+          new = '''for file_path, patches in icon_patches.items():
+              content = read(file_path)
+              auto_mirrored_imports = []
+              for old, new in patches:
+                  if old.startswith("import "):
+                      auto_mirrored_imports.append(new)
+                      if old in content:
+                          content = content.replace(old, new)
+                  elif old in content:
+                      content = content.replace(old, new)
+              for required_import in auto_mirrored_imports:
+                  icon_name = required_import.rsplit(".", 1)[-1]
+                  if f"Icons.AutoMirrored.Filled.{icon_name}" not in content or required_import in content:
+                      continue
+                  anchor = "import androidx.compose.material.icons.Icons\\n"
+                  wildcard = "import androidx.compose.material.icons.filled.*\\n"
+                  if anchor in content:
+                      content = content.replace(anchor, anchor + required_import + "\\n", 1)
+                  elif wildcard in content:
+                      content = content.replace(wildcard, wildcard + required_import + "\\n", 1)
+                  else:
+                      raise RuntimeError(f"Cannot insert {required_import} in {file_path}")
+              write(file_path, content)
+          '''
+          if old not in source:
+              raise SystemExit('Icon migration block was not found in decoded script')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
           python3 -m py_compile /tmp/modernize_repo.py
           set +e
           python3 /tmp/modernize_repo.py > modernization.log 2>&1
