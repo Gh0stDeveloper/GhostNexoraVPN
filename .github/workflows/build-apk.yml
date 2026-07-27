@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout modernization branch
@@ -72,6 +73,9 @@ jobs:
           STATUS=$?
           set -e
           cat modernization.log
+          if [ "$STATUS" -eq 0 ]; then
+            git checkout -- .github/workflows/build-apk.yml .github/workflows/modernize-source.yml
+          fi
           exit $STATUS
 
       - name: Upload modernization diagnostics
