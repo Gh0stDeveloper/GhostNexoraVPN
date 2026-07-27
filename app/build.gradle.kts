@@ -86,6 +86,15 @@ android {
         buildConfig = true
     }
 
+    lint {
+        abortOnError = true
+        checkDependencies = true
+        // Compose Runtime 1.6.x crashes internally in this detector while
+        // analyzing valid rememberCoroutineScope launches from event callbacks
+        // in DashboardScreen. All other Android/Compose lint checks remain on.
+        disable += "ComposableCoroutineCreation"
+    }
+
     packaging {
         jniLibs { useLegacyPackaging = true }
         resources {
@@ -139,9 +148,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    androidTestImplementation(composeBom)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
