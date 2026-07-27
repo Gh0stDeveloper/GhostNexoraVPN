@@ -24,14 +24,29 @@ jobs:
           fetch-depth: 0
 
       - name: Decode and apply source changes
+        id: apply_changes
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cat scripts/modernize_repo.py.gz.b64.part* | base64 --decode | gzip --decompress > /tmp/modernize_repo.py
           python3 -m py_compile /tmp/modernize_repo.py
-          python3 /tmp/modernize_repo.py
+          set +e
+          python3 /tmp/modernize_repo.py > modernization.log 2>&1
+          STATUS=$?
+          set -e
+          cat modernization.log
+          exit $STATUS
+
+      - name: Upload modernization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: modernization-diagnostics-${{ github.run_number }}
+          path: modernization.log
+          if-no-files-found: warn
 
       - name: Commit modernized production source
+        if: steps.apply_changes.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
