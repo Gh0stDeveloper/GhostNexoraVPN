@@ -1,110 +1,237 @@
-name: Apply repository modernization
+name: Build Android
 
 on:
   workflow_dispatch:
   pull_request:
   push:
     branches:
-      - agent/modernize-permissions-updates-ui
+      - main
+      - "agent/**"
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-modernization-${{ github.ref }}
+  group: android-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  XRAY_LIB_TAG: v26.5.19
+  ANDROID_NDK_VERSION: 27.0.12077973
+  CMAKE_VERSION: 3.22.1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  apply:
-    if: github.actor != 'github-actions[bot]'
+  build:
+    name: Build, test and validate protection
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout modernization branch
+      - name: Checkout source
         uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
-          ref: agent/modernize-permissions-updates-ui
-          fetch-depth: 0
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
-      - name: Decode and apply source changes
-        id: apply_changes
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
         shell: bash
         run: |
-          set -uo pipefail
-          cat scripts/modernize_repo.py.gz.b64.part* | base64 --decode | gzip --decompress > /tmp/modernize_repo.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('/tmp/modernize_repo.py')
-          source = path.read_text(encoding='utf-8')
-          old = '''for file_path, patches in icon_patches.items():
-              for old, new in patches:
-                  replace_exact(file_path, old, new)
-          '''
-          new = '''for file_path, patches in icon_patches.items():
-              content = read(file_path)
-              auto_mirrored_imports = []
-              for old, new in patches:
-                  if old.startswith("import "):
-                      auto_mirrored_imports.append(new)
-                      if old in content:
-                          content = content.replace(old, new)
-                  elif old in content:
-                      content = content.replace(old, new)
-              for required_import in auto_mirrored_imports:
-                  icon_name = required_import.rsplit(".", 1)[-1]
-                  if f"Icons.AutoMirrored.Filled.{icon_name}" not in content or required_import in content:
-                      continue
-                  anchor = "import androidx.compose.material.icons.Icons\\n"
-                  wildcard = "import androidx.compose.material.icons.filled.*\\n"
-                  if anchor in content:
-                      content = content.replace(anchor, anchor + required_import + "\\n", 1)
-                  elif wildcard in content:
-                      content = content.replace(wildcard, wildcard + required_import + "\\n", 1)
-                  else:
-                      raise RuntimeError(f"Cannot insert {required_import} in {file_path}")
-              write(file_path, content)
-          '''
-          if old not in source:
-              raise SystemExit('Icon migration block was not found in decoded script')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
-          PY
-          python3 -m py_compile /tmp/modernize_repo.py
-          set +e
-          python3 /tmp/modernize_repo.py > modernization.log 2>&1
-          STATUS=$?
-          set -e
-          cat modernization.log
-          if [ "$STATUS" -eq 0 ]; then
-            git checkout -- .github/workflows/build-apk.yml .github/workflows/modernize-source.yml
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
           fi
-          exit $STATUS
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
 
-      - name: Commit modernized production source
-        id: commit_changes
-        if: steps.apply_changes.outcome == 'success'
+      - name: Download AndroidLibXrayLite
+        uses: robinraju/release-downloader@v1.13
+        with:
+          repository: 2dust/AndroidLibXrayLite
+          tag: ${{ env.XRAY_LIB_TAG }}
+          fileName: libv2ray.aar
+          out-file-path: app/libs/
+
+      - name: Verify native dependencies
+        run: |
+          test -s app/libs/libv2ray.aar
+          test -s app/src/main/cpp/CMakeLists.txt
+          test -s app/src/main/cpp/native_guard.cpp
+          ls -lh app/libs/libv2ray.aar
+
+      - name: Prepare Gradle
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          chmod +x ./gradlew
+
+      - name: Run unit tests
         shell: bash
         run: |
-          set +e
-          {
-            set -x
-            git status --short
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git diff --cached --stat
-            git diff --cached --check || true
-            git commit -m "[modernized] Remove deprecations and improve permissions, updater, and UI"
-            git push origin HEAD:agent/modernize-permissions-updates-ui
-          } > commit-push.log 2>&1
-          STATUS=$?
-          cat commit-push.log
-          exit $STATUS
+          set -o pipefail
+          ./gradlew testDebugUnitTest --stacktrace --warning-mode all 2>&1 | tee gradle-test.log
 
-      - name: Upload modernization diagnostics
+      - name: Build Debug APK with JNI
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace --warning-mode all 2>&1 | tee gradle-debug.log
+
+      - name: Validate Release R8 and resource shrinking
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace --warning-mode all 2>&1 | tee gradle-release.log
+
+      - name: Reject source deprecation warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          WARNINGS="$(grep -hE 'w: file://.*(is deprecated|needs opt-in)|WARNING: We recommend using a newer Android Gradle plugin' gradle-*.log || true)"
+          if [ -n "$WARNINGS" ]; then
+            printf '%s\n' "$WARNINGS"
+            echo "Source or Android toolchain deprecation warnings remain."
+            exit 1
+          fi
+          echo "No tracked Kotlin/Android deprecation warnings found."
+
+      - name: Verify JSch providers after R8
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          DEX_DIR="$(mktemp -d)"
+          trap 'rm -rf "$DEX_DIR"' EXIT
+          unzip -qq "$APK" 'classes*.dex' -d "$DEX_DIR"
+
+          for descriptor in \
+            'Lcom/jcraft/jsch/jce/Random;' \
+            'Lcom/jcraft/jsch/jce/SHA256;' \
+            'Lcom/jcraft/jsch/jce/AES256GCM;' \
+            'Lcom/jcraft/jsch/jgss/GSSContextKrb5;'
+          do
+            if ! grep -aR -Fq "$descriptor" "$DEX_DIR"; then
+              echo "R8 removed a JSch class loaded through reflection: $descriptor"
+              exit 1
+            fi
+          done
+
+          echo "JSch cryptographic providers are present in the Release APK."
+
+      - name: Upload Gradle diagnostics
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: modernization-diagnostics-${{ github.run_number }}
+          name: GhostNexoraVPN-gradle-diagnostics-${{ github.run_number }}
           path: |
-            modernization.log
-            commit-push.log
+            gradle-test.log
+            gradle-debug.log
+            gradle-release.log
+            app/build/reports/tests/**
+            app/build/outputs/mapping/**
           if-no-files-found: warn
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: GhostNexoraVPN-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload R8 validation Release
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v6
+        with:
+          name: GhostNexoraVPN-r8-validation-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Restore Release keystore
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/ghostnexora-release.jks
+          test -s app/ghostnexora-release.jks
+
+      - name: Verify Release keystore
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          keytool -list \
+            -keystore app/ghostnexora-release.jks \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}" >/dev/null
+
+      - name: Build signed Release APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew clean assembleRelease --stacktrace --warning-mode all
+
+      - name: Prepare Release metadata and checksum
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -s "$APK_PATH"
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          mkdir -p app/build/publish
+          PUBLISH_APK="app/build/publish/GhostNexoraVPN-${VERSION_NAME}.apk"
+          cp "$APK_PATH" "$PUBLISH_APK"
+          SHA256="$(sha256sum "$PUBLISH_APK" | awk '{print $1}')"
+          printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
+          echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
+          echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: should_publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}
+        run: |
+          LATEST_BODY="$(gh release view --repo "${{ github.repository }}" --json body --jq '.body' 2>/dev/null || true)"
+          if echo "$LATEST_BODY" | grep -q "APK_SHA256: $APK_SHA256"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.should_publish.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="v${{ steps.release_meta.outputs.version_name }}-build${{ github.run_number }}"
+          NOTES="Ghost Nexora VPN production build"$'\n\n'\
+          "versionName: ${{ steps.release_meta.outputs.version_name }}"$'\n'\
+          "versionCode: ${{ steps.release_meta.outputs.version_code }}"$'\n'\
+          "Xray Core: ${{ env.XRAY_LIB_TAG }}"$'\n'\
+          "Commit: ${{ github.sha }}"$'\n'\
+          "APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}"
+          gh release create "$TAG" \
+            "${{ steps.release_meta.outputs.apk_path }}" \
+            "${{ steps.release_meta.outputs.sha256_path }}" \
+            --repo "${{ github.repository }}" \
+            --title "Ghost Nexora VPN ${{ steps.release_meta.outputs.version_name }}" \
+            --notes "$NOTES" \
+            --latest
