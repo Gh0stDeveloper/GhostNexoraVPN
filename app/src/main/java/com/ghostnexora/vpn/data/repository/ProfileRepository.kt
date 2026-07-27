@@ -3,8 +3,11 @@ package com.ghostnexora.vpn.data.repository
 import com.ghostnexora.vpn.data.local.DataStoreManager
 import com.ghostnexora.vpn.data.local.LogDao
 import com.ghostnexora.vpn.data.local.ProfileDao
+import com.ghostnexora.vpn.data.model.DnsMode
+import com.ghostnexora.vpn.data.model.IpMode
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.security.LocalSecretCipher
 import com.ghostnexora.vpn.security.LogSanitizer
@@ -120,6 +123,7 @@ class ProfileRepository @Inject constructor(
     val showFloatingHint: Flow<Boolean> = dataStore.showFloatingHint
     val logsMaxEntries: Flow<Int> = dataStore.logsMaxEntries
     val isFirstLaunch: Flow<Boolean> = dataStore.isFirstLaunch
+    val networkPreferences: Flow<NetworkPreferences> = dataStore.networkPreferences
 
     suspend fun setActiveProfileId(id: String) = dataStore.setActiveProfileId(id)
     suspend fun clearActiveProfile() = dataStore.clearActiveProfile()
@@ -131,6 +135,11 @@ class ProfileRepository @Inject constructor(
     suspend fun setShowFloatingHint(value: Boolean) = dataStore.setShowFloatingHint(value)
     suspend fun setLogsMaxEntries(value: Int) = dataStore.setLogsMaxEntries(value)
     suspend fun setFirstLaunchDone() = dataStore.setFirstLaunchDone()
+    suspend fun setIpMode(value: IpMode) = dataStore.setIpMode(value)
+    suspend fun setTunMtu(value: Int) = dataStore.setTunMtu(value)
+    suspend fun setDnsMode(value: DnsMode) = dataStore.setDnsMode(value)
+    suspend fun setCustomDns(primary: String, secondary: String) = dataStore.setCustomDns(primary, secondary)
+    suspend fun setReconnectMaxAttempts(value: Int) = dataStore.setReconnectMaxAttempts(value)
 
     suspend fun clearAllData() {
         profileDao.deleteAllProfiles()
