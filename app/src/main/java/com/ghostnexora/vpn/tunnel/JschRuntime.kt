@@ -1,19 +1,13 @@
 package com.ghostnexora.vpn.tunnel
 
+import com.jcraft.jsch.AndroidRandomBridge
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Logger
 import com.jcraft.jsch.Random
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Android-safe JSch bootstrap.
- *
- * JSch resolves cryptographic providers from class names. Some Android builds
- * can fail to resolve an implementation stored in a secondary DEX even though
- * the class is packaged. This application-owned provider is referenced
- * directly, registered explicitly and verified before any SSH session starts.
- */
+/** Android-safe JSch bootstrap without reflective random-provider loading. */
 object JschRuntime {
     private val installed = AtomicBoolean(false)
 
@@ -23,17 +17,22 @@ object JschRuntime {
             val probe = ByteArray(32)
             provider.fill(probe, 0, probe.size)
             check(probe.any { it.toInt() != 0 }) { "Android SecureRandom provider did not initialize" }
+            probe.fill(0)
 
-            val providerClass = AndroidSecureRandomProvider::class.java
-            Class.forName(providerClass.name, true, providerClass.classLoader)
-            JSch.setConfig("random", providerClass.name)
+            // Keep the named configuration for any other JSch code path, but
+            // install the instance directly so Session.connect() never reaches
+            // Class.forName(getConfig("random")).
+            JSch.setConfig("random", AndroidSecureRandomProvider::class.java.name)
+            AndroidRandomBridge.install(provider)
+            check(AndroidRandomBridge.isInstalled()) { "JSch random bridge did not install" }
         }
 
         JSch.setLogger(SanitizedJschLogger(onStatus))
-        onStatus("[SSH] JSch ${JSch.VERSION} listo · SecureRandom Android verificado")
+        onStatus("[SSH] JSch ${JSch.VERSION} listo · SecureRandom inyectado sin reflexión")
     }
 
     fun configuredRandomProvider(): String = JSch.getConfig("random")
+    fun isDirectProviderInstalled(): Boolean = AndroidRandomBridge.isInstalled()
 }
 
 /** Directly referenced JSch random provider backed by Android/Java SecureRandom. */
