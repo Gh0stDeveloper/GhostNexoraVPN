@@ -10,11 +10,12 @@ import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Adaptador pequeño y aislado alrededor de AndroidLibXrayLite.
+ * Adaptador aislado alrededor de AndroidLibXrayLite.
  *
- * El core recibe directamente el file descriptor creado por VpnService, por
- * lo que el estado "Connected" solo se publica cuando Xray confirma que el
- * loop está realmente activo.
+ * Iniciar el proceso Xray no demuestra que el servidor remoto acepte el
+ * perfil. Por eso esta clase puede validar el outbound antes de crear el TUN y
+ * volver a comprobarlo mediante la instancia activa antes de publicar el
+ * estado Connected.
  */
 class XrayCoreEngine(
     context: Context,
@@ -26,6 +27,18 @@ class XrayCoreEngine(
 
     val isRunning: Boolean
         get() = controller?.isRunning == true
+
+    /**
+     * Comprueba el perfil sin TUN. Android conserva su conexión física si el
+     * host, UUID, contraseña, SNI, Host, path o transporte son incorrectos.
+     */
+    @Synchronized
+    fun verifyOutbound(config: String): OutboundCheck {
+        initializeCore()
+        return measureAcrossEndpoints { url ->
+            Libv2ray.measureOutboundDelay(config, url)
+        }
+    }
 
     @Synchronized
     fun start(config: String, tunFd: Int) {
@@ -52,6 +65,16 @@ class XrayCoreEngine(
         }
     }
 
+    /** Verifica que la instancia activa realmente puede alcanzar Internet. */
+    @Synchronized
+    fun verifyActiveOutbound(): OutboundCheck {
+        val activeController = controller?.takeIf { it.isRunning }
+            ?: error("Xray Core no está activo para validar la salida")
+        return measureAcrossEndpoints { url ->
+            activeController.measureDelay(url)
+        }
+    }
+
     @Synchronized
     fun stop() {
         val activeController = controller ?: return
@@ -62,6 +85,32 @@ class XrayCoreEngine(
     }
 
     fun version(): String = runCatching { Libv2ray.checkVersionX() }.getOrDefault("desconocida")
+
+    private fun measureAcrossEndpoints(measure: (String) -> Long): OutboundCheck {
+        var lastError: Throwable? = null
+
+        for (endpoint in CONNECTIVITY_TEST_URLS) {
+            try {
+                val latency = measure(endpoint)
+                if (latency >= 0L) {
+                    return OutboundCheck(latencyMs = latency, endpoint = endpoint)
+                }
+                lastError = IllegalStateException("La prueba devolvió latencia inválida: $latency")
+            } catch (error: Throwable) {
+                lastError = error
+            }
+        }
+
+        val detail = lastError?.message
+            ?.replace('\n', ' ')
+            ?.take(180)
+            .orEmpty()
+        val suffix = detail.takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()
+        throw IllegalStateException(
+            "El servidor o la configuración no entregan acceso a Internet$suffix",
+            lastError
+        )
+    }
 
     private fun initializeCore() {
         if (!initialized.compareAndSet(false, true)) return
@@ -101,4 +150,16 @@ class XrayCoreEngine(
             return 0
         }
     }
+
+    private companion object {
+        val CONNECTIVITY_TEST_URLS = listOf(
+            "https://cp.cloudflare.com/generate_204",
+            "https://www.gstatic.com/generate_204"
+        )
+    }
 }
+
+data class OutboundCheck(
+    val latencyMs: Long,
+    val endpoint: String
+)
