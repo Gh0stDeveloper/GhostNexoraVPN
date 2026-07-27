@@ -27,6 +27,7 @@ import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory
 import com.ghostnexora.vpn.tunnel.TunnelManager
 import com.ghostnexora.vpn.tunnel.TunnelRuntime
 import com.ghostnexora.vpn.ui.MainActivity
@@ -260,7 +261,7 @@ class GhostVpnService : VpnService() {
             val tun = buildTunInterface(profile) ?: error("Android no pudo establecer la interfaz VPN")
             tunInterface = tun
             underlyingNetwork?.let { network -> runCatching { setUnderlyingNetworks(arrayOf(network)) } }
-            logSafe(LogLevel.INFO, "TUN activo · IPv4/IPv6 · rutas completas", profile.id, "NETWORK")
+            logSafe(LogLevel.INFO, "TUN activo · MTU ${StableXrayConfigFactory.TUN_MTU} · IPv4/IPv6 · rutas completas", profile.id, "NETWORK")
 
             tunnelRuntime = tunnelManager.start(profile, tun.fd)
             logTransportReady(profile)
@@ -542,7 +543,7 @@ class GhostVpnService : VpnService() {
     private fun buildTunInterface(profile: VpnProfile): ParcelFileDescriptor? = try {
         val builder = Builder()
             .setSession(profile.name)
-            .setMtu(1500)
+            .setMtu(StableXrayConfigFactory.TUN_MTU)
             .addAddress("10.20.0.2", 30)
             .addAddress("fd00:20::2", 126)
             .addRoute("0.0.0.0", 0)
