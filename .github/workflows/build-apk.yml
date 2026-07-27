@@ -78,26 +78,33 @@ jobs:
           fi
           exit $STATUS
 
+      - name: Commit modernized production source
+        id: commit_changes
+        if: steps.apply_changes.outcome == 'success'
+        shell: bash
+        run: |
+          set +e
+          {
+            set -x
+            git status --short
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git diff --cached --stat
+            git diff --cached --check || true
+            git commit -m "[modernized] Remove deprecations and improve permissions, updater, and UI"
+            git push origin HEAD:agent/modernize-permissions-updates-ui
+          } > commit-push.log 2>&1
+          STATUS=$?
+          cat commit-push.log
+          exit $STATUS
+
       - name: Upload modernization diagnostics
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: modernization-diagnostics-${{ github.run_number }}
-          path: modernization.log
+          path: |
+            modernization.log
+            commit-push.log
           if-no-files-found: warn
-
-      - name: Commit modernized production source
-        if: steps.apply_changes.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes produced"
-            exit 1
-          fi
-          git diff --cached --check || true
-          git commit -m "[modernized] Remove deprecations and improve permissions, updater, and UI"
-          git push origin HEAD:agent/modernize-permissions-updates-ui
