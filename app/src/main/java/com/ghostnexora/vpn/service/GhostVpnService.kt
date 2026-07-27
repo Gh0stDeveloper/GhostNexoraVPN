@@ -709,16 +709,19 @@ class GhostVpnService : VpnService() {
     }
 
     private fun findUsablePhysicalNetwork(excluding: Network? = null): Network? {
-        val candidates = connectivityManager.allNetworks.filter { network ->
-            network != excluding && connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            } == true
+        val active = connectivityManager.activeNetwork
+        if (active != null && active != excluding && isUsablePhysicalNetwork(active)) {
+            return active
         }
-        return candidates.firstOrNull { network ->
-            connectivityManager.getNetworkCapabilities(network)
-                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        } ?: candidates.firstOrNull()
+        return underlyingNetwork?.takeIf { network ->
+            network != excluding && isUsablePhysicalNetwork(network)
+        }
+    }
+
+    private fun isUsablePhysicalNetwork(network: Network): Boolean {
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
     }
 
     private fun networkType(capabilities: NetworkCapabilities): String = when {

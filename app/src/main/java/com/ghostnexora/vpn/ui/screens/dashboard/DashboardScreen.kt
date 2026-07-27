@@ -25,7 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -131,7 +131,7 @@ fun DashboardScreen(
                     selected = pager.currentPage == 1,
                     onClick = { scope.launch { pager.animateScrollToPage(1) } },
                     text = { Text("Registro") },
-                    icon = { Icon(Icons.Filled.Article, null) }
+                    icon = { Icon(Icons.AutoMirrored.Filled.Article, null) }
                 )
             }
 
@@ -339,7 +339,7 @@ private fun LogPage(logs: List<LogEntry>, onCopy: () -> Unit) {
                         Text("Registro de conexión", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         Text("Sin credenciales ni tokens", color = TextTertiary, style = MaterialTheme.typography.bodySmall)
                     }
-                    IconButton(onClick = onCopy) { Icon(Icons.Filled.Article, "Copiar registro", tint = NeonCyan) }
+                    IconButton(onClick = onCopy) { Icon(Icons.AutoMirrored.Filled.Article, "Copiar registro", tint = NeonCyan) }
                 }
                 HttpInjectorLogConsole(logs = logs, modifier = Modifier.fillMaxWidth(), maxHeight = 620)
             }

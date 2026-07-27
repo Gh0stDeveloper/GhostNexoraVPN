@@ -1,245 +1,192 @@
-# 🔑 Ghost Nexora VPN
+# Ghost Nexora VPN
 
-<div align="center">
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/compose)
+[![Xray Core](https://img.shields.io/badge/Core-Xray-00A8E8)](https://github.com/XTLS/Xray-core)
+[![License](https://img.shields.io/badge/License-MIT-2EA44F)](LICENSE)
 
-![Ghost Nexora VPN](https://img.shields.io/badge/Ghost%20Nexora-VPN%20Manager-00E5FF?style=for-the-badge&logo=android&logoColor=white)
-![Kotlin](https://img.shields.io/badge/Kotlin-2.0.0-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
-![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.06-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)
-![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-00E676?style=for-the-badge)
+Ghost Nexora VPN is a native Android VPN client focused on verified routing, encrypted profile management, secure diagnostics, and modern SSH/Xray transports. The app does not report a connection merely because a core process started: it validates the remote outbound before creating the Android TUN interface and verifies Internet access again through the active tunnel.
 
-**Gestión profesional de perfiles VPN para Android**
-![Ghost Nexora VPN](./ignore/app.png)
+Current application version: **1.0.31 (31)**.
 
-*Desarrollado por [Ghost Developer](https://github.com/CHICO-CP)*
+## Core capabilities
 
-</div>
+- Real Android `VpnService` TUN routing for IPv4 and IPv6.
+- Physical network tracking across cellular data, Wi-Fi, and Ethernet.
+- Preflight server validation before Android routes device traffic into the VPN.
+- Active outbound verification after Xray starts.
+- Kill Switch for a previously verified VPN that loses its transport.
+- Protected automatic reconnection with backoff.
+- Local traffic statistics, latency, duration, and reconnect counters.
+- Secure and filterable diagnostic logs.
 
----
+## Supported transports
 
-## 📱 ¿Qué es Ghost Nexora VPN?
+### SSH family
 
-**Ghost Nexora VPN** es una aplicación Android nativa que permite gestionar perfiles de
-conexión VPN de forma moderna, centralizada y segura. Diseñada con una experiencia similar
-a las VPN comerciales premium, pero con código abierto y total control del usuario.
+- Direct SSH.
+- SSH over TLS/SNI.
+- SSH with HTTP payload.
+- SSH with TLS/SNI and payload.
+- SSH through HTTP CONNECT or SOCKS proxy.
+- SSH with proxy, payload, and optional TLS.
 
-A diferencia de los gestores convencionales, Ghost Nexora ofrece importación/exportación
-de perfiles en JSON, creación manual con soporte para múltiples protocolos, dashboard
-reactivo con estados visuales en tiempo real y ejecución persistente en segundo plano
-mediante la API oficial `VpnService` de Android.
+SSH traffic is transported through `direct-tcpip` channels and a local SOCKS bridge. It supports TCP routing; it does not claim generic UDP tunneling over SSH.
 
----
+### Xray family
 
-## ✨ Características principales
+- VLESS.
+- VMess.
+- Trojan over TLS.
+- Hysteria2 over QUIC/TLS for dedicated UDP transport.
+- WebSocket, gRPC, XHTTP, HTTPUpgrade, mKCP, raw TCP, TLS, and REALITY parameters where supported by the selected protocol.
+- Import of `vless://`, `vmess://`, `trojan://`, `hysteria2://`, and `hy2://` links.
 
-| Característica | Descripción |
-|---|---|
-| 🔑 **Gestión de perfiles** | Crear, editar, eliminar y organizar perfiles VPN con etiquetas |
-| 📥 **Importar / Exportar** | Soporte completo para JSON con previsualización y merge/replace |
-| 🔒 **VPN nativa** | Interfaz TUN real mediante `VpnService` de Android |
-| 🫧 **Ventana flotante** | Burbuja de control rápido sobre otras aplicaciones |
-| 📊 **Dashboard reactivo** | Estados en tiempo real con animaciones y timer de sesión |
-| 📋 **Registro de logs** | Historial completo con filtros por nivel y búsqueda |
-| ⚙️ **Ajustes avanzados** | Reconexión automática, gestión de permisos, limpieza de datos |
-| 🌙 **Tema oscuro neon** | Material Design 3 con acentos cian/azul/verde |
-| 🔔 **Notificación persistente** | Control desde la barra de notificaciones |
-| 🚀 **Reconexión al inicio** | Conecta automáticamente al encender el dispositivo |
+## Security model
 
----
+### Local profile protection
 
-## 🛠️ Stack tecnológico
+Sensitive profile fields are encrypted before Room persistence with an AES-256-GCM key stored in Android Keystore. The key is non-exportable. Each encrypted field uses a random nonce and additional authenticated data bound to the profile and field identity.
 
-```
-Lenguaje:     Kotlin 2.0
-UI:           Jetpack Compose + Material Design 3
-Arquitectura: MVVM + Repository Pattern + StateFlow
-DI:           Hilt (Dagger)
-Base de datos: Room (SQLite)
-Preferencias: DataStore (Proto)
-Serialización: Gson
-VPN:          VpnService (TUN interface)
-Overlay:      WindowManager (TYPE_APPLICATION_OVERLAY)
-Background:   Foreground Service + START_STICKY
-```
+### GNX2 portable configuration format
 
----
+New exports use the password-protected `.gnx` format:
 
-## 📂 Estructura del proyecto
+1. Internal JSON is compressed with GZIP.
+2. A random 256-bit data key is generated for every export.
+3. The payload is encrypted with AES-256-GCM.
+4. PBKDF2-HMAC-SHA256 with 310,000 iterations and a random salt derives wrapping and authentication keys.
+5. A separate AES-256-GCM operation wraps the random data key.
+6. HMAC-SHA256 authenticates the complete container.
+7. Random nonces and salts are stored with the versioned container.
 
-```
-GhostNexoraVPN/
-├── app/
-│   └── src/main/
-│       ├── java/com/ghostnexora/vpn/
-│       │   ├── data/
-│       │   │   ├── model/          # VpnProfile, LogEntry, ConnectionState
-│       │   │   ├── local/          # Room DAOs, AppDatabase, DataStoreManager
-│       │   │   └── repository/     # ProfileRepository (SSOT)
-│       │   ├── di/                 # AppModule (Hilt)
-│       │   ├── navigation/         # Screen, NavGraph, Drawer
-│       │   ├── receiver/           # BootReceiver
-│       │   ├── service/            # GhostVpnService, FloatingWindowService
-│       │   ├── ui/
-│       │   │   ├── screens/
-│       │   │   │   ├── dashboard/  # Dashboard + ViewModel
-│       │   │   │   ├── profiles/   # Lista + Crear/Editar + ViewModels
-│       │   │   │   ├── importexport/ # Import + Export + ViewModel
-│       │   │   │   ├── logs/       # Logs + ViewModel
-│       │   │   │   ├── settings/   # Settings + ViewModel
-│       │   │   │   └── about/      # AboutScreen
-│       │   │   └── theme/          # Colors, Type, Shape, Dimensions, Components
-│       │   ├── util/               # Extensions, PermissionHelper, JsonManager
-│       │   └── GhostNexoraApp.kt   # Application class
-│       ├── res/
-│       │   ├── drawable/           # Íconos vectoriales
-│       │   ├── values/             # Colors, Strings, Themes
-│       │   └── xml/                # Network config, FileProvider, Backup
-│       └── AndroidManifest.xml
-├── gradle/
-│   └── libs.versions.toml          # Version catalog
-├── build.gradle.kts
-├── settings.gradle.kts
-├── proguard-rules.pro
-└── README.md
-```
----
+There is no embedded master password or fixed master key in Kotlin or C++. IVs and nonces are not secrets; the security boundary is provided by random or password-derived keys and authenticated encryption. Plain JSON import remains available only for legacy migration.
 
-## 📋 Permisos requeridos
+### Native and release hardening
 
-| Permiso | Motivo |
-|---|---|
-| `BIND_VPN_SERVICE` | Crear la interfaz TUN de la VPN |
-| `INTERNET` | Conexión al servidor VPN |
-| `FOREGROUND_SERVICE` | Mantener el servicio activo en background |
-| `SYSTEM_ALERT_WINDOW` | Ventana flotante sobre otras apps |
-| `RECEIVE_BOOT_COMPLETED` | Reconexión automática al inicio |
-| `POST_NOTIFICATIONS` | Notificación persistente de estado (Android 13+) |
-| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Evitar que el sistema mate el servicio |
+- Android NDK/CMake library: `libghostguard.so`.
+- Native stack protection, hidden visibility, RELRO/NOW, and dead-code elimination.
+- R8 minification and resource shrinking for Release builds.
+- Explicit R8 preservation for JSch cryptographic providers loaded through reflection.
+- Supported native ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
 
----
+### Log protection
 
-## 🗺️ Roadmap
+Logs are sanitized before storage, display, copying, or export. The sanitizer redacts passwords, tokens, API keys, Bearer/Basic authorization values, credentials embedded in URIs, private-key blocks, and long opaque secrets.
 
-```
-✅ Fase 1 — UI + Gestión de perfiles + Import/Export + VPN básica + Background
-🔄 Fase 2 — Floating Window avanzada + Logs detallados + Favoritos + Reconexión
-⏳ Fase 3 — Per-app VPN + Biométrico + Estadísticas de sesión
-⏳ Fase 4 — Sincronización en nube + Cifrado avanzado de exportaciones
-```
+## Android permissions
 
----
+The app no longer blocks first launch behind a custom permission dashboard. Android's native system UI requests the essential permissions in sequence:
 
-## 📄 Formato JSON de perfiles
+- Notification permission on Android 13 and newer.
+- VPN authorization through `VpnService.prepare()`.
+- Battery optimization exemption for persistent VPN operation.
 
-```json
-{
-  "appName": "Ghost Nexora VPN",
-  "version": "1.0.20",
-  "exportedAt": "2026-05-11T00:00:00Z",
-  "profiles": [
-    {
-      "id": "gxn-001",
-      "name": "Servidor Principal",
-      "host": "vpn.example.com",
-      "port": 443,
-      "username": "",
-      "password": "",
-      "method": "ssh",
-      "sslEnabled": true,
-      "sni": "",
-      "proxy": { "host": "", "port": 0, "type": "" },
-      "tags": ["fast", "premium"],
-      "notes": "Servidor de alta velocidad",
-      "enabled": true,
-      "lastUsed": "2026-05-11T04:00:00Z"
-    }
-  ]
-}
+Special access is requested contextually instead of being forced during onboarding:
+
+- Display over other apps is used only by the optional floating control.
+- Install unknown apps is requested only when installing a verified APK update.
+- File import and export use Android's Storage Access Framework on current Android versions.
+
+All permission and special-access screens can also be opened manually from **Settings > Permissions and special access**.
+
+## Update system
+
+Ghost Nexora VPN checks the latest stable GitHub Release at:
+
+`Gh0stDeveloper/GhostNexoraVPN`
+
+The updater:
+
+- performs automatic checks at most once every 24 hours;
+- allows unrestricted manual checks from Settings;
+- compares explicit remote `versionCode` metadata with `BuildConfig.VERSION_CODE`;
+- falls back to semantic version comparison only when versionCode metadata is absent;
+- never invents a higher remote version;
+- remembers a dismissed release identity so the same update is not shown on every launch;
+- ignores debug, unsigned, and unaligned APK assets;
+- downloads through a temporary partial file and rejects incomplete transfers;
+- verifies SHA-256 when release metadata provides it;
+- verifies the APK package name and requires its versionCode to be newer before opening Android's installer.
+
+The CI release body includes `versionName`, `versionCode`, the Xray library tag, commit SHA, and APK SHA-256 so the application can make a deterministic update decision.
+
+## Architecture
+
+```text
+app/src/main/java/com/ghostnexora/vpn/
+├── data/
+│   ├── local/          Room and DataStore
+│   ├── model/          Profiles, state, logs, traffic statistics
+│   └── repository/     ProfileRepository
+├── security/           Keystore encryption, GNX2, log sanitizer, SSH known hosts
+├── tunnel/             SSH engine, Xray engine, configuration factory
+├── service/            VPN and optional floating foreground services
+├── update/             GitHub release discovery, validation, download and install
+├── ui/                 Compose screens, components and theme
+├── navigation/         Drawer and navigation graph
+└── util/               Protocol parser, permissions and import/export helpers
 ```
 
----
+The application uses MVVM, Hilt, StateFlow, Room, DataStore, Jetpack Compose, Material 3, JSch, AndroidLibXrayLite, and Android NDK/CMake.
 
-## 👨‍💻 Desarrollador
+## Building
 
-<div align="center">
+Requirements:
 
-| | |
-|---|---|
-| **Nombre** | Ghost Developer |
-| **GitHub** | [@CHICO-CP](https://github.com/CHICO-CP) |
-| **Telegram** | [@Gh0stDeveloper](https://t.me/Gh0stDeveloper) |
-| **Correo** | [ghostnexora@gmail.com](mailto:ghostnexora@gmail.com) |
+- JDK 17.
+- Android SDK with API 35.
+- Android NDK `27.0.12077973`.
+- CMake `3.22.1`.
+- Gradle wrapper 8.9.
+- Android Gradle Plugin 8.7.3.
 
-</div>
+AndroidLibXrayLite is downloaded by CI. For a local build, place `libv2ray.aar` in `app/libs/` or run the provided fetch script.
 
----
+```bash
+chmod +x gradlew
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
+./gradlew assembleRelease
+```
 
+A production Release requires the signing environment variables used by the workflow:
 
-## 🧭 Interfaz interna de la app
+```text
+KEYSTORE_FILE
+KEYSTORE_PASSWORD
+KEY_ALIAS
+KEY_PASSWORD
+```
 
-La aplicación está organizada para que el usuario encuentre primero el **Inicio** y luego el **Registro**:
+## Continuous integration
 
-- **Inicio**: estado general, perfil activo, resumen de conexión, acciones rápidas y acceso al registro.
-- **Registro**: consola interactiva con desplazamiento vertical, selección de entradas y copia de contenido.
-- **Documentación**: guía técnica detallada con arquitectura, permisos, flujo de conexión, actualización y diagnóstico.
-- **Actualizaciones**: consulta directa a **GitHub Releases** con instalación encima de la versión actual.
+GitHub Actions performs the following checks:
 
-El dashboard principal está pensado como panel de control. El acceso al log se resuelve de dos formas: deslizando hacia la izquierda o pulsando el acceso rápido ubicado en la esquina superior derecha del bloque de inicio.
+- unit tests;
+- Debug APK and JNI compilation;
+- Release compilation with R8 and resource shrinking;
+- rejection of tracked Kotlin/Android deprecation warnings;
+- DEX inspection for JSch reflection-loaded cryptographic providers;
+- artifact upload for diagnostics, Debug, and R8 validation builds;
+- signed Release publication on `main` when the APK hash changes.
 
----
+The workflow uses Node.js 24-compatible official actions and publishes deterministic version metadata for the in-app updater.
 
-## 🔄 Sistema de actualizaciones
+## Runtime validation status
 
-Ghost Nexora VPN usa `versionCode` como referencia real para decidir si existe una nueva versión. El flujo recomendado es:
+Compilation, unit tests, JNI packaging, R8 processing, encrypted configuration tests, and updater version tests are automated. Real protocol interoperability still depends on matching the remote server's credentials, transport, TLS/REALITY, SNI, Host, path, and authentication configuration.
 
-1. GitHub Actions compila la APK.
-2. El workflow publica la APK como asset de una GitHub Release.
-3. La app consulta la release más reciente.
-4. Lee `tag_name`, `name`, `body` y `assets[].browser_download_url`.
-5. Compara `BuildConfig.VERSION_CODE` con la versión remota.
-6. Si la versión remota es superior, muestra el diálogo de actualización.
-7. La nueva APK se descarga, se verifica y se instala encima de la actual.
+A core reporting `running` is not treated as proof of connectivity. Ghost Nexora VPN verifies actual outbound Internet access before reporting the VPN as connected.
 
-Con este enfoque no es necesario editar JSON manualmente ni depender de artifacts temporales del workflow.
+## Developer and contact
 
----
+- Developer: **Ghost Developer**
+- GitHub: [@Gh0stDeveloper](https://github.com/Gh0stDeveloper)
+- Telegram: [@Gh0stDeveloper](https://t.me/Gh0stDeveloper)
+- Email: [ghostnexora@gmail.com](mailto:ghostnexora@gmail.com)
 
-## 📊 Registro y diagnóstico
+## License
 
-El sistema de logs está diseñado para ayudar en soporte técnico y depuración:
-
-- conserva hora, nivel, etiqueta y mensaje;
-- permite copiar entradas o el historial completo;
-- soporta selección de líneas para ver detalles;
-- mantiene desplazamiento manual sin perder el auto-scroll;
-- elimina automáticamente las entradas antiguas cuando supera el límite configurado.
-
-En la pantalla principal se muestra una versión resumida. La vista completa de registros ofrece más espacio y lectura cómoda.
-
----
-
-## 📘 Documentación interna
-
-La sección de documentación de la app describe:
-
-- arquitectura general;
-- modos activos y modos reservados;
-- flujo de arranque;
-- permisos y seguridad;
-- actualizaciones y verificación;
-- diagnóstico de fallos comunes;
-- comportamiento del panel principal y del registro.
-
-Esto convierte la documentación interna en una guía funcional para usuario avanzado, soporte y mantenimiento del proyecto.
-
---
-<div align="center">
-
-**Ghost Nexora VPN** — Desarrollado por Ghost Developer
-
-[GitHub](https://github.com/CHICO-CP) · [Telegram](https://t.me/Gh0stDeveloper) · [Contacto](mailto:ghostnexora@gmail.com)
-
-</div>
-
-
----
+This project is distributed under the [MIT License](LICENSE).

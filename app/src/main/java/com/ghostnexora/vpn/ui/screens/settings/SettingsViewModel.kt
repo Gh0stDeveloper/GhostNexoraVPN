@@ -56,7 +56,8 @@ class SettingsViewModel @Inject constructor(
                     logsMaxEntries = maxLogs,
                     permissionStatus = PermissionHelper.permissionStatus(context),
                     knownHostCount = knownHostStore.count(),
-                    firstLaunch = firstLaunch
+                    firstLaunch = firstLaunch,
+                    initialized = true
                 )
             }.collectLatest { state -> _uiState.value = state }
         }
@@ -141,7 +142,7 @@ private data class SettingsSnapshot(
 data class SettingsUiState(
     val autoReconnect: Boolean = true,
     val killSwitch: Boolean = true,
-    val floatingWindow: Boolean = true,
+    val floatingWindow: Boolean = false,
     val notifications: Boolean = true,
     val reconnectOnBoot: Boolean = false,
     val logsMaxEntries: Int = 500,
@@ -153,5 +154,6 @@ data class SettingsUiState(
         battery = false
     ),
     val snackbarMessage: String? = null,
-    val firstLaunch: Boolean = true
+    val firstLaunch: Boolean = true,
+    val initialized: Boolean = false
 )

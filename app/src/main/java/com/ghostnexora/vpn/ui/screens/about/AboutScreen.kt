@@ -8,6 +8,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -372,7 +374,7 @@ private fun DeveloperCard(
                     onClick   = onGithub
                 )
                 ContactLinkRow(
-                    icon      = Icons.Filled.Send,
+                    icon      = Icons.AutoMirrored.Filled.Send,
                     platform  = "Telegram",
                     handle    = "t.me/Gh0stDeveloper",
                     color     = NeonBlue,
@@ -432,7 +434,7 @@ private fun ContactLinkRow(
             )
         }
         Icon(
-            imageVector = Icons.Filled.OpenInNew,
+            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
             contentDescription = "Abrir",
             tint = color.copy(0.5f),
             modifier = Modifier.size(Dimens.IconSM)

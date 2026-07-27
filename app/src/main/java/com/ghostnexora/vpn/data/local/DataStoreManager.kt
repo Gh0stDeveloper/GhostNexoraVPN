@@ -40,18 +40,22 @@ class DataStoreManager @Inject constructor(
         val SHOW_FLOATING_HINT = booleanPreferencesKey("show_floating_hint")
         val LOGS_MAX_ENTRIES = intPreferencesKey("logs_max_entries")
         val FIRST_LAUNCH = booleanPreferencesKey("first_launch")
+        val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
+        val DISMISSED_UPDATE_IDENTITY = stringPreferencesKey("dismissed_update_identity")
     }
 
     val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
     val autoReconnect: Flow<Boolean> = dataStore.data.safeCatch().map { it[AUTO_RECONNECT] ?: true }
     val killSwitch: Flow<Boolean> = dataStore.data.safeCatch().map { it[KILL_SWITCH] ?: true }
-    val floatingWindowEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[FLOATING_WINDOW] ?: true }
+    val floatingWindowEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[FLOATING_WINDOW] ?: false }
     val notificationsEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[NOTIFICATIONS] ?: true }
     val darkTheme: Flow<Boolean> = dataStore.data.safeCatch().map { it[DARK_THEME] ?: true }
     val reconnectOnBoot: Flow<Boolean> = dataStore.data.safeCatch().map { it[RECONNECT_ON_BOOT] ?: false }
     val showFloatingHint: Flow<Boolean> = dataStore.data.safeCatch().map { it[SHOW_FLOATING_HINT] ?: true }
     val logsMaxEntries: Flow<Int> = dataStore.data.safeCatch().map { it[LOGS_MAX_ENTRIES] ?: 500 }
     val isFirstLaunch: Flow<Boolean> = dataStore.data.safeCatch().map { it[FIRST_LAUNCH] ?: true }
+    val lastUpdateCheckAt: Flow<Long> = dataStore.data.safeCatch().map { it[LAST_UPDATE_CHECK_AT] ?: 0L }
+    val dismissedUpdateIdentity: Flow<String> = dataStore.data.safeCatch().map { it[DISMISSED_UPDATE_IDENTITY].orEmpty() }
 
     suspend fun setActiveProfileId(id: String) = edit { it[ACTIVE_PROFILE_ID] = id }
     suspend fun setAutoReconnect(enabled: Boolean) = edit { it[AUTO_RECONNECT] = enabled }
@@ -64,6 +68,10 @@ class DataStoreManager @Inject constructor(
     suspend fun setShowFloatingHint(show: Boolean) = edit { it[SHOW_FLOATING_HINT] = show }
     suspend fun setLogsMaxEntries(max: Int) = edit { it[LOGS_MAX_ENTRIES] = max }
     suspend fun setFirstLaunchDone() = edit { it[FIRST_LAUNCH] = false }
+    suspend fun setLastUpdateCheckAt(value: Long) = edit { it[LAST_UPDATE_CHECK_AT] = value }
+    suspend fun setDismissedUpdateIdentity(value: String) = edit {
+        if (value.isBlank()) it.remove(DISMISSED_UPDATE_IDENTITY) else it[DISMISSED_UPDATE_IDENTITY] = value
+    }
     suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
     suspend fun clearAll() {

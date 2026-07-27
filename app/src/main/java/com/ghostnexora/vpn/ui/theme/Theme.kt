@@ -1,17 +1,12 @@
 package com.ghostnexora.vpn.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 
 // ══════════════════════════════════════════════════════════════════════════
 // GHOST NEXORA VPN — COLOR SCHEME OSCURO
@@ -81,22 +76,6 @@ fun GhostNexoraTheme(
         }
         // Siempre oscuro
         else -> GhostDarkColorScheme
-    }
-
-    // Configurar barras de sistema transparentes con íconos claros
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            // Fondo de status bar y nav bar transparente
-            window.statusBarColor = BackgroundDark.toArgb()
-            window.navigationBarColor = BackgroundDark.toArgb()
-
-            // Íconos claros (tema oscuro)
-            val insetsController = WindowCompat.getInsetsController(window, view)
-            insetsController.isAppearanceLightStatusBars = false
-            insetsController.isAppearanceLightNavigationBars = false
-        }
     }
 
     MaterialTheme(
