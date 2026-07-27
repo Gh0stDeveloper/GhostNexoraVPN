@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.LogEntry
@@ -37,6 +38,7 @@ class DashboardViewModel @Inject constructor(
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
     private var timerJob: Job? = null
     private var sessionStartTime: Long = 0L
+    private var lastConnectRequestElapsed: Long = 0L
 
     init {
         observeActiveProfile()
@@ -140,6 +142,14 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun connect(profile: VpnProfile) {
+        val now = SystemClock.elapsedRealtime()
+        val remaining = CONNECT_REQUEST_COOLDOWN_MS - (now - lastConnectRequestElapsed)
+        if (remaining > 0L) {
+            _uiState.update { it.copy(snackbarMessage = "Espera un momento antes de volver a conectar") }
+            return
+        }
+        lastConnectRequestElapsed = now
+
         viewModelScope.launch {
             updateState(VpnConnectionState.Connecting(profile.name))
             val intent = Intent(context, GhostVpnService::class.java).apply {
@@ -193,6 +203,10 @@ class DashboardViewModel @Inject constructor(
     override fun onCleared() {
         stopSessionTimer()
         super.onCleared()
+    }
+
+    private companion object {
+        const val CONNECT_REQUEST_COOLDOWN_MS = 2_500L
     }
 }
 
