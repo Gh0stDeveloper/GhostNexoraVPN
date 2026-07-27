@@ -29,6 +29,11 @@
     public static ** valueOf(java.lang.String);
 }
 
+# Stable support classes: error reports and CI inspect these names directly.
+-keep class com.ghostnexora.vpn.diagnostics.ConnectionDiagnosticsEngine { *; }
+-keep class com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog { *; }
+-keep class com.ghostnexora.vpn.tunnel.VpnFailure { *; }
+
 # JSch crypto providers and the application-owned direct injection bridge.
 -keep class com.ghostnexora.vpn.tunnel.AndroidSecureRandomProvider { public <init>(); public *; }
 -keep class com.ghostnexora.vpn.tunnel.JschRuntime { public *; }
