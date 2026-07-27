@@ -92,7 +92,7 @@ android {
         // Compose Runtime 1.6.x crashes internally in this detector while
         // analyzing valid rememberCoroutineScope launches from event callbacks
         // in DashboardScreen. All other Android/Compose lint checks remain on.
-        disable += "ComposableCoroutineCreation"
+        disable += "CoroutineCreationDuringComposition"
     }
 
     packaging {
