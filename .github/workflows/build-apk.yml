@@ -89,6 +89,31 @@ jobs:
           set -o pipefail
           ./gradlew assembleRelease --stacktrace 2>&1 | tee gradle-release.log
 
+      - name: Verificar proveedores JSch después de R8
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          DEX_DIR="$(mktemp -d)"
+          trap 'rm -rf "$DEX_DIR"' EXIT
+          unzip -qq "$APK" 'classes*.dex' -d "$DEX_DIR"
+
+          for descriptor in \
+            'Lcom/jcraft/jsch/jce/Random;' \
+            'Lcom/jcraft/jsch/jce/SHA256;' \
+            'Lcom/jcraft/jsch/jce/AES256GCM;' \
+            'Lcom/jcraft/jsch/jgss/GSSContextKrb5;'
+          do
+            if ! grep -aR -Fq "$descriptor" "$DEX_DIR"; then
+              echo "R8 eliminó una clase JSch cargada por reflexión: $descriptor"
+              exit 1
+            fi
+          done
+
+          echo "Proveedores criptográficos JSch presentes en el APK Release"
+
       - name: Subir diagnósticos Gradle
         if: always()
         uses: actions/upload-artifact@v4
