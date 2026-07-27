@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ChevronRight
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -99,7 +99,7 @@ internal fun ListSetting(
         )
         Text(value, style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.ChevronRight,
+            imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
             tint = TextTertiary
         )
