@@ -74,6 +74,10 @@ class TunnelManager(
         }
     }
 
+    /** Comprueba periódicamente la salida del core ya conectado. */
+    @Synchronized
+    fun verifyActive(): OutboundCheck = xrayEngine.verifyActiveOutbound()
+
     @Synchronized
     fun stop(runtime: TunnelRuntime?) {
         runCatching { xrayEngine.stop() }
