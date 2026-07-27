@@ -9,6 +9,10 @@ import com.ghostnexora.vpn.data.model.VpnProfile
  *
  * - SSH: sesión cifrada -> SOCKS5 local -> Xray TUN.
  * - V2Ray/Trojan/Hysteria2: Xray TUN -> outbound nativo.
+ *
+ * El perfil se puede validar antes de crear el TUN. De esta manera una
+ * configuración inválida no captura todo el tráfico del teléfono ni aparenta
+ * que Android perdió la conexión de datos móviles.
  */
 class TunnelManager(
     context: Context,
@@ -16,6 +20,26 @@ class TunnelManager(
 ) {
     private val sshEngine = SshTunnelEngine(context.applicationContext)
     private val xrayEngine = XrayCoreEngine(context.applicationContext, onCoreStatus)
+
+    /** Comprueba el servidor y el outbound real sin activar la VPN del sistema. */
+    @Synchronized
+    fun verify(profile: VpnProfile): OutboundCheck {
+        require(profile.selectedMode.supported) {
+            "El modo ${profile.connectionModeLabel} no está habilitado"
+        }
+
+        return if (profile.selectedMode.isSsh) {
+            val sshHandle = sshEngine.connectWithSocks(profile)
+            try {
+                val config = XrayConfigFactory.build(profile, sshHandle.socksPort)
+                xrayEngine.verifyOutbound(config)
+            } finally {
+                sshHandle.close()
+            }
+        } else {
+            xrayEngine.verifyOutbound(XrayConfigFactory.build(profile))
+        }
+    }
 
     @Synchronized
     fun start(profile: VpnProfile, tunFd: Int): TunnelRuntime {
@@ -26,15 +50,27 @@ class TunnelManager(
         return if (profile.selectedMode.isSsh) {
             val sshHandle = sshEngine.connectWithSocks(profile)
             try {
-                xrayEngine.start(XrayConfigFactory.build(profile, sshHandle.socksPort), tunFd)
-                TunnelRuntime(profile.selectedMode, sshHandle)
+                val config = XrayConfigFactory.build(profile, sshHandle.socksPort)
+                xrayEngine.start(config, tunFd)
+                val outbound = xrayEngine.verifyActiveOutbound()
+                onCoreStatus("Salida de Internet validada · ${outbound.latencyMs} ms")
+                TunnelRuntime(profile.selectedMode, sshHandle, outbound.latencyMs)
             } catch (error: Throwable) {
+                xrayEngine.stop()
                 sshHandle.close()
                 throw error
             }
         } else {
-            xrayEngine.start(XrayConfigFactory.build(profile), tunFd)
-            TunnelRuntime(profile.selectedMode, null)
+            try {
+                val config = XrayConfigFactory.build(profile)
+                xrayEngine.start(config, tunFd)
+                val outbound = xrayEngine.verifyActiveOutbound()
+                onCoreStatus("Salida de Internet validada · ${outbound.latencyMs} ms")
+                TunnelRuntime(profile.selectedMode, null, outbound.latencyMs)
+            } catch (error: Throwable) {
+                xrayEngine.stop()
+                throw error
+            }
         }
     }
 
@@ -56,5 +92,6 @@ class TunnelManager(
 
 data class TunnelRuntime(
     val mode: ConnectionMode,
-    val sshHandle: SshTunnelHandle?
+    val sshHandle: SshTunnelHandle?,
+    val verifiedLatencyMs: Long = 0L
 )
