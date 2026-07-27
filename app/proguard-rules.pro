@@ -29,11 +29,10 @@
     public static ** valueOf(java.lang.String);
 }
 
-# JSch resolves crypto implementations by class name. Keep both the upstream
-# providers and the application-owned Android provider used for the runtime
-# bootstrap. The app provider is also referenced directly and smoke-tested.
+# JSch crypto providers and the application-owned direct injection bridge.
 -keep class com.ghostnexora.vpn.tunnel.AndroidSecureRandomProvider { public <init>(); public *; }
 -keep class com.ghostnexora.vpn.tunnel.JschRuntime { public *; }
+-keep class com.jcraft.jsch.AndroidRandomBridge { public *; }
 -keep class com.jcraft.jsch.jce.** { *; }
 -keep class com.jcraft.jsch.jcraft.** { *; }
 -keep class com.jcraft.jsch.jgss.** { *; }
