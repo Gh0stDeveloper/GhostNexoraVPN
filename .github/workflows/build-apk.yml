@@ -2,6 +2,7 @@ name: Apply repository modernization
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - agent/modernize-permissions-updates-ui
@@ -40,4 +41,4 @@ jobs:
           git diff --cached --check
           git diff --cached --quiet && { echo "No changes produced"; exit 1; }
           git commit -m "[modernized] Remove deprecations and improve permissions, updater, and UI"
-          git push
+          git push origin HEAD:agent/modernize-permissions-updates-ui
