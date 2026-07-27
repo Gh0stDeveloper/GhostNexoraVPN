@@ -1,4 +1,4 @@
-name: Apply VPN runtime integration
+name: Apply VPN MTU integration
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: vpn-runtime-integration-${{ github.ref }}
+  group: vpn-mtu-integration-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
           ref: agent/modernize-permissions-updates-ui
           fetch-depth: 0
 
-      - name: Patch Android VPN service
+      - name: Align Android and Xray MTU
         shell: bash
         run: |
           set -euo pipefail
@@ -35,56 +35,33 @@ jobs:
           path = Path('app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt')
           text = path.read_text(encoding='utf-8')
 
-          import_old = 'import com.ghostnexora.vpn.tunnel.TunnelManager\nimport com.ghostnexora.vpn.tunnel.TunnelRuntime\n'
-          import_new = 'import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory\nimport com.ghostnexora.vpn.tunnel.TunnelManager\nimport com.ghostnexora.vpn.tunnel.TunnelRuntime\n'
-          if import_old not in text and 'import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory\n' not in text:
-              raise SystemExit('Tunnel imports not found')
-          text = text.replace(import_old, import_new, 1)
+          stable_import = 'import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory\n'
+          anchor = 'import com.ghostnexora.vpn.tunnel.TunnelManager\n'
+          if stable_import not in text:
+              if anchor not in text:
+                  raise SystemExit('TunnelManager import not found')
+              text = text.replace(anchor, stable_import + anchor, 1)
 
-          callback_old = '''    private val tunnelManager by lazy {
-              TunnelManager(applicationContext) { status ->
-                  serviceScope.launch { logSafe(LogLevel.DEBUG, status, activeProfile?.id, tag = "CORE") }
-              }
-          }
-          '''
-          callback_new = '''    private val tunnelManager by lazy {
-              TunnelManager(applicationContext) { status ->
-                  val stage = Regex("^\\\\[([A-Z0-9_-]+)]").find(status)
-                      ?.groupValues
-                      ?.getOrNull(1)
-                      ?: "CORE"
-                  val message = status.replace(Regex("^\\\\[[A-Z0-9_-]+]\\\\s*"), "")
-                  val level = when {
-                      stage == "ERROR" || message.contains("ERROR", ignoreCase = true) -> LogLevel.ERROR
-                      message.contains("WARN", ignoreCase = true) || message.contains("fall", ignoreCase = true) -> LogLevel.WARNING
-                      message.contains("listo", ignoreCase = true) ||
-                          message.contains("verific", ignoreCase = true) ||
-                          message.contains("activo", ignoreCase = true) ||
-                          message.contains("complet", ignoreCase = true) -> LogLevel.SUCCESS
-                      else -> LogLevel.INFO
-                  }
-                  serviceScope.launch { logSafe(level, message, activeProfile?.id, tag = stage) }
-              }
-          }
-          '''
-          if callback_old not in text:
-              raise SystemExit('Tunnel callback block not found')
-          text = text.replace(callback_old, callback_new, 1)
+          if '.setMtu(1500)' in text:
+              text = text.replace(
+                  '.setMtu(1500)',
+                  '.setMtu(StableXrayConfigFactory.TUN_MTU)',
+                  1,
+              )
+          elif '.setMtu(StableXrayConfigFactory.TUN_MTU)' not in text:
+              raise SystemExit('VPN MTU call not found')
 
-          if '.setMtu(1500)' not in text:
-              raise SystemExit('Android MTU literal not found')
-          text = text.replace('.setMtu(1500)', '.setMtu(StableXrayConfigFactory.TUN_MTU)', 1)
-          text = text.replace(
-              '"TUN activo · IPv4/IPv6 · rutas completas"',
-              '"TUN activo · MTU ${StableXrayConfigFactory.TUN_MTU} · IPv4/IPv6 · rutas completas"',
-              1,
-          )
+          old_log = '"TUN activo · IPv4/IPv6 · rutas completas"'
+          new_log = '"TUN activo · MTU ${StableXrayConfigFactory.TUN_MTU} · IPv4/IPv6 · rutas completas"'
+          if old_log in text:
+              text = text.replace(old_log, new_log, 1)
 
           path.write_text(text, encoding='utf-8')
           PY
           git diff --check
+          git diff -- app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt
 
-      - name: Commit service integration
+      - name: Commit MTU integration
         shell: bash
         run: |
           set -euo pipefail
@@ -92,5 +69,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt
           git diff --cached --quiet && { echo "No source changes produced"; exit 1; }
-          git commit -m "Align Android TUN MTU and classify connection stages"
+          git commit -m "Align Android and Xray TUN MTU"
           git push origin HEAD:agent/modernize-permissions-updates-ui
