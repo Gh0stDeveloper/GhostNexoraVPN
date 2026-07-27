@@ -7,7 +7,7 @@ import org.junit.Test
 
 class JschRuntimeTest {
     @Test
-    fun installsApplicationOwnedRandomProvider() {
+    fun installsApplicationOwnedRandomProviderWithoutReflection() {
         val messages = mutableListOf<String>()
 
         JschRuntime.install(messages::add)
@@ -16,7 +16,8 @@ class JschRuntimeTest {
             AndroidSecureRandomProvider::class.java.name,
             JSch.getConfig("random")
         )
-        assertTrue(messages.any { it.contains("SecureRandom Android verificado") })
+        assertTrue(JschRuntime.isDirectProviderInstalled())
+        assertTrue(messages.any { it.contains("sin reflexión") })
     }
 
     @Test
