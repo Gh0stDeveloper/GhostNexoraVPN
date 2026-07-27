@@ -11,6 +11,9 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ghostnexora.vpn.data.model.DnsMode
+import com.ghostnexora.vpn.data.model.IpMode
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -42,6 +45,12 @@ class DataStoreManager @Inject constructor(
         val FIRST_LAUNCH = booleanPreferencesKey("first_launch")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val DISMISSED_UPDATE_IDENTITY = stringPreferencesKey("dismissed_update_identity")
+        val IP_MODE = stringPreferencesKey("network_ip_mode")
+        val TUN_MTU = intPreferencesKey("network_tun_mtu")
+        val DNS_MODE = stringPreferencesKey("network_dns_mode")
+        val DNS_PRIMARY = stringPreferencesKey("network_dns_primary")
+        val DNS_SECONDARY = stringPreferencesKey("network_dns_secondary")
+        val RECONNECT_MAX_ATTEMPTS = intPreferencesKey("reconnect_max_attempts")
     }
 
     val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
@@ -56,6 +65,17 @@ class DataStoreManager @Inject constructor(
     val isFirstLaunch: Flow<Boolean> = dataStore.data.safeCatch().map { it[FIRST_LAUNCH] ?: true }
     val lastUpdateCheckAt: Flow<Long> = dataStore.data.safeCatch().map { it[LAST_UPDATE_CHECK_AT] ?: 0L }
     val dismissedUpdateIdentity: Flow<String> = dataStore.data.safeCatch().map { it[DISMISSED_UPDATE_IDENTITY].orEmpty() }
+    val networkPreferences: Flow<NetworkPreferences> = dataStore.data.safeCatch().map { values ->
+        NetworkPreferences(
+            ipMode = IpMode.fromId(values[IP_MODE]),
+            mtu = (values[TUN_MTU] ?: NetworkPreferences.DEFAULT_MTU)
+                .coerceIn(NetworkPreferences.MIN_MTU, NetworkPreferences.MAX_MTU),
+            dnsMode = DnsMode.fromId(values[DNS_MODE]),
+            customDnsPrimary = values[DNS_PRIMARY] ?: "1.1.1.1",
+            customDnsSecondary = values[DNS_SECONDARY] ?: "8.8.8.8",
+            reconnectMaxAttempts = (values[RECONNECT_MAX_ATTEMPTS] ?: 8).coerceIn(1, 12)
+        )
+    }
 
     suspend fun setActiveProfileId(id: String) = edit { it[ACTIVE_PROFILE_ID] = id }
     suspend fun setAutoReconnect(enabled: Boolean) = edit { it[AUTO_RECONNECT] = enabled }
@@ -72,6 +92,16 @@ class DataStoreManager @Inject constructor(
     suspend fun setDismissedUpdateIdentity(value: String) = edit {
         if (value.isBlank()) it.remove(DISMISSED_UPDATE_IDENTITY) else it[DISMISSED_UPDATE_IDENTITY] = value
     }
+    suspend fun setIpMode(value: IpMode) = edit { it[IP_MODE] = value.id }
+    suspend fun setTunMtu(value: Int) = edit {
+        it[TUN_MTU] = value.coerceIn(NetworkPreferences.MIN_MTU, NetworkPreferences.MAX_MTU)
+    }
+    suspend fun setDnsMode(value: DnsMode) = edit { it[DNS_MODE] = value.id }
+    suspend fun setCustomDns(primary: String, secondary: String) = edit {
+        it[DNS_PRIMARY] = primary.trim()
+        it[DNS_SECONDARY] = secondary.trim()
+    }
+    suspend fun setReconnectMaxAttempts(value: Int) = edit { it[RECONNECT_MAX_ATTEMPTS] = value.coerceIn(1, 12) }
     suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
     suspend fun clearAll() {
