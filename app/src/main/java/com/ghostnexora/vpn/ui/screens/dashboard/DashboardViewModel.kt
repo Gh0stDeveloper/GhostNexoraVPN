@@ -8,13 +8,17 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.LogEntry
+import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.service.GhostVpnService
+import com.ghostnexora.vpn.tunnel.TunnelManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -36,7 +41,9 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+    private val preflightManager by lazy { TunnelManager(context.applicationContext) }
     private var timerJob: Job? = null
+    private var connectJob: Job? = null
     private var sessionStartTime: Long = 0L
     private var lastConnectRequestElapsed: Long = 0L
 
@@ -144,24 +151,60 @@ class DashboardViewModel @Inject constructor(
     private fun connect(profile: VpnProfile) {
         val now = SystemClock.elapsedRealtime()
         val remaining = CONNECT_REQUEST_COOLDOWN_MS - (now - lastConnectRequestElapsed)
-        if (remaining > 0L) {
+        if (remaining > 0L || connectJob?.isActive == true) {
             _uiState.update { it.copy(snackbarMessage = "Espera un momento antes de volver a conectar") }
             return
         }
         lastConnectRequestElapsed = now
 
-        viewModelScope.launch {
+        connectJob = viewModelScope.launch {
             updateState(VpnConnectionState.Connecting(profile.name))
-            val intent = Intent(context, GhostVpnService::class.java).apply {
-                action = GhostVpnService.ACTION_CONNECT
-                putExtra(GhostVpnService.EXTRA_PROFILE_ID, profile.id)
+            repository.log(
+                LogLevel.INFO,
+                "Validando salida real del servidor antes de activar el TUN",
+                profile.id,
+                "NETWORK"
+            )
+
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    preflightManager.verify(profile)
+                }
+                repository.log(
+                    LogLevel.SUCCESS,
+                    "Servidor validado · acceso a Internet disponible · ${result.latencyMs} ms",
+                    profile.id,
+                    "NETWORK"
+                )
+
+                val intent = Intent(context, GhostVpnService::class.java).apply {
+                    action = GhostVpnService.ACTION_CONNECT
+                    putExtra(GhostVpnService.EXTRA_PROFILE_ID, profile.id)
+                    putExtra(GhostVpnService.EXTRA_PREFLIGHT_AT, SystemClock.elapsedRealtime())
+                }
+                context.startForegroundService(intent)
+                repository.markLastUsed(profile.id)
+            } catch (cancelled: CancellationException) {
+                updateState(VpnConnectionState.Disconnected)
+                throw cancelled
+            } catch (error: Throwable) {
+                val message = preflightError(error, profile)
+                repository.log(LogLevel.ERROR, message, profile.id, "NETWORK")
+                _uiState.update {
+                    it.copy(
+                        connectionState = VpnConnectionState.Error(message, profile.name),
+                        snackbarMessage = message
+                    )
+                }
+            } finally {
+                connectJob = null
             }
-            context.startForegroundService(intent)
-            repository.markLastUsed(profile.id)
         }
     }
 
     fun disconnect() {
+        connectJob?.cancel()
+        connectJob = null
         stopSessionTimer()
         updateState(VpnConnectionState.Disconnecting)
         context.startService(Intent(context, GhostVpnService::class.java).apply {
@@ -169,7 +212,25 @@ class DashboardViewModel @Inject constructor(
         })
     }
 
-    private fun cancelConnect() = disconnect()
+    private fun cancelConnect() {
+        if (connectJob?.isActive == true) {
+            connectJob?.cancel()
+            connectJob = null
+            updateState(VpnConnectionState.Disconnected)
+            _uiState.update { it.copy(snackbarMessage = "Validación cancelada; la conexión móvil sigue activa") }
+        } else {
+            disconnect()
+        }
+    }
+
+    private fun preflightError(error: Throwable, profile: VpnProfile): String {
+        val detail = error.message
+            ?.replace('\n', ' ')
+            ?.take(180)
+            .orEmpty()
+        val suffix = detail.takeIf(String::isNotBlank)?.let { " Detalle: $it" }.orEmpty()
+        return "El servidor no entregó acceso a Internet. Revisa host, puerto, credenciales/UUID, SNI, Host, path y transporte.$suffix [${profile.connectionModeLabel}]"
+    }
 
     private fun startSessionTimer() {
         if (timerJob?.isActive == true) return
@@ -201,6 +262,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        connectJob?.cancel()
         stopSessionTimer()
         super.onCleared()
     }
