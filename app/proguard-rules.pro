@@ -34,10 +34,15 @@
     public static ** valueOf(java.lang.String);
 }
 
-# JSch mantiene un registro interno de implementaciones criptográficas por
-# nombre de clase. Preservar esos nombres evita romper la negociación SSH.
+# JSch registra implementaciones criptográficas mediante nombres de clase y
+# Class.forName(). `-keepnames` no es suficiente: R8 puede conservar el nombre
+# pero eliminar por completo una implementación que no ve referenciada.
+# Mantener las implementaciones reflectivas evita ClassNotFoundException como
+# com.jcraft.jsch.jce.Random en APK Release minificados.
+-keep class com.jcraft.jsch.jce.** { *; }
+-keep class com.jcraft.jsch.jcraft.** { *; }
+-keep class com.jcraft.jsch.jgss.** { *; }
 -keepnames class com.jcraft.jsch.**
--keepnames class com.jcraft.jsch.jce.**
 -dontwarn com.jcraft.jsch.**
 
 # Bouncy Castle/implementaciones TLS opcionales.
