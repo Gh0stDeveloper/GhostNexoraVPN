@@ -2,31 +2,31 @@
 
 package com.ghostnexora.vpn.ui.screens.importexport
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,13 +40,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
@@ -62,11 +59,8 @@ import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
-import android.content.ClipboardManager
-import android.content.Context
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.ExperimentalMaterial3Api
 
 @Composable
 fun ImportScreen(
@@ -74,39 +68,36 @@ fun ImportScreen(
     viewModel: ImportExportViewModel = hiltViewModel()
 ) {
     val state by viewModel.importState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val pickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) viewModel.onFilePicked(uri)
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val qrScanner = remember(context) { GmsBarcodeScanning.getClient(context) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::onFilePicked)
     }
 
     LaunchedEffect(state.importSuccess) {
         if (state.importSuccess) {
-            snackbarHostState.showSnackbar("${state.importedCount} perfil(es) importado(s) correctamente")
+            snackbar.showSnackbar("${state.importedCount} perfil(es) importado(s)")
             viewModel.clearImportMessage()
         }
     }
-
     LaunchedEffect(state.error) {
-        state.error?.let { message ->
-            snackbarHostState.showSnackbar(message)
+        state.error?.let {
+            snackbar.showSnackbar(it)
             viewModel.clearImportMessage()
         }
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(snackbar) },
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Importar Perfiles") },
+                title = { Text("Importar configuración") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.FolderOpen, contentDescription = "Volver")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -119,48 +110,44 @@ fun ImportScreen(
                 .background(BackgroundDark)
                 .padding(padding)
                 .padding(Dimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXXL)
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceLG)
         ) {
             item {
                 GhostCard(
-                    backgroundColor = NeonCyan.copy(alpha = 0.14f),
+                    backgroundColor = NeonCyan.copy(alpha = 0.10f),
                     borderColor = NeonCyan,
                     contentPadding = PaddingValues(Dimens.SpaceMD)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(NeonCyan.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.FileDownload, null, tint = NeonCyan, modifier = Modifier.size(Dimens.IconXL))
+                    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                            Icon(Icons.Filled.Lock, null, tint = NeonCyan)
+                            Text("Importación protegida GNX2", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         }
-
                         Text(
-                            text = "Importar Perfiles",
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        )
-                        Text(
-                            text = "Selecciona un archivo JSON o un enlace compatible desde archivo o portapapeles",
-                            style = MaterialTheme.typography.bodyMedium,
+                            "Los archivos .gnx se autentican y descifran con la contraseña de exportación. También puedes escanear QR de VLESS, VMess, Trojan o Hysteria2 y migrar JSON antiguos.",
                             color = TextSecondary,
-                            textAlign = TextAlign.Center
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
 
             item {
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = viewModel::setImportPassword,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Contraseña del archivo .gnx") },
+                    supportingText = { Text("No se almacena. Solo se usa durante el descifrado.") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+            }
+
+            item {
                 GhostButton(
-                    text = if (state.isLoading) "Cargando..." else "Seleccionar Archivo JSON",
-                    onClick = { pickerLauncher.launch(arrayOf("application/json", "text/json", "*/*")) },
+                    text = if (state.isLoading) "Procesando…" else "Seleccionar archivo",
+                    onClick = { picker.launch(arrayOf("application/octet-stream", "application/json", "text/plain", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
                     containerColor = NeonCyan,
@@ -170,22 +157,35 @@ fun ImportScreen(
 
             item {
                 GhostButton(
+                    text = "Escanear código QR",
+                    onClick = {
+                        qrScanner.startScan()
+                            .addOnSuccessListener { barcode ->
+                                val raw = barcode.rawValue.orEmpty().trim()
+                                if (raw.isNotEmpty()) viewModel.onTextProvided(raw, "QR")
+                                else scope.launch { snackbar.showSnackbar("El QR no contiene una configuración legible") }
+                            }
+                            .addOnFailureListener { error ->
+                                scope.launch {
+                                    snackbar.showSnackbar(error.message?.take(120) ?: "No se pudo abrir el escáner QR")
+                                }
+                            }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.isLoading,
+                    containerColor = NeonGreen,
+                    contentColor = TextOnAccent
+                )
+            }
+
+            item {
+                GhostButton(
                     text = "Importar desde portapapeles",
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val rawText = clipboard.primaryClip
-                            ?.getItemAt(0)
-                            ?.coerceToText(context)
-                            ?.toString()
-                            .orEmpty()
-
-                        if (rawText.isBlank()) {
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar("El portapapeles está vacío")
-                            }
-                        } else {
-                            viewModel.onTextProvided(rawText)
-                        }
+                        val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                        if (raw.isBlank()) scope.launch { snackbar.showSnackbar("El portapapeles está vacío") }
+                        else viewModel.onTextProvided(raw)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
@@ -194,31 +194,29 @@ fun ImportScreen(
                 )
             }
 
-            if (state.isLoading) {
+            if (state.passwordRequired && state.selectedUri != null) {
                 item {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = NeonAmber)
+                    GhostButton(
+                        text = "Descifrar de nuevo",
+                        onClick = viewModel::retryEncryptedImport,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = state.password.length >= 10 && !state.isLoading,
+                        containerColor = NeonGreen,
+                        contentColor = TextOnAccent
+                    )
                 }
             }
 
-            if (state.hasFile) {
+            if (state.isLoading) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+
+            if (state.hasFile || state.sourceName.isNotBlank()) {
                 item {
-                    GhostCard(
-                        backgroundColor = SurfaceVariant,
-                        borderColor = BorderNormal,
-                        contentPadding = PaddingValues(Dimens.SpaceMD)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                            Text("Archivo seleccionado", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
-                            Text(state.fileName.ifEmpty { "archivo.json" }, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (state.sourceName.isNotBlank()) {
-                                Text("Origen: ${state.sourceName}", color = TextTertiary, style = MaterialTheme.typography.bodySmall)
-                            }
-                            state.validation?.let { validation ->
-                                Text(
-                                    text = validation.message,
-                                    color = if (validation.isValid) NeonGreen else Color.Red,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                    GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
+                        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
+                            Text(state.fileName.ifBlank { "Contenido importado" }, color = TextPrimary)
+                            Text(state.sourceName, color = TextTertiary, style = MaterialTheme.typography.bodySmall)
+                            state.validation?.let {
+                                Text(it.message, color = if (it.isValid) NeonGreen else NeonAmber, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -226,76 +224,33 @@ fun ImportScreen(
             }
 
             if (state.previewProfiles.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Vista previa (${state.previewProfiles.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary
-                    )
-                }
-
-                items(state.previewProfiles.take(5), key = { it.id }) { profile ->
-                    GhostCard(
-                        backgroundColor = SurfaceVariant,
-                        borderColor = BorderNormal,
-                        contentPadding = PaddingValues(Dimens.SpaceMD)
-                    ) {
+                item { Text("Vista previa (${state.previewProfiles.size})", color = TextPrimary, style = MaterialTheme.typography.titleMedium) }
+                items(state.previewProfiles.take(8), key = { it.id }) { profile ->
+                    GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
                         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-                            Text(profile.name.ifEmpty { "Sin nombre" }, color = TextPrimary)
-                            Text(
-                                text = "${profile.host}:${profile.port} • ${profile.connectionModeLabel}",
-                                color = TextSecondary,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary)
+                            Text("${profile.host}:${profile.port} · ${profile.connectionModeLabel}", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
-
                 item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        TextButton(onClick = { viewModel.confirmImport(merge = false) }, enabled = state.canImport) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { viewModel.confirmImport(false) }, enabled = state.canImport) {
                             Text("Reemplazar", color = NeonAmber)
                         }
-                        TextButton(onClick = { viewModel.confirmImport(merge = true) }, enabled = state.canImport) {
+                        TextButton(onClick = { viewModel.confirmImport(true) }, enabled = state.canImport) {
                             Text("Fusionar", color = NeonCyan)
                         }
                     }
                 }
             }
 
-            if (state.importedCount > 0) {
-                item {
-                    GhostCard(backgroundColor = NeonGreen.copy(alpha = 0.10f), borderColor = NeonGreen) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                            Icon(Icons.Filled.CheckCircle, null, tint = NeonGreen, modifier = Modifier.size(48.dp))
-                            Text("${state.importedCount} perfiles importados", color = NeonGreen)
-                        }
-                    }
-                }
-            }
-
-            if (state.error != null) {
-                item {
-                    GhostCard(backgroundColor = Color.Red.copy(alpha = 0.08f), borderColor = Color.Red) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                            Icon(Icons.Filled.Error, null, tint = Color.Red, modifier = Modifier.size(48.dp))
-                            Text(state.error ?: "Error", color = Color.Red, textAlign = TextAlign.Center)
-                        }
-                    }
-                }
-            }
-
             item {
-                Spacer(modifier = Modifier.height(Dimens.Space3XL))
+                Spacer(Modifier.height(24.dp))
                 Text(
-                    text = "La importación acepta JSON exportado y enlaces vmess/vless/trojan desde el portapapeles.",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Formato recomendado: .gnx cifrado. Los JSON sin cifrar solo se aceptan para migrar configuraciones antiguas.",
                     color = TextTertiary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }

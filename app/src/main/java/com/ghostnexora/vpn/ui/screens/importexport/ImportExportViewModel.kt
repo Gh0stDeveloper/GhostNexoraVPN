@@ -26,7 +26,6 @@ class ImportExportViewModel @Inject constructor(
     private val jsonManager: JsonManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-
     private val _importState = MutableStateFlow(ImportUiState())
     val importState: StateFlow<ImportUiState> = _importState.asStateFlow()
 
@@ -34,48 +33,70 @@ class ImportExportViewModel @Inject constructor(
     val exportState: StateFlow<ExportUiState> = _exportState.asStateFlow()
 
     val allProfiles: StateFlow<List<VpnProfile>> = repository.allProfiles
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setImportPassword(value: String) {
+        _importState.update { it.copy(password = value, error = null) }
+    }
+
+    fun setExportPassword(value: String) {
+        _exportState.update { it.copy(password = value, error = null) }
+    }
+
+    fun setExportPasswordConfirmation(value: String) {
+        _exportState.update { it.copy(passwordConfirmation = value, error = null) }
+    }
 
     fun onFilePicked(uri: Uri) {
         viewModelScope.launch {
-            loadImportResult(
-                fileName = resolveFileName(uri),
-                sourceLabel = "Archivo",
-                loader = { jsonManager.importFromUri(uri) },
-                selectedUri = uri
-            )
+            val password = _importState.value.password.toCharArray()
+            try {
+                loadImportResult(
+                    fileName = resolveFileName(uri),
+                    sourceLabel = "Archivo",
+                    loader = { jsonManager.importFromUri(uri, password.takeIf { it.isNotEmpty() }) },
+                    selectedUri = uri
+                )
+            } finally {
+                password.fill('\u0000')
+            }
         }
+    }
+
+    fun retryEncryptedImport() {
+        val uri = _importState.value.selectedUri ?: return
+        onFilePicked(uri)
     }
 
     fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") {
         viewModelScope.launch {
-            loadImportResult(
-                fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
-                sourceLabel = sourceLabel,
-                loader = { jsonManager.importFromString(rawText) },
-                selectedUri = null
-            )
+            val password = _importState.value.password.toCharArray()
+            try {
+                loadImportResult(
+                    fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
+                    sourceLabel = sourceLabel,
+                    loader = { jsonManager.importFromString(rawText, password.takeIf { it.isNotEmpty() }) },
+                    selectedUri = null
+                )
+            } finally {
+                password.fill('\u0000')
+            }
         }
     }
 
     fun confirmImport(merge: Boolean) {
         val profiles = _importState.value.previewProfiles
         if (profiles.isEmpty()) return
-
         viewModelScope.launch {
             _importState.update { it.copy(isLoading = true) }
-
-            if (!merge) {
-                repository.deleteAllProfiles()
-            }
-
+            if (!merge) repository.deleteAllProfiles()
             repository.saveProfiles(profiles)
-
             _importState.update {
                 it.copy(
                     isLoading = false,
                     importSuccess = true,
-                    importedCount = profiles.size
+                    importedCount = profiles.size,
+                    password = ""
                 )
             }
         }
@@ -96,44 +117,49 @@ class ImportExportViewModel @Inject constructor(
         selectedUri: Uri?
     ) {
         _importState.update { it.copy(isLoading = true, error = null) }
-
         try {
             when (val result = loader()) {
-                is ImportResult.Success -> {
-                    _importState.update {
-                        it.copy(
-                            isLoading = false,
-                            selectedUri = selectedUri,
-                            fileName = fileName,
-                            previewProfiles = result.profiles,
-                            sourceName = result.sourceName.ifBlank { sourceLabel },
-                            validation = ValidationResult(
-                                isValid = true,
-                                message = "Formato válido",
-                                profileCount = result.profiles.size
-                            ),
-                            error = null
-                        )
-                    }
+                is ImportResult.Success -> _importState.update {
+                    it.copy(
+                        isLoading = false,
+                        selectedUri = selectedUri,
+                        fileName = fileName,
+                        previewProfiles = result.profiles,
+                        sourceName = result.sourceName.ifBlank { sourceLabel },
+                        validation = ValidationResult(true, "Configuración válida y descifrada", result.profiles.size),
+                        passwordRequired = false,
+                        error = null
+                    )
                 }
 
-                is ImportResult.Error -> {
-                    _importState.update {
-                        it.copy(
-                            isLoading = false,
-                            selectedUri = selectedUri,
-                            fileName = fileName,
-                            sourceName = sourceLabel,
-                            error = result.message,
-                            previewProfiles = emptyList(),
-                            validation = ValidationResult(false, result.message, 0)
-                        )
-                    }
+                is ImportResult.PasswordRequired -> _importState.update {
+                    it.copy(
+                        isLoading = false,
+                        selectedUri = selectedUri,
+                        fileName = fileName,
+                        sourceName = sourceLabel,
+                        passwordRequired = true,
+                        previewProfiles = emptyList(),
+                        validation = null,
+                        error = result.message
+                    )
+                }
+
+                is ImportResult.Error -> _importState.update {
+                    it.copy(
+                        isLoading = false,
+                        selectedUri = selectedUri,
+                        fileName = fileName,
+                        sourceName = sourceLabel,
+                        error = result.message,
+                        previewProfiles = emptyList(),
+                        validation = ValidationResult(false, result.message, 0)
+                    )
                 }
             }
-        } catch (e: Exception) {
+        } catch (error: Throwable) {
             _importState.update {
-                it.copy(isLoading = false, error = "Error inesperado: ${e.message}")
+                it.copy(isLoading = false, error = "Error inesperado: ${error.message?.take(120).orEmpty()}")
             }
         }
     }
@@ -145,7 +171,7 @@ class ImportExportViewModel @Inject constructor(
     }
 
     fun toggleSelectAll(profiles: List<VpnProfile>) {
-        val allIds = profiles.map { it.id }.toSet()
+        val allIds = profiles.map(VpnProfile::id).toSet()
         val current = _exportState.value.selectedIds
         _exportState.update {
             it.copy(selectedIds = if (current.size == allIds.size) emptySet() else allIds)
@@ -154,52 +180,33 @@ class ImportExportViewModel @Inject constructor(
 
     fun exportSelected(allProfiles: List<VpnProfile>) {
         viewModelScope.launch {
+            val selection = resolveExportSelection(allProfiles)
+            val password = validateExport(selection) ?: return@launch
             _exportState.update { it.copy(isLoading = true, error = null) }
-
-            val toExport = resolveExportSelection(allProfiles)
-            if (toExport.isEmpty()) {
-                _exportState.update { it.copy(isLoading = false, error = "No hay perfiles para exportar") }
-                return@launch
-            }
-
-            val uri = jsonManager.exportToDownloads(toExport)
-            if (uri != null) {
-                _exportState.update {
-                    it.copy(
-                        isLoading = false,
-                        exportSuccess = true,
-                        exportedCount = toExport.size
-                    )
+            try {
+                val uri = jsonManager.exportToDownloads(selection, password)
+                if (uri != null) {
+                    markExportSuccess(selection.size)
+                } else {
+                    _exportState.update { it.copy(isLoading = false, error = "No se pudo guardar el archivo cifrado") }
                 }
-            } else {
-                _exportState.update {
-                    it.copy(isLoading = false, error = "Error al guardar el archivo en Descargas")
-                }
+            } finally {
+                password.fill('\u0000')
             }
         }
     }
 
     fun exportToUri(uri: Uri, allProfiles: List<VpnProfile>) {
         viewModelScope.launch {
+            val selection = resolveExportSelection(allProfiles)
+            val password = validateExport(selection) ?: return@launch
             _exportState.update { it.copy(isLoading = true, error = null) }
-
-            val toExport = resolveExportSelection(allProfiles)
-            if (toExport.isEmpty()) {
-                _exportState.update { it.copy(isLoading = false, error = "No hay perfiles para exportar") }
-                return@launch
-            }
-
-            val ok = jsonManager.exportToUri(uri, toExport)
-            if (ok) {
-                _exportState.update {
-                    it.copy(
-                        isLoading = false,
-                        exportSuccess = true,
-                        exportedCount = toExport.size
-                    )
-                }
-            } else {
-                _exportState.update { it.copy(isLoading = false, error = "No se pudo escribir el archivo") }
+            try {
+                val ok = jsonManager.exportToUri(uri, selection, password)
+                if (ok) markExportSuccess(selection.size)
+                else _exportState.update { it.copy(isLoading = false, error = "No se pudo escribir el archivo cifrado") }
+            } finally {
+                password.fill('\u0000')
             }
         }
     }
@@ -208,25 +215,39 @@ class ImportExportViewModel @Inject constructor(
         _exportState.update { it.copy(exportSuccess = false, error = null) }
     }
 
-    private fun resolveExportSelection(allProfiles: List<VpnProfile>): List<VpnProfile> {
-        return if (_exportState.value.selectedIds.isEmpty()) {
-            allProfiles
-        } else {
-            allProfiles.filter { it.id in _exportState.value.selectedIds }
+    private fun validateExport(selection: List<VpnProfile>): CharArray? {
+        val state = _exportState.value
+        when {
+            selection.isEmpty() -> _exportState.update { it.copy(error = "No hay perfiles para exportar") }
+            state.password.length < 10 -> _exportState.update { it.copy(error = "La contraseña debe tener al menos 10 caracteres") }
+            state.password != state.passwordConfirmation -> _exportState.update { it.copy(error = "Las contraseñas no coinciden") }
+            else -> return state.password.toCharArray()
+        }
+        return null
+    }
+
+    private fun markExportSuccess(count: Int) {
+        _exportState.update {
+            it.copy(
+                isLoading = false,
+                exportSuccess = true,
+                exportedCount = count,
+                password = "",
+                passwordConfirmation = ""
+            )
         }
     }
 
-    private fun resolveFileName(uri: Uri): String {
-        return try {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                cursor.moveToFirst()
-                cursor.getString(nameIndex)
-            } ?: uri.lastPathSegment ?: "archivo.json"
-        } catch (e: Exception) {
-            "archivo.json"
-        }
-    }
+    private fun resolveExportSelection(allProfiles: List<VpnProfile>): List<VpnProfile> =
+        if (_exportState.value.selectedIds.isEmpty()) allProfiles
+        else allProfiles.filter { it.id in _exportState.value.selectedIds }
+
+    private fun resolveFileName(uri: Uri): String = runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else null
+        } ?: uri.lastPathSegment ?: "configuracion.gnx"
+    }.getOrDefault("configuracion.gnx")
 }
 
 data class ImportUiState(
@@ -236,6 +257,8 @@ data class ImportUiState(
     val sourceName: String = "",
     val previewProfiles: List<VpnProfile> = emptyList(),
     val validation: ValidationResult? = null,
+    val password: String = "",
+    val passwordRequired: Boolean = false,
     val importSuccess: Boolean = false,
     val importedCount: Int = 0,
     val error: String? = null
@@ -247,9 +270,12 @@ data class ImportUiState(
 data class ExportUiState(
     val isLoading: Boolean = false,
     val selectedIds: Set<String> = emptySet(),
+    val password: String = "",
+    val passwordConfirmation: String = "",
     val exportSuccess: Boolean = false,
     val exportedCount: Int = 0,
     val error: String? = null
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
+    val passwordValid: Boolean get() = password.length >= 10 && password == passwordConfirmation
 }

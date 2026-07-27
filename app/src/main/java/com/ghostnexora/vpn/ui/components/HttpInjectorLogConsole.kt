@@ -1,9 +1,8 @@
 package com.ghostnexora.vpn.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,13 +11,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,161 +33,125 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
-import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
-import com.ghostnexora.vpn.ui.theme.GhostCard
 import com.ghostnexora.vpn.ui.theme.NeonAmber
 import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.NeonGreen
 import com.ghostnexora.vpn.ui.theme.NeonRed
-import com.ghostnexora.vpn.ui.theme.SurfaceVariant
-import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.httpInjectorLine
 
-/**
- * Consola interactiva estilo HTTP Injector.
- *
- * - No trunca el contenido de la línea.
- * - Permite desplazar hacia arriba/abajo libremente.
- * - Mantiene auto-scroll solo mientras el usuario está en el borde inferior.
- * - Permite seleccionar una entrada para verla con más calma.
- */
+/** Contenido puro de consola; el dashboard aporta el único contenedor visual. */
 @Composable
 fun HttpInjectorLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
-    maxHeight: Int = 360
+    maxHeight: Int = 460
 ) {
     val listState = rememberLazyListState()
-    val orderedLogs = remember(logs) { logs.sortedBy { it.timestamp } }
+    var filter by remember { mutableStateOf(LogFilter.ALL) }
     var selectedLogId by remember { mutableStateOf<Long?>(null) }
     var followTail by remember { mutableStateOf(true) }
-
-    val selectedEntry = remember(orderedLogs, selectedLogId) {
-        orderedLogs.firstOrNull { it.id == selectedLogId }
+    val orderedLogs = remember(logs, filter) {
+        logs.sortedBy { it.timestamp }.filter(filter::matches)
     }
-
     val isAtBottom by remember {
         derivedStateOf {
-            if (orderedLogs.isEmpty()) return@derivedStateOf true
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisible >= orderedLogs.lastIndex - 1
+            if (orderedLogs.isEmpty()) true
+            else (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) >= orderedLogs.lastIndex - 1
         }
     }
 
     LaunchedEffect(isAtBottom) {
         if (isAtBottom) followTail = true
     }
-
-    LaunchedEffect(orderedLogs.size, followTail) {
-        if (followTail && orderedLogs.isNotEmpty()) {
-            listState.animateScrollToItem(orderedLogs.lastIndex)
-        }
+    LaunchedEffect(orderedLogs.size, filter, followTail) {
+        if (followTail && orderedLogs.isNotEmpty()) listState.scrollToItem(orderedLogs.lastIndex)
     }
 
-    GhostCard(
-        modifier = modifier,
-        backgroundColor = SurfaceVariant,
-        borderColor = BorderSubtle,
-        contentPadding = PaddingValues(Dimens.SpaceMD)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-                ) {
-                    Icon(Icons.Filled.Terminal, contentDescription = null, tint = NeonCyan)
-                    Text(
-                        text = "Registro de conexión",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary
-                    )
-                }
-
-                IconButton(onClick = {
-                    selectedLogId = orderedLogs.lastOrNull()?.id
-                    followTail = true
-                }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Ir al final", tint = NeonCyan)
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp, max = maxHeight.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF0B1220))
-                    .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)
-            ) {
-                if (orderedLogs.isEmpty()) {
-                    Text(
-                        text = "Sin eventos todavía",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                        color = TextTertiary
-                    )
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        itemsIndexed(orderedLogs, key = { _, entry -> entry.id }) { index, entry ->
-                            HttpLogLine(
-                                entry = entry,
-                                isLast = index == orderedLogs.lastIndex,
-                                isSelected = entry.id == selectedLogId,
-                                onClick = {
-                                    selectedLogId = if (selectedLogId == entry.id) null else entry.id
-                                }
-                            )
-                        }
-                        item { Spacer(modifier = Modifier.height(4.dp)) }
-                    }
-                }
-            }
-
-            if (selectedEntry != null) {
-                SelectedLogPreview(
-                    entry = selectedEntry,
-                    onDismiss = { selectedLogId = null }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
+        ) {
+            LogFilter.entries.forEach { option ->
+                FilterChip(
+                    selected = filter == option,
+                    onClick = {
+                        filter = option
+                        followTail = true
+                        selectedLogId = null
+                    },
+                    label = { Text(option.label) }
                 )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = if (orderedLogs.isEmpty()) "Sin eventos" else "${orderedLogs.size} eventos · ${if (followTail) "siguiendo" else "pausado"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary
+            )
+            IconButton(
+                onClick = {
+                    followTail = true
+                    selectedLogId = null
+                },
+                enabled = orderedLogs.isNotEmpty()
+            ) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Ir al final", tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary)
+            }
+        }
+
+        if (orderedLogs.isEmpty()) {
+            Text(
+                "No hay eventos para este filtro.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = TextTertiary,
+                modifier = Modifier.padding(vertical = Dimens.SpaceLG)
+            )
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = maxHeight.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                contentPadding = PaddingValues(bottom = Dimens.SpaceSM)
+            ) {
+                items(orderedLogs, key = { it.id }) { entry ->
+                    HttpLogLine(
+                        entry = entry,
+                        isSelected = entry.id == selectedLogId,
+                        onClick = {
+                            selectedLogId = if (selectedLogId == entry.id) null else entry.id
+                            followTail = false
+                        }
+                    )
+                }
+                item { Spacer(Modifier.height(2.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun HttpLogLine(
-    entry: LogEntry,
-    isLast: Boolean,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val color = when {
-        entry.level == LogLevel.ERROR -> NeonRed
-        entry.level == LogLevel.WARNING -> NeonAmber
-        entry.level == LogLevel.SUCCESS -> NeonGreen
-        entry.message.contains("[START]", ignoreCase = true) -> NeonCyan
-        entry.message.contains("[STOP]", ignoreCase = true) -> NeonAmber
-        entry.message.contains("Conectado", ignoreCase = true) -> NeonGreen
-        entry.message.contains("Desconectado", ignoreCase = true) -> TextTertiary
-        entry.message.contains("Error", ignoreCase = true) -> NeonRed
+private fun HttpLogLine(entry: LogEntry, isSelected: Boolean, onClick: () -> Unit) {
+    val color = when (entry.level) {
+        LogLevel.ERROR -> NeonRed
+        LogLevel.WARNING -> NeonAmber
+        LogLevel.SUCCESS -> NeonGreen
         else -> TextSecondary
     }
-
     Text(
         text = entry.httpInjectorLine(),
         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -196,47 +160,30 @@ private fun HttpLogLine(
         overflow = TextOverflow.Clip,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 2.dp, horizontal = 4.dp)
+            .padding(vertical = 5.dp, horizontal = 6.dp)
     )
 }
 
-@Composable
-private fun SelectedLogPreview(
-    entry: LogEntry,
-    onDismiss: () -> Unit
-) {
-    GhostCard(
-        backgroundColor = Color(0xFF0B1220),
-        borderColor = NeonCyan.copy(alpha = 0.5f),
-        contentPadding = PaddingValues(Dimens.SpaceMD)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Detalle del registro",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "Cerrar",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NeonCyan,
-                    modifier = Modifier.clickable(onClick = onDismiss)
-                )
-            }
+private enum class LogFilter(val label: String) {
+    ALL("Todos"),
+    NETWORK("Red"),
+    SSH("SSH"),
+    TLS("TLS"),
+    CORE("Core"),
+    ERROR("Error");
 
-            Text(
-                text = entry.httpInjectorLine(),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = TextSecondary,
-                softWrap = true
-            )
+    fun matches(entry: LogEntry): Boolean {
+        val tag = entry.tag.uppercase()
+        val message = entry.message.uppercase()
+        return when (this) {
+            ALL -> true
+            NETWORK -> tag == "NETWORK" || message.contains("RED") || message.contains("TUN")
+            SSH -> tag == "SSH" || message.contains("SSH")
+            TLS -> tag == "TLS" || message.contains("TLS") || message.contains("CERTIFIC")
+            CORE -> tag == "CORE" || message.contains("XRAY") || message.contains("CORE")
+            ERROR -> entry.level == LogLevel.ERROR || entry.level == LogLevel.WARNING
         }
     }
 }

@@ -1,89 +1,170 @@
 package com.ghostnexora.vpn.service
 
 import android.app.Notification
-import android.content.Context
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
-import android.os.Build
+import android.net.NetworkRequest
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.os.Process
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.GhostNexoraApp
 import com.ghostnexora.vpn.R
 import com.ghostnexora.vpn.data.model.ConnectionMode
-import com.ghostnexora.vpn.tunnel.TunnelManager
-import com.jcraft.jsch.Session
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.tunnel.TunnelManager
+import com.ghostnexora.vpn.tunnel.TunnelRuntime
 import com.ghostnexora.vpn.ui.MainActivity
 import com.ghostnexora.vpn.util.PermissionHelper
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import java.io.BufferedReader
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStreamReader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.nio.ByteBuffer
-import java.nio.channels.DatagramChannel
-import javax.net.ssl.SNIHostName
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.SSLParameters
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class GhostVpnService : VpnService() {
-
     @Inject
     lateinit var repository: ProfileRepository
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
+    private val connectionMutex = Mutex()
     private var tunInterface: ParcelFileDescriptor? = null
-    private var tunnelJob: Job? = null
-    private var udpChannel: DatagramChannel? = null
-    private var controlSocket: Socket? = null
-    private var sshSession: Session? = null
+    private var tunnelRuntime: TunnelRuntime? = null
     private var activeProfile: VpnProfile? = null
-    private val tunnelManager = TunnelManager()
+    private var reconnectJob: Job? = null
+    private var healthJob: Job? = null
+    private var statsJob: Job? = null
+    private var intentionalDisconnect = false
+    private var sessionConnectedSince = 0L
+    private var reconnectCount = 0
+    private var baselineRx = 0L
+    private var baselineTx = 0L
+    private var lastRx = 0L
+    private var lastTx = 0L
+
+    @Volatile
+    private var physicalNetworkAvailable = false
+
+    @Volatile
+    private var physicalNetworkType = "Sin red"
+
+    @Volatile
+    private var underlyingNetwork: Network? = null
+
+    private val connectivityManager by lazy {
+        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+
+    private val tunnelManager by lazy {
+        TunnelManager(applicationContext) { status ->
+            serviceScope.launch { logSafe(LogLevel.DEBUG, status, activeProfile?.id, tag = "CORE") }
+        }
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            registerUnderlyingNetwork(network)
+            serviceScope.launch {
+                logSafe(LogLevel.INFO, "Red física disponible: $physicalNetworkType", activeProfile?.id, "NETWORK")
+                val state = connectionState.value
+                if (state is VpnConnectionState.Reconnecting && reconnectJob?.isActive != true) {
+                    triggerReconnect("La red física volvió a estar disponible")
+                }
+            }
+        }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) return
+            physicalNetworkAvailable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            physicalNetworkType = networkType(capabilities)
+            underlyingNetwork = network
+            runCatching { setUnderlyingNetworks(arrayOf(network)) }
+        }
+
+        override fun onLost(network: Network) {
+            serviceScope.launch {
+                delay(300L)
+                val replacement = findUsablePhysicalNetwork(excluding = network)
+                if (replacement != null) {
+                    registerUnderlyingNetwork(replacement)
+                    logSafe(LogLevel.INFO, "Cambio de red física: $physicalNetworkType", activeProfile?.id, "NETWORK")
+                    return@launch
+                }
+
+                underlyingNetwork = null
+                physicalNetworkAvailable = false
+                physicalNetworkType = "Sin red"
+                runCatching { setUnderlyingNetworks(null) }
+                if (activeProfile != null && tunnelRuntime != null) {
+                    logSafe(
+                        LogLevel.WARNING,
+                        "Red física perdida; activando protección de reconexión",
+                        activeProfile?.id,
+                        "NETWORK"
+                    )
+                    triggerReconnect("Red física perdida")
+                }
+            }
+        }
+    }
 
     private val binder = GhostVpnBinder()
 
-    // ══════════════════════════════════════════════════════════════════════
-    // COMPANION OBJECT — único, con todas las constantes
-    // ══════════════════════════════════════════════════════════════════════
-
     companion object {
-        const val ACTION_CONNECT     = "com.ghostnexora.vpn.CONNECT"
-        const val ACTION_DISCONNECT  = "com.ghostnexora.vpn.DISCONNECT"
-        const val EXTRA_PROFILE_ID   = "extra_profile_id"
-        const val MAX_PACKET_SIZE    = 32767
+        const val ACTION_CONNECT = "com.ghostnexora.vpn.CONNECT"
+        const val ACTION_DISCONNECT = "com.ghostnexora.vpn.DISCONNECT"
+        const val EXTRA_PROFILE_ID = "extra_profile_id"
+        const val EXTRA_PREFLIGHT_AT = "extra_preflight_at"
 
-        private val _connectionState = MutableStateFlow<VpnConnectionState>(
-            VpnConnectionState.Disconnected
-        )
+        private const val PREFLIGHT_VALIDITY_MS = 90_000L
+        private val RECONNECT_DELAYS = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
+
+        private val _connectionState = MutableStateFlow<VpnConnectionState>(VpnConnectionState.Disconnected)
         val connectionState: StateFlow<VpnConnectionState> = _connectionState.asStateFlow()
+
+        private val _trafficStats = MutableStateFlow(VpnTrafficStats())
+        val trafficStats: StateFlow<VpnTrafficStats> = _trafficStats.asStateFlow()
 
         fun updateState(state: VpnConnectionState) {
             _connectionState.value = state
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // CICLO DE VIDA
-    // ══════════════════════════════════════════════════════════════════════
+    override fun onCreate() {
+        super.onCreate()
+        val initialNetwork = findUsablePhysicalNetwork()
+        if (initialNetwork != null) registerUnderlyingNetwork(initialNetwork)
+        registerPhysicalNetworkCallback()
+    }
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -91,549 +172,584 @@ class GhostVpnService : VpnService() {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
-                if (profileId != null) {
-                    serviceScope.launch { handleConnect(profileId) }
-                } else {
+                val preflightAt = intent.getLongExtra(EXTRA_PREFLIGHT_AT, 0L)
+                if (profileId.isNullOrBlank()) {
                     serviceScope.launch {
-                        logSafe(LogLevel.ERROR, "No se especificó perfil para conectar")
+                        logSafe(LogLevel.ERROR, "No se especificó un perfil", tag = "VPN")
                         updateState(VpnConnectionState.Error("Sin perfil especificado"))
                         stopSelf()
                     }
+                } else {
+                    serviceScope.launch { handleConnect(profileId, preflightAt) }
                 }
             }
-            ACTION_DISCONNECT -> {
-                serviceScope.launch { handleDisconnect() }
-            }
-            else -> {
-                serviceScope.launch { handleSystemRestart() }
-            }
+
+            ACTION_DISCONNECT -> serviceScope.launch { handleDisconnect() }
+            else -> serviceScope.launch { handleSystemRestart() }
         }
         return START_STICKY
     }
 
     override fun onRevoke() {
         serviceScope.launch {
-            logSafe(LogLevel.WARNING, "Permiso VPN revocado por el sistema")
+            logSafe(LogLevel.WARNING, "Permiso VPN revocado por Android", activeProfile?.id, "VPN")
             handleDisconnect()
         }
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.launch { handleDisconnect() }
+        intentionalDisconnect = true
+        reconnectJob?.cancel()
+        healthJob?.cancel()
+        statsJob?.cancel()
+        cleanupTunnel(closeTun = true)
+        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        runCatching { setUnderlyingNetworks(null) }
         serviceScope.cancel()
+        super.onDestroy()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // CONEXIÓN
-    // ══════════════════════════════════════════════════════════════════════
+    private suspend fun handleConnect(profileId: String, preflightAt: Long = 0L) = connectionMutex.withLock {
+        val profile = repository.getProfileById(profileId)
+        if (profile == null) {
+            updateState(VpnConnectionState.Error("Perfil no encontrado"))
+            logSafe(LogLevel.ERROR, "Perfil no encontrado", tag = "VPN")
+            return@withLock
+        }
 
-    private suspend fun handleConnect(profileId: String) {
+        intentionalDisconnect = false
+        reconnectJob?.cancel()
+        healthJob?.cancel()
+        statsJob?.cancel()
+        cleanupTunnel(closeTun = true)
+        activeProfile = profile
+        reconnectCount = 0
+        sessionConnectedSince = System.currentTimeMillis()
+        updateState(VpnConnectionState.Connecting(profile.name))
+        startForeground(
+            GhostNexoraApp.NOTIF_ID_VPN,
+            buildNotification(VpnConnectionState.Connecting(profile.name))
+        )
+
         try {
-            val profile = repository.getProfileById(profileId)
-                ?: run {
-                    updateState(VpnConnectionState.Error("Perfil no encontrado"))
-                    logSafe(LogLevel.ERROR, "Perfil $profileId no encontrado")
-                    return
-                }
-
-            activeProfile = profile
-            logSafe(LogLevel.INFO, "[START] Servicio Solicitado", profile.id)
-            logSafe(LogLevel.INFO, "Tipo de túnel ${profile.connectionModeLabel}", profile.id)
+            validateProfile(profile)
+            ensurePhysicalNetwork()
+            logSafe(LogLevel.INFO, "Iniciando ${profile.connectionModeLabel}", profile.id, "VPN")
             logConnectionSnapshot(profile)
-            updateState(VpnConnectionState.Connecting(profile.name))
-            startForeground(
-                GhostNexoraApp.NOTIF_ID_VPN,
-                buildNotification(VpnConnectionState.Connecting(profile.name))
-            )
-            logSafe(LogLevel.INFO, "Iniciar servicio de túnel", profile.id)
-            logSafe(LogLevel.INFO, "Iniciando conexión: ${profile.name}", profile.id)
-            logSafe(LogLevel.DEBUG, "Modo seleccionado: ${profile.connectionModeLabel}", profile.id)
 
-            if (!profile.selectedMode.supported) {
-                val message = "El método ${profile.connectionModeLabel} todavía no está implementado"
-                updateState(VpnConnectionState.Error(message))
-                logSafe(LogLevel.ERROR, message, profile.id)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return
+            val preflightAge = SystemClock.elapsedRealtime() - preflightAt
+            val hasFreshPreflight = preflightAt > 0L && preflightAge in 0L..PREFLIGHT_VALIDITY_MS
+            if (hasFreshPreflight) {
+                logSafe(LogLevel.INFO, "Validación previa vigente; preparando TUN", profile.id, "NETWORK")
+            } else {
+                logSafe(
+                    LogLevel.INFO,
+                    "Comprobando acceso a Internet del servidor antes de crear el TUN",
+                    profile.id,
+                    "NETWORK"
+                )
+                val preflight = tunnelManager.verify(profile)
+                logSafe(
+                    LogLevel.SUCCESS,
+                    "Servidor validado antes del TUN · ${preflight.latencyMs} ms",
+                    profile.id,
+                    "NETWORK"
+                )
             }
 
-            val session = establishControlConnection(profile)
-            sshSession = session
-            controlSocket = null
+            val tun = buildTunInterface(profile) ?: error("Android no pudo establecer la interfaz VPN")
+            tunInterface = tun
+            underlyingNetwork?.let { network -> runCatching { setUnderlyingNetworks(arrayOf(network)) } }
+            logSafe(LogLevel.INFO, "TUN activo · IPv4/IPv6 · rutas completas", profile.id, "NETWORK")
 
-            tunInterface?.close()
-            tunInterface = buildTunInterface(profile) ?: throw IllegalStateException("No se pudo crear la interfaz VPN")
-            logSafe(LogLevel.INFO, "Interfaz VPN establecida", profile.id)
-
+            tunnelRuntime = tunnelManager.start(profile, tun.fd)
+            logTransportReady(profile)
             repository.markLastUsed(profile.id)
 
-            val connectedState = VpnConnectionState.Connected(
-                profileName    = profile.name,
-                serverIp       = profile.host,
-                connectedSince = System.currentTimeMillis()
+            val connected = connectedState(profile)
+            updateState(connected)
+            updateNotification(connected)
+            logSafe(
+                LogLevel.SUCCESS,
+                "Conexión VPN verificada · Internet disponible y tráfico enrutado",
+                profile.id,
+                "VPN"
             )
-            updateState(connectedState)
-            updateNotification(connectedState)
-            logSafe(LogLevel.SUCCESS, "Conectado", profile.id)
-            logSafe(LogLevel.SUCCESS, "Sesión SSH establecida: ${profile.host}:${profile.port}", profile.id)
-            logSafe(LogLevel.INFO, "Modo activo: ${profile.connectionModeLabel}", profile.id)
-            logSafe(LogLevel.INFO, "Iniciando Inyección con Servicio VPN", profile.id)
-            if (profile.selectedMode.requiresPayload) {
-                logSafe(LogLevel.WARNING, "El modo con payload aún queda pendiente de un core de datos", profile.id)
-            }
-
+            resetTrafficBaseline(profile)
+            startStatsTicker(profile)
+            startHealthMonitor(profile)
             maybeStartFloatingWindow()
-
-        } catch (e: Exception) {
-            val msg = friendlyConnectionError(e, activeProfile)
-            updateState(VpnConnectionState.Error(msg))
-            logSafe(LogLevel.ERROR, "Error de conexión: $msg", activeProfile?.id)
-            logSafe(LogLevel.INFO, "Tunnel core stopped", activeProfile?.id)
-            updateNotification(VpnConnectionState.Error(msg))
+        } catch (error: Throwable) {
+            val message = friendlyConnectionError(error, profile)
+            cleanupTunnel(closeTun = true)
+            activeProfile = null
+            updateState(VpnConnectionState.Error(message, profile.name))
+            updateNotification(VpnConnectionState.Error(message, profile.name))
+            logSafe(LogLevel.ERROR, message, profile.id, "VPN")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 
-    private suspend fun handleDisconnect() {
-        try {
-            logSafe(LogLevel.INFO, "[STOP] Servicio Solicitado", activeProfile?.id)
-            logSafe(LogLevel.INFO, "Detener servicio de Injecion VPN", activeProfile?.id)
-            logSafe(LogLevel.INFO, "Deteniendo... SSH", activeProfile?.id)
-            updateState(VpnConnectionState.Disconnecting)
+    private suspend fun handleDisconnect() = connectionMutex.withLock {
+        intentionalDisconnect = true
+        reconnectJob?.cancel()
+        healthJob?.cancel()
+        statsJob?.cancel()
+        val profileId = activeProfile?.id
 
-            tunnelJob?.cancelAndJoin()
-            tunnelJob = null
+        updateState(VpnConnectionState.Disconnecting)
+        updateNotification(VpnConnectionState.Disconnecting)
+        logSafe(LogLevel.INFO, "Cerrando túnel y sesión de transporte", profileId, "VPN")
 
-            udpChannel?.close()
-            udpChannel = null
-
-            runCatching { controlSocket?.close() }
-            controlSocket = null
-            runCatching { tunnelManager.disconnect(sshSession) }
-            sshSession = null
-
-            tunInterface?.close()
-            tunInterface = null
-
-            activeProfile = null
-            updateState(VpnConnectionState.Disconnected)
-            logSafe(LogLevel.INFO, "Tunnel core stopped")
-            logSafe(LogLevel.INFO, "Cerrando interface, destruyendo interface VPN")
-            logSafe(LogLevel.INFO, "VPN thread stopped")
-            logSafe(LogLevel.INFO, "[VPN] Desconectado")
-
-            stopService(Intent(this, FloatingWindowService::class.java))
-
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-
-        } catch (e: Exception) {
-            logSafe(LogLevel.ERROR, "Error al desconectar: ${e.message}")
-            updateState(VpnConnectionState.Disconnected)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
+        cleanupTunnel(closeTun = true)
+        stopService(Intent(this, FloatingWindowService::class.java))
+        activeProfile = null
+        sessionConnectedSince = 0L
+        _trafficStats.value = VpnTrafficStats()
+        updateState(VpnConnectionState.Disconnected)
+        logSafe(LogLevel.SUCCESS, "VPN desconectada", profileId, "VPN")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private suspend fun handleSystemRestart() {
-        val profileId      = repository.activeProfileId.first()
+        val profileId = repository.activeProfileId.first()
         val shouldReconnect = repository.autoReconnect.first()
-        if (shouldReconnect && profileId.isNotEmpty()) {
-            logSafe(LogLevel.INFO, "Reconectando tras reinicio del sistema")
-            handleConnect(profileId)
+        if (shouldReconnect && profileId.isNotBlank()) {
+            logSafe(LogLevel.INFO, "Restaurando VPN después de reinicio del servicio", tag = "VPN")
+            handleConnect(profileId, preflightAt = 0L)
         } else {
             stopSelf()
         }
     }
 
-    private suspend fun establishControlConnection(profile: VpnProfile): Session {
-        val mode = profile.selectedMode
-        val endpointHost = profile.host.trim()
-        val endpointPort = profile.port
-
-        if (mode.requiresPayload && profile.payload.isNotBlank()) {
-            logSafe(
-                LogLevel.WARNING,
-                "El modo ${mode.label} requiere un core de payload aparte; por ahora se usará solo la sesión SSH/TLS",
-                profile.id
-            )
-        }
-
-        val client = tunnelManager.connect(profile)
-        logSafe(LogLevel.DEBUG, "SSH auth OK → $endpointHost:$endpointPort", profile.id)
-        if (mode.usesTls) {
-            logSafe(LogLevel.DEBUG, "SNI aplicado: ${profile.sni.ifBlank { endpointHost }}", profile.id)
-        }
-        if (mode.requiresProxy && profile.proxy.host.isNotBlank()) {
-            logSafe(LogLevel.DEBUG, "Proxy aplicado: ${profile.proxy.host}:${profile.proxy.port}", profile.id)
-        }
-        return client
-    }
-
-    private fun connectDirect(host: String, port: Int): Socket {
-        val socket = Socket()
-        socket.tcpNoDelay = true
-        socket.connect(InetSocketAddress(host, port), 10_000)
-        return socket
-    }
-
-    private fun connectThroughProxy(profile: VpnProfile, targetHost: String, targetPort: Int): Socket {
-        val proxyHost = profile.proxy.host.trim()
-        val proxyPort = profile.proxy.port.takeIf { it in 1..65535 } ?: 8080
-        val proxyType = profile.proxy.type.trim().lowercase()
-        val socket = connectDirect(proxyHost, proxyPort)
-
-        when (proxyType) {
-            "socks5" -> performSocks5Handshake(socket, targetHost, targetPort)
-            else -> performHttpConnectHandshake(socket, targetHost, targetPort)
-        }
-
-        return socket
-    }
-
-    private fun performHttpConnectHandshake(socket: Socket, host: String, port: Int) {
-        val request = buildString {
-            append("CONNECT ")
-            append(host)
-            append(":")
-            append(port)
-            append(" HTTP/1.1\r\n")
-            append("Host: ")
-            append(host)
-            append(":")
-            append(port)
-            append("\r\n")
-            append("Proxy-Connection: Keep-Alive\r\n\r\n")
-        }
-        socket.getOutputStream().write(request.toByteArray())
-        socket.getOutputStream().flush()
-
-        val response = BufferedReader(InputStreamReader(socket.getInputStream())).readLine() ?: ""
-        if (!response.contains("200")) {
-            throw IllegalStateException("HTTP proxy rechazó la conexión: $response")
+    private fun triggerReconnect(reason: String) {
+        if (intentionalDisconnect || activeProfile == null || tunInterface == null) return
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = serviceScope.launch {
+            try {
+                reconnectLoop(reason)
+            } finally {
+                reconnectJob = null
+            }
         }
     }
 
-    private fun performSocks5Handshake(socket: Socket, host: String, port: Int) {
-        val out = socket.getOutputStream()
-        val input = socket.getInputStream()
+    private suspend fun reconnectLoop(reason: String) {
+        val profile = activeProfile ?: return
+        healthJob?.cancel()
 
-        out.write(byteArrayOf(0x05, 0x01, 0x00))
-        out.flush()
-        val methodResponse = ByteArray(2)
-        input.read(methodResponse)
-
-        val hostBytes = host.toByteArray()
-        val request = ByteArray(7 + hostBytes.size)
-        request[0] = 0x05
-        request[1] = 0x01
-        request[2] = 0x00
-        request[3] = 0x03
-        request[4] = hostBytes.size.toByte()
-        hostBytes.copyInto(request, destinationOffset = 5)
-        val portIndex = 5 + hostBytes.size
-        request[portIndex] = ((port shr 8) and 0xFF).toByte()
-        request[portIndex + 1] = (port and 0xFF).toByte()
-        out.write(request)
-        out.flush()
-
-        val response = ByteArray(10)
-        input.read(response)
-        if (response[1].toInt() != 0x00) {
-            throw IllegalStateException("SOCKS5 rechazó la conexión")
+        connectionMutex.withLock {
+            tunnelManager.stop(tunnelRuntime)
+            tunnelRuntime = null
         }
-    }
 
-    private fun wrapWithTls(socket: Socket, sniHost: String, targetPort: Int): SSLSocket {
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, null, null)
-        val factory = sslContext.socketFactory as SSLSocketFactory
-        val sslSocket = factory.createSocket(socket, sniHost, targetPort, true) as SSLSocket
-        sslSocket.useClientMode = true
-        val params = sslSocket.sslParameters
-        params.serverNames = listOf(SNIHostName(sniHost))
-        sslSocket.sslParameters = params
-        sslSocket.startHandshake()
-        return sslSocket
-    }
+        val autoReconnect = repository.autoReconnect.first()
+        val killSwitch = repository.killSwitch.first()
 
-    private suspend fun maybeStartFloatingWindow() {
-        val overlayAllowed = PermissionHelper.hasOverlayPermission(this)
-        val floatingEnabled = repository.floatingWindow.first()
-        if (!floatingEnabled || !overlayAllowed) {
+        if (!autoReconnect) {
+            if (killSwitch) {
+                val message = "Conexión perdida. Kill Switch mantiene el tráfico bloqueado."
+                updateState(VpnConnectionState.Error(message, profile.name))
+                updateNotification(VpnConnectionState.Error(message, profile.name))
+                logSafe(LogLevel.WARNING, "$reason · $message", profile.id, "NETWORK")
+            } else {
+                cleanupTunnel(closeTun = true)
+                updateState(VpnConnectionState.Error("Conexión perdida", profile.name))
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
             return
         }
 
-        val intent = Intent(this, FloatingWindowService::class.java)
-        startService(intent)
-    }
+        logSafe(LogLevel.WARNING, "$reason · iniciando reconexión protegida", profile.id, "NETWORK")
+        var attempt = 0
+        while (serviceScope.isActive && !intentionalDisconnect && tunInterface != null) {
+            val waitMs = RECONNECT_DELAYS[attempt.coerceAtMost(RECONNECT_DELAYS.lastIndex)]
+            val state = VpnConnectionState.Reconnecting(profile.name, attempt + 1, waitMs)
+            updateState(state)
+            updateNotification(state)
 
-    // ══════════════════════════════════════════════════════════════════════
-    // INTERFAZ TUN
-    // ══════════════════════════════════════════════════════════════════════
-
-    private fun buildTunInterface(profile: VpnProfile): ParcelFileDescriptor? {
-        return try {
-            Builder()
-                .setSession(profile.name)
-                .addAddress("10.0.0.2", 32)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("1.0.0.1")
-                .setMtu(1500)
-                .setBlocking(true)
-                .establish()
-        } catch (e: Exception) {
-            serviceScope.launch {
-                logSafe(LogLevel.ERROR, "Error creando TUN: ${e.message}")
+            if (!physicalNetworkAvailable) {
+                delay(1_000L)
+                findUsablePhysicalNetwork()?.let(::registerUnderlyingNetwork)
+                continue
             }
-            null
-        }
-    }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // TÚNEL UDP
-    // ══════════════════════════════════════════════════════════════════════
+            delay(waitMs)
+            if (intentionalDisconnect || tunInterface == null) return
 
-    private fun connectTunnel(profile: VpnProfile) {
-        udpChannel = DatagramChannel.open().also { channel ->
-            protect(channel.socket())
-            channel.configureBlocking(false)
-            channel.connect(InetSocketAddress(profile.host, profile.port))
-        }
-        serviceScope.launch {
-            logSafe(LogLevel.DEBUG, "Canal UDP abierto → ${profile.host}:${profile.port}")
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // BUCLE DE PAQUETES
-    // ══════════════════════════════════════════════════════════════════════
-
-    private fun startPacketForwarding(tun: ParcelFileDescriptor) {
-        tunnelJob = serviceScope.launch(Dispatchers.IO) {
-            val inputStream  = FileInputStream(tun.fileDescriptor)
-            val outputStream = FileOutputStream(tun.fileDescriptor)
-            val buffer       = ByteBuffer.allocate(MAX_PACKET_SIZE)
-            val packet       = ByteArray(MAX_PACKET_SIZE)
-
-            logSafe(LogLevel.DEBUG, "Bucle de reenvío de paquetes iniciado")
-
-            while (isActive) {
-                try {
-                    val bytesRead = inputStream.read(packet)
-                    if (bytesRead > 0) {
-                        buffer.clear()
-                        buffer.put(packet, 0, bytesRead)
-                        buffer.flip()
-                        udpChannel?.write(buffer)
-                    }
-
-                    buffer.clear()
-                    val bytesFromServer = udpChannel?.read(buffer) ?: 0
-                    if (bytesFromServer > 0) {
-                        outputStream.write(buffer.array(), 0, bytesFromServer)
-                    }
-
-                    delay(1L)
-
-                } catch (e: Exception) {
-                    if (isActive) {
-                        logSafe(LogLevel.WARNING, "Error en bucle de paquetes: ${e.message}")
-                        delay(500L)
-                    }
+            val result = runCatching {
+                connectionMutex.withLock {
+                    tunnelManager.stop(tunnelRuntime)
+                    tunnelRuntime = null
+                    val tun = tunInterface ?: error("TUN no disponible durante reconexión")
+                    tunnelRuntime = tunnelManager.start(profile, tun.fd)
                 }
             }
 
-            logSafe(LogLevel.DEBUG, "Bucle de paquetes finalizado")
+            if (result.isSuccess && tunnelManager.isAlive(tunnelRuntime)) {
+                reconnectCount += 1
+                val connected = connectedState(profile)
+                updateState(connected)
+                updateNotification(connected)
+                logSafe(
+                    LogLevel.SUCCESS,
+                    "Reconexión verificada en intento ${attempt + 1}",
+                    profile.id,
+                    "NETWORK"
+                )
+                _trafficStats.value = _trafficStats.value.copy(reconnectCount = reconnectCount)
+                startHealthMonitor(profile)
+                return
+            }
+
+            val error = result.exceptionOrNull()
+            logSafe(
+                LogLevel.WARNING,
+                "Intento ${attempt + 1} fallido: ${error?.message?.take(160).orEmpty()}",
+                profile.id,
+                "NETWORK"
+            )
+            attempt += 1
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // NOTIFICACIONES
-    // ══════════════════════════════════════════════════════════════════════
+    private fun startHealthMonitor(profile: VpnProfile) {
+        healthJob?.cancel()
+        healthJob = serviceScope.launch {
+            var ticks = 0
+            while (isActive && !intentionalDisconnect) {
+                delay(3_000L)
+                if (connectionState.value !is VpnConnectionState.Connected) continue
+
+                if (!tunnelManager.isAlive(tunnelRuntime)) {
+                    logSafe(LogLevel.WARNING, "El transporte dejó de responder", profile.id, "CORE")
+                    triggerReconnect("Fallo detectado en el transporte")
+                    return@launch
+                }
+
+                ticks += 1
+                if (ticks % 5 == 0) {
+                    val internetCheck = runCatching { tunnelManager.verifyActive() }
+                    if (internetCheck.isFailure) {
+                        logSafe(
+                            LogLevel.WARNING,
+                            "El core sigue activo pero el servidor ya no entrega Internet",
+                            profile.id,
+                            "CORE"
+                        )
+                        triggerReconnect("Salida de Internet perdida")
+                        return@launch
+                    }
+                }
+            }
+        }
+    }
+
+    private fun resetTrafficBaseline(profile: VpnProfile) {
+        val rx = safeUidRxBytes()
+        val tx = safeUidTxBytes()
+        _trafficStats.value = VpnTrafficStats(
+            receivedBytes = 0,
+            sentBytes = 0,
+            reconnectCount = reconnectCount,
+            latencyMs = tunnelRuntime?.verifiedLatencyMs ?: 0L,
+            networkType = physicalNetworkType,
+            protocol = profile.connectionModeLabel
+        )
+        lastRx = rx
+        lastTx = tx
+        baselineRx = rx
+        baselineTx = tx
+    }
+
+    private fun startStatsTicker(profile: VpnProfile) {
+        statsJob?.cancel()
+        statsJob = serviceScope.launch {
+            var tick = 0
+            while (isActive && !intentionalDisconnect) {
+                delay(1_000L)
+                val rx = safeUidRxBytes()
+                val tx = safeUidTxBytes()
+                val downSpeed = (rx - lastRx).coerceAtLeast(0)
+                val upSpeed = (tx - lastTx).coerceAtLeast(0)
+                lastRx = rx
+                lastTx = tx
+                tick += 1
+                val latency = if (tick % 10 == 0 && physicalNetworkAvailable) {
+                    measureTcpLatency(profile.host, profile.port)
+                } else {
+                    _trafficStats.value.latencyMs
+                }
+                _trafficStats.value = VpnTrafficStats(
+                    receivedBytes = (rx - baselineRx).coerceAtLeast(0),
+                    sentBytes = (tx - baselineTx).coerceAtLeast(0),
+                    downloadBytesPerSecond = if (tunnelManager.isAlive(tunnelRuntime)) downSpeed else 0,
+                    uploadBytesPerSecond = if (tunnelManager.isAlive(tunnelRuntime)) upSpeed else 0,
+                    reconnectCount = reconnectCount,
+                    latencyMs = latency,
+                    networkType = physicalNetworkType,
+                    protocol = profile.connectionModeLabel
+                )
+            }
+        }
+    }
+
+    private fun cleanupTunnel(closeTun: Boolean) {
+        runCatching { tunnelManager.stop(tunnelRuntime) }
+        tunnelRuntime = null
+        if (closeTun) {
+            runCatching { tunInterface?.close() }
+            tunInterface = null
+        }
+    }
+
+    private fun validateProfile(profile: VpnProfile) {
+        require(profile.host.isNotBlank()) { "El host del servidor es obligatorio" }
+        require(profile.port in 1..65535) { "El puerto del servidor es inválido" }
+        require(profile.selectedMode.supported) { "${profile.connectionModeLabel} no está disponible" }
+        if (profile.selectedMode.isSsh) {
+            require(profile.username.isNotBlank()) { "El usuario SSH es obligatorio" }
+            require(profile.password.isNotBlank()) { "La contraseña SSH es obligatoria" }
+        }
+        if (profile.selectedMode == ConnectionMode.V2RAY) {
+            require(profile.username.isNotBlank()) { "V2Ray requiere UUID / User ID" }
+        }
+        if (profile.selectedMode == ConnectionMode.TROJAN || profile.selectedMode == ConnectionMode.UDP) {
+            require(profile.password.isNotBlank()) { "El método seleccionado requiere contraseña/auth" }
+        }
+        if (profile.selectedMode.requiresSni) {
+            require(profile.sni.isNotBlank()) { "El método seleccionado requiere SNI" }
+        }
+        if (profile.selectedMode.requiresPayload) {
+            require(profile.payload.isNotBlank()) { "El método seleccionado requiere payload" }
+        }
+        if (profile.selectedMode.requiresProxy) {
+            require(profile.proxy.host.isNotBlank() && profile.proxy.port in 1..65535) {
+                "El método seleccionado requiere un proxy válido"
+            }
+        }
+    }
+
+    private fun ensurePhysicalNetwork() {
+        val network = underlyingNetwork ?: findUsablePhysicalNetwork()
+            ?: error("No hay una red móvil o Wi-Fi con acceso a Internet")
+        registerUnderlyingNetwork(network)
+    }
+
+    private fun buildTunInterface(profile: VpnProfile): ParcelFileDescriptor? = try {
+        val builder = Builder()
+            .setSession(profile.name)
+            .setMtu(1500)
+            .addAddress("10.20.0.2", 30)
+            .addAddress("fd00:20::2", 126)
+            .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("2606:4700:4700::1111")
+            .setBlocking(true)
+        runCatching { builder.addDisallowedApplication(packageName) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+        builder.establish()
+    } catch (error: Throwable) {
+        serviceScope.launch {
+            logSafe(LogLevel.ERROR, "Error creando TUN: ${error.message}", profile.id, "NETWORK")
+        }
+        null
+    }
+
+    private suspend fun logTransportReady(profile: VpnProfile) {
+        when (profile.selectedMode) {
+            ConnectionMode.SSH_DIRECT -> logSafe(LogLevel.SUCCESS, "SSH autenticado · bridge SOCKS/TUN activo", profile.id, "SSH")
+            ConnectionMode.SSL_SNI -> logSafe(LogLevel.SUCCESS, "TLS validado · SSH activo", profile.id, "TLS")
+            ConnectionMode.SSH_PAYLOAD -> logSafe(LogLevel.SUCCESS, "Payload aceptado · SSH/TUN activo", profile.id, "SSH")
+            ConnectionMode.SSH_PAYLOAD_SSL -> logSafe(LogLevel.SUCCESS, "TLS + payload + SSH activos", profile.id, "TLS")
+            ConnectionMode.SSH_PROXY -> logSafe(LogLevel.SUCCESS, "Proxy + SSH activos", profile.id, "SSH")
+            ConnectionMode.SSH_PAYLOAD_PROXY -> logSafe(LogLevel.SUCCESS, "Proxy + payload + SSH activos", profile.id, "SSH")
+            ConnectionMode.SSH_PAYLOAD_PROXY_SSL -> logSafe(LogLevel.SUCCESS, "Proxy + payload + TLS + SSH activos", profile.id, "TLS")
+            ConnectionMode.V2RAY -> logSafe(LogLevel.SUCCESS, "V2Ray/Xray con salida a Internet verificada", profile.id, "CORE")
+            ConnectionMode.TROJAN -> logSafe(LogLevel.SUCCESS, "Trojan TLS con salida verificada", profile.id, "TLS")
+            ConnectionMode.UDP -> logSafe(LogLevel.SUCCESS, "Hysteria2/QUIC/TLS con salida verificada", profile.id, "CORE")
+        }
+        logSafe(LogLevel.DEBUG, "Xray Core ${tunnelManager.coreVersion()}", profile.id, "CORE")
+    }
+
+    private suspend fun maybeStartFloatingWindow() {
+        if (!repository.floatingWindow.first()) return
+        if (!PermissionHelper.hasOverlayPermission(this)) return
+        startService(Intent(this, FloatingWindowService::class.java))
+    }
+
+    private fun connectedState(profile: VpnProfile): VpnConnectionState.Connected =
+        VpnConnectionState.Connected(profile.name, profile.host, sessionConnectedSince)
 
     private fun buildNotification(state: VpnConnectionState): Notification {
         val openAppIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val disconnectIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, GhostVpnService::class.java).apply {
-                action = ACTION_DISCONNECT
-            },
+            this,
+            1,
+            Intent(this, GhostVpnService::class.java).apply { action = ACTION_DISCONNECT },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val (title, content) = when (state) {
-            is VpnConnectionState.Connected     ->
-                "VPN Conectada" to "Servidor: ${state.serverIp} · ${state.profileName}"
-            is VpnConnectionState.Connecting    ->
-                "Conectando VPN…" to "Perfil: ${state.profileName}"
-            is VpnConnectionState.Disconnecting ->
-                "Desconectando…" to "Cerrando la conexión VPN"
-            is VpnConnectionState.Error         ->
-                "Error de VPN" to state.message
-            else ->
-                "Ghost Nexora VPN" to "Desconectado"
+            is VpnConnectionState.Connected -> "VPN protegida" to "${state.profileName} · Internet verificado"
+            is VpnConnectionState.Connecting -> "Validando conexión…" to state.profileName
+            is VpnConnectionState.Reconnecting -> "Reconectando de forma segura" to "Intento ${state.attempt} · tráfico protegido"
+            is VpnConnectionState.Disconnecting -> "Desconectando…" to "Cerrando el túnel de forma segura"
+            is VpnConnectionState.Error -> "Conexión VPN rechazada" to state.message
+            VpnConnectionState.Disconnected -> "Ghost Nexora VPN" to "Desconectado"
         }
-
-        val builder = NotificationCompat.Builder(this, GhostNexoraApp.CHANNEL_VPN_STATUS)
+        return NotificationCompat.Builder(this, GhostNexoraApp.CHANNEL_VPN_STATUS)
             .setSmallIcon(R.drawable.ic_vpn_notification)
             .setContentTitle(title)
             .setContentText(content)
             .setContentIntent(openAppIntent)
-            .setOngoing(true)
+            .setOngoing(state !is VpnConnectionState.Disconnected)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-
-        if (state is VpnConnectionState.Connected) {
-            builder.addAction(
-                R.drawable.ic_vpn_notification,
-                "Desconectar",
-                disconnectIntent
-            )
-        }
-
-        return builder.build()
+            .apply {
+                if (state is VpnConnectionState.Connected ||
+                    state is VpnConnectionState.Reconnecting ||
+                    state is VpnConnectionState.Error
+                ) {
+                    addAction(R.drawable.ic_vpn_notification, "Desconectar", disconnectIntent)
+                }
+            }
+            .build()
     }
 
     private fun updateNotification(state: VpnConnectionState) {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(GhostNexoraApp.NOTIF_ID_VPN, buildNotification(state))
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(GhostNexoraApp.NOTIF_ID_VPN, buildNotification(state))
     }
 
-
-    private fun friendlyConnectionError(error: Throwable, profile: VpnProfile?): String {
-        val raw = error.message.orEmpty()
+    private fun friendlyConnectionError(error: Throwable, profile: VpnProfile): String {
+        val raw = generateSequence(error) { it.cause }
+            .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .joinToString(" · ")
+            .take(260)
         val lower = raw.lowercase()
         val base = when {
-            lower.contains("auth fail") -> {
-                "Autenticación SSH fallida. Verifica usuario, contraseña y puerto."
-            }
-            lower.contains("trust anchor for certification path not found") -> {
-                "Fallo TLS/SNI: el certificado del servidor no es confiable para Android o el SNI no coincide."
-            }
-            lower.contains("connection timed out") -> {
-                "Tiempo de espera agotado al conectar. Revisa host, puerto y red."
-            }
-            else -> raw.ifBlank { "Error desconocido al conectar" }
+            lower.contains("auth fail") || lower.contains("autenticación ssh") ->
+                "Autenticación SSH fallida. Verifica usuario y contraseña."
+            lower.contains("hostkey") || lower.contains("host key") ->
+                "La identidad SSH del servidor cambió. Conexión bloqueada por seguridad."
+            lower.contains("certificate") || lower.contains("certificado") || lower.contains("trust anchor") ->
+                "TLS rechazó el certificado o el SNI del servidor."
+            lower.contains("no entregan acceso") || lower.contains("no pudo entregar") || lower.contains("generate_204") ->
+                "El perfil inició el core, pero el servidor no pudo entregar acceso a Internet. Revisa UUID/credenciales, SNI, Host, path y transporte."
+            lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") ->
+                "El servidor no respondió a la prueba de Internet dentro del tiempo permitido."
+            lower.contains("libv2ray") || lower.contains("xray core") || lower.contains("go_seq") ->
+                "No se pudo iniciar Xray Core."
+            else -> raw.ifBlank { error.javaClass.simpleName.ifBlank { "Error desconocido" } }
         }
-
-        return buildString {
-            append(base)
-            profile?.let {
-                append(" [")
-                append(it.connectionModeLabel)
-                append("]")
-            }
-        }
+        return "$base [${profile.connectionModeLabel}]"
     }
+
     private suspend fun logConnectionSnapshot(profile: VpnProfile) {
         val abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty().ifBlank { "unknown" }
         logSafe(
             LogLevel.INFO,
-            "${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}) Android API ${Build.VERSION.SDK_INT} ($abi)",
-            profile.id
+            "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.SDK_INT} · $abi",
+            profile.id,
+            "SYSTEM"
         )
         logSafe(
             LogLevel.INFO,
-            "App version: ${BuildConfig.VERSION_NAME} Build ${BuildConfig.VERSION_CODE}",
-            profile.id
+            "Ghost Nexora VPN ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            profile.id,
+            "SYSTEM"
         )
-        resolveLocalIpAddress()?.let { ip ->
-            logSafe(LogLevel.INFO, "IP local: $ip", profile.id)
-        }
-        logSafe(LogLevel.INFO, describeNetworkState(), profile.id)
-        logSafe(LogLevel.INFO, describeNetworkDetails(), profile.id)
-        logSafe(LogLevel.INFO, "Password auth available", profile.id)
-        logSafe(LogLevel.INFO, "Autenticarse con una contraseña", profile.id)
-        if (profile.selectedMode.usesTls) {
+        logSafe(LogLevel.INFO, "Red de salida: $physicalNetworkType", profile.id, "NETWORK")
+        logSafe(LogLevel.INFO, "Servidor ${profile.host}:${profile.port}", profile.id, "NETWORK")
+        if (profile.selectedMode.usesTls || profile.sslEnabled) {
             logSafe(
                 LogLevel.INFO,
-                "SNI hostname: ${profile.sni.ifBlank { profile.host }}",
-                profile.id
+                "TLS/SNI ${profile.sni.ifBlank { profile.host }} · verificación estricta",
+                profile.id,
+                "TLS"
+            )
+        }
+        if (profile.selectedMode.requiresProxy) {
+            logSafe(
+                LogLevel.INFO,
+                "Proxy ${profile.proxy.type.uppercase()} ${profile.proxy.host}:${profile.proxy.port}",
+                profile.id,
+                "NETWORK"
             )
         }
     }
 
-    private fun resolveLocalIpAddress(): String? {
+    private fun registerPhysicalNetworkCallback() {
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        runCatching { connectivityManager.registerNetworkCallback(request, networkCallback) }
+    }
+
+    private fun registerUnderlyingNetwork(network: Network) {
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) return
+        underlyingNetwork = network
+        physicalNetworkAvailable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        physicalNetworkType = networkType(capabilities)
+        runCatching { setUnderlyingNetworks(arrayOf(network)) }
+    }
+
+    private fun findUsablePhysicalNetwork(excluding: Network? = null): Network? {
+        val candidates = connectivityManager.allNetworks.filter { network ->
+            network != excluding && connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            } == true
+        }
+        return candidates.firstOrNull { network ->
+            connectivityManager.getNetworkCapabilities(network)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        } ?: candidates.firstOrNull()
+    }
+
+    private fun networkType(capabilities: NetworkCapabilities): String = when {
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos móviles"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+        else -> "Red física"
+    }
+
+    private fun measureTcpLatency(host: String, port: Int): Long {
+        val start = System.nanoTime()
         return runCatching {
-            java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
-                .asSequence()
-                .filter { it.isUp && !it.isLoopback }
-                .flatMap { iface -> java.util.Collections.list(iface.inetAddresses).asSequence() }
-                .firstOrNull { address ->
-                    !address.isLoopbackAddress && address.hostAddress?.contains(':') != true
-                }
-                ?.hostAddress
-        }.getOrNull()
+            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 2_000) }
+            ((System.nanoTime() - start) / 1_000_000).coerceAtLeast(1)
+        }.getOrDefault(0L)
     }
 
-    private fun describeNetworkState(): String {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork
-        val caps = connectivityManager.getNetworkCapabilities(network)
-        val transport = when {
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WIFI"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "MOBILE"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ETHERNET"
-            else -> "UNKNOWN"
-        }
-        val carrier = if (transport == "MOBILE") "LTE" else transport
-        val extra = resolveNetworkExtra()
-        return "Estado de la Red: CONNECTED $carrier to $transport $extra".trim()
-    }
+    private fun safeUidRxBytes(): Long = TrafficStats.getUidRxBytes(Process.myUid())
+        .takeIf { it != TrafficStats.UNSUPPORTED.toLong() }
+        ?: 0L
 
-    private fun describeNetworkDetails(): String {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork
-        val caps = connectivityManager.getNetworkCapabilities(network)
-        val transport = when {
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WIFI"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "MOBILE"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ETHERNET"
-            else -> "UNKNOWN"
-        }
-        val networkMode = if (transport == "MOBILE") "MOBILE[LTE]" else transport
-        val extra = resolveNetworkExtra()
-        val roaming = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)?.not() ?: false
-        val available = caps != null
-        return "Network available: [type: $networkMode, state: CONNECTED/CONNECTED, reason: (unspecified), extra: $extra, failover: false, available: $available, roaming: $roaming]"
-    }
+    private fun safeUidTxBytes(): Long = TrafficStats.getUidTxBytes(Process.myUid())
+        .takeIf { it != TrafficStats.UNSUPPORTED.toLong() }
+        ?: 0L
 
-    private fun resolveNetworkExtra(): String {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork
-        val properties = connectivityManager.getLinkProperties(network)
-        return properties?.interfaceName
-            ?: properties?.dnsServers?.firstOrNull()?.hostAddress
-            ?: "internet"
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // HELPERS
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Log seguro — puede llamarse tanto desde coroutines como desde
-     * funciones normales lanzando una nueva coroutine si hace falta.
-     */
     private suspend fun logSafe(
         level: LogLevel,
         message: String,
-        profileId: String? = null
-    ) = repository.log(level, message, profileId, tag = "Ghost Nexora VPN")
+        profileId: String? = null,
+        tag: String = "VPN"
+    ) = repository.log(level, message, profileId, tag)
 
     inner class GhostVpnBinder : Binder() {
         fun getService(): GhostVpnService = this@GhostVpnService
