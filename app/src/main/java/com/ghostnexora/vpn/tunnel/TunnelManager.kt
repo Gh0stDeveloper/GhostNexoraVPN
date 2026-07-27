@@ -2,6 +2,7 @@ package com.ghostnexora.vpn.tunnel
 
 import android.content.Context
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 
 /**
@@ -20,11 +21,15 @@ class TunnelManager(
 
     /** Validates the real outbound before Android creates a full-device route. */
     @Synchronized
-    fun verify(profile: VpnProfile): OutboundCheck {
+    fun verify(
+        profile: VpnProfile,
+        preferences: NetworkPreferences = NetworkPreferences()
+    ): OutboundCheck {
         require(profile.selectedMode.supported) {
             "Mode ${profile.connectionModeLabel} is not enabled"
         }
         onCoreStatus("[NETWORK] Preflight iniciado · ${profile.host}:${profile.port}")
+        onCoreStatus("[SETTINGS] ${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · ${preferences.dnsMode.label}")
 
         return if (profile.selectedMode.isSsh) {
             prepareSshRuntime(profile)
@@ -32,8 +37,8 @@ class TunnelManager(
             try {
                 onCoreStatus("[SSH] Autenticación completada")
                 onCoreStatus("[SOCKS] Bridge local listo · 127.0.0.1:${sshHandle.socksPort}")
-                val config = StableXrayConfigFactory.build(profile, sshHandle.socksPort)
-                onCoreStatus("[XRAY] Configuración preflight · ${StableXrayConfigFactory.summary(profile)}")
+                val config = StableXrayConfigFactory.build(profile, sshHandle.socksPort, preferences)
+                onCoreStatus("[XRAY] Configuración preflight · ${StableXrayConfigFactory.summary(profile, preferences)}")
                 val result = xrayEngine.verifyOutbound(config)
                 onCoreStatus("[NETWORK] Salida remota verificada · ${result.latencyMs} ms")
                 result
@@ -42,8 +47,8 @@ class TunnelManager(
                 onCoreStatus("[SSH] Sesión preflight cerrada")
             }
         } else {
-            val config = StableXrayConfigFactory.build(profile)
-            onCoreStatus("[XRAY] Configuración preflight · ${StableXrayConfigFactory.summary(profile)}")
+            val config = StableXrayConfigFactory.build(profile, preferences = preferences)
+            onCoreStatus("[XRAY] Configuración preflight · ${StableXrayConfigFactory.summary(profile, preferences)}")
             val result = xrayEngine.verifyOutbound(config)
             onCoreStatus("[NETWORK] Salida remota verificada · ${result.latencyMs} ms")
             result
@@ -51,7 +56,11 @@ class TunnelManager(
     }
 
     @Synchronized
-    fun start(profile: VpnProfile, tunFd: Int): TunnelRuntime {
+    fun start(
+        profile: VpnProfile,
+        tunFd: Int,
+        preferences: NetworkPreferences = NetworkPreferences()
+    ): TunnelRuntime {
         require(profile.selectedMode.supported) {
             "Mode ${profile.connectionModeLabel} is not enabled"
         }
@@ -63,8 +72,8 @@ class TunnelManager(
             try {
                 onCoreStatus("[SSH] Sesión autenticada y cifrada")
                 onCoreStatus("[SOCKS] Bridge SSH activo · 127.0.0.1:${sshHandle.socksPort}")
-                val config = StableXrayConfigFactory.build(profile, sshHandle.socksPort)
-                startAndVerify(profile, config, tunFd, sshHandle)
+                val config = StableXrayConfigFactory.build(profile, sshHandle.socksPort, preferences)
+                startAndVerify(profile, config, tunFd, sshHandle, preferences)
             } catch (error: Throwable) {
                 xrayEngine.stop()
                 sshHandle.close()
@@ -72,9 +81,9 @@ class TunnelManager(
                 throw error
             }
         } else {
-            val config = StableXrayConfigFactory.build(profile)
+            val config = StableXrayConfigFactory.build(profile, preferences = preferences)
             try {
-                startAndVerify(profile, config, tunFd, null)
+                startAndVerify(profile, config, tunFd, null, preferences)
             } catch (error: Throwable) {
                 xrayEngine.stop()
                 onCoreStatus("[ERROR] Xray/TUN detenido · ${error.message.orEmpty().take(180)}")
@@ -87,10 +96,11 @@ class TunnelManager(
         profile: VpnProfile,
         config: String,
         tunFd: Int,
-        sshHandle: SshTunnelHandle?
+        sshHandle: SshTunnelHandle?,
+        preferences: NetworkPreferences
     ): TunnelRuntime {
-        onCoreStatus("[XRAY] ${StableXrayConfigFactory.summary(profile)}")
-        onCoreStatus("[DNS] DNS protegido preparado · Cloudflare + Google")
+        onCoreStatus("[XRAY] ${StableXrayConfigFactory.summary(profile, preferences)}")
+        onCoreStatus("[DNS] ${preferences.dnsMode.label} · ${preferences.dnsServers().joinToString()}")
         onCoreStatus("[ROUTING] Regla explícita TUN → proxy · TCP/UDP")
         xrayEngine.start(config, tunFd)
         onCoreStatus("[TUN] Xray Core conectado a la interfaz Android")
