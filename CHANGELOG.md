@@ -2,6 +2,27 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.37
+
+### Added
+
+- Added a per-profile `Compatible con HTTP Custom` policy for SSH + SSL and SSH + SSL + Payload.
+- The compatible policy sends the configured SNI without requiring an SNI/SAN match while retaining platform certificate-chain validation and persistent SSH host-key verification.
+- SSH links and GNX2/legacy JSON now preserve the selected TLS verification policy.
+
+### Fixed
+
+- Preserved JSch key-exchange, cipher, MAC, and authentication providers loaded through class names so Release/R8 can no longer remove `DHEC256`, `DHGEX256`, `AES256CTR`, `HMACSHA512`, or password authentication.
+- Added an early JSch runtime check and Release DEX gates for the algorithms used by the tested HTTP Custom server.
+- Payload-only SSH now stops waiting as soon as a direct SSH banner is received instead of delaying until the HTTP-header timeout.
+- Connection errors now include the complete bounded cause chain.
+
+### Changed
+
+- SSH + SSL remains `TCP → TLS → SSH`.
+- SSH + SSL + Payload remains `TCP → TLS → payload → SSH`, matching the successful HTTP Custom log supplied during interoperability testing.
+- Existing profiles migrate safely with TLS strict as their default; compatibility must be enabled explicitly.
+
 ## 1.0.36
 
 ### Fixed

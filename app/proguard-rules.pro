@@ -32,8 +32,10 @@
 # Stable support classes: diagnostics, support reports and CI inspect these names directly.
 -keep class com.ghostnexora.vpn.diagnostics.ConnectionDiagnosticsEngine { *; }
 -keep class com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog { *; }
+-keep class com.ghostnexora.vpn.tunnel.TlsTransport { *; }
 -keep class com.ghostnexora.vpn.tunnel.VpnFailure { *; }
 -keep class com.ghostnexora.vpn.data.model.AppRoutingPreferences { *; }
+-keep class com.ghostnexora.vpn.data.model.TlsVerificationMode { *; }
 -keep class com.ghostnexora.vpn.util.PayloadEngine { *; }
 -keep class com.ghostnexora.vpn.util.ProtocolLinkParser { *; }
 
@@ -41,6 +43,10 @@
 -keep class com.ghostnexora.vpn.tunnel.AndroidSecureRandomProvider { public <init>(); public *; }
 -keep class com.ghostnexora.vpn.tunnel.JschRuntime { public *; }
 -keep class com.jcraft.jsch.AndroidRandomBridge { public *; }
+# JSch carga KEX, cifrados, MAC y autenticadores por Class.forName desde su
+# tabla de configuración. Conservar solo los nombres permite que R8 elimine la
+# clase completa; el Release debe retener las implementaciones y sus miembros.
+-keep class com.jcraft.jsch.** { *; }
 -keep class com.jcraft.jsch.jce.** { *; }
 -keep class com.jcraft.jsch.jcraft.** { *; }
 -keep class com.jcraft.jsch.jgss.** { *; }

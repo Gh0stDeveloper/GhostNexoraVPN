@@ -93,7 +93,7 @@ fun DocumentationScreen() {
 
             InfoBlock(
                 "Privacidad y seguridad",
-                "Perfiles cifrados con Android Keystore, exportaciones GNX2 autenticadas, TLS estricto, fingerprints SSH, logs saneados y bloqueo de capturas en pantallas de credenciales. No existe Trust All global.",
+                "Perfiles cifrados con Android Keystore, exportaciones GNX2 autenticadas, TLS estricto o compatibilidad SNI por perfil, fingerprints SSH, logs saneados y bloqueo de capturas en pantallas de credenciales. La compatibilidad no instala un Trust All global.",
                 NeonGreen
             )
 

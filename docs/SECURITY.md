@@ -39,8 +39,10 @@ Protocol payloads are not written in full. Diagnostic exports are UTF-8 and expl
 ## TLS
 
 - Platform certificate trust is used.
-- Hostname verification is enabled.
+- Hostname verification is enabled by default.
 - SNI is explicit when required.
+- SSH profiles may explicitly allow SNI/SAN mismatch for HTTP Custom
+  compatibility; platform certificate-chain validation remains active.
 - Global trust-all is prohibited.
 - REALITY parameters are accepted only when present in the profile.
 
@@ -98,7 +100,7 @@ Root or hook detection must not be described as infallible and should not automa
 
 - No new secrets in source control.
 - No plaintext credentials in Room/DataStore.
-- No relaxed TLS defaults.
+- No relaxed TLS defaults or global trust-all manager.
 - No unbounded input or delays.
 - No direct fallback route.
 - No exported Android component without need.

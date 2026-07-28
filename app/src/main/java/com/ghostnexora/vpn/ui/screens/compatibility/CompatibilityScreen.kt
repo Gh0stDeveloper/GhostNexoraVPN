@@ -57,9 +57,9 @@ data class CompatibilityEntry(
 
 private val compatibilityEntries = listOf(
     CompatibilityEntry("SSH", "Conexión directa", "Password · TCP", CompatibilityStatus.DEVICE_PENDING, "Motor JSch y bridge SOCKS presentes; requiere matriz de servidores reales."),
-    CompatibilityEntry("SSH", "SSH + SSL", "TLS 1.2/1.3 · SNI", CompatibilityStatus.DEVICE_PENDING, "Certificado y nombre se validan estrictamente."),
+    CompatibilityEntry("SSH", "SSH + SSL", "TLS 1.2/1.3 · SNI estricto/custom", CompatibilityStatus.DEVICE_PENDING, "Permite política estricta o SNI compatible con HTTP Custom por perfil."),
     CompatibilityEntry("SSH", "SSH + Payload", "HTTP 200/101 · payload", CompatibilityStatus.DEVICE_PENDING, "Acepta respuesta HTTP válida o banner SSH directo."),
-    CompatibilityEntry("SSH", "SSH + SSL + Payload", "TLS → payload → SSH", CompatibilityStatus.DEVICE_PENDING, "La cadena implementada debe probarse contra servidores reales."),
+    CompatibilityEntry("SSH", "SSH + SSL + Payload", "TLS → payload → SSH", CompatibilityStatus.DEVICE_PENDING, "SNI estricto/custom y orden equivalente al log aportado de HTTP Custom."),
     CompatibilityEntry("SSH", "SSH + Proxy", "HTTP CONNECT · SOCKS5", CompatibilityStatus.DEVICE_PENDING, "Proxy sin autenticación implementado; autenticación queda en roadmap."),
     CompatibilityEntry("Xray", "VLESS", "TCP · WS · gRPC · XHTTP · HTTPUpgrade · mKCP", CompatibilityStatus.DEVICE_PENDING, "TLS y REALITY se generan; interoperabilidad depende del servidor."),
     CompatibilityEntry("Xray", "VMess", "TCP · WS · gRPC · TLS", CompatibilityStatus.DEVICE_PENDING, "Estructura y routing verificados por pruebas unitarias."),

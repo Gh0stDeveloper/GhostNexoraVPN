@@ -5,20 +5,22 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.VpnProfile
 
 /**
  * Base de datos Room principal de Ghost Nexora VPN.
  *
- * Versión: 2
+ * Versión: 3
  * Entidades: VpnProfile, LogEntry
  *
  * Patrón Singleton para evitar múltiples instancias concurrentes.
  */
 @Database(
     entities = [VpnProfile::class, LogEntry::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -45,8 +47,21 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DB_NAME
             )
-                // En producción usar Migrations en lugar de destructive
+                .addMigrations(MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
+
+        /**
+         * Conserva todos los perfiles 1.0.36 y activa TLS estricto como valor
+         * seguro hasta que el usuario elija compatibilidad SNI por perfil.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE vpn_profiles " +
+                        "ADD COLUMN tls_verification_mode TEXT NOT NULL DEFAULT 'strict'"
+                )
+            }
+        }
     }
 }

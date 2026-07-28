@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.security.NativeGuard
 import com.ghostnexora.vpn.security.SecureConfigCodec
@@ -261,6 +262,7 @@ data class VpnProfileJson(
     val connectionMode: String? = null,
     val sslEnabled: Boolean? = true,
     val sni: String? = "",
+    val tlsVerificationMode: String? = TlsVerificationMode.STRICT.id,
     val payload: String? = "",
     val proxy: ProxyJson? = null,
     val tags: List<String>? = emptyList(),
@@ -282,6 +284,7 @@ data class VpnProfileJson(
             connectionMode = ConnectionMode.fromStored(connectionMode, method, sslEnabled).id,
             sslEnabled = sslEnabled ?: false,
             sni = sni.orEmpty(),
+            tlsVerificationMode = TlsVerificationMode.fromStored(tlsVerificationMode).id,
             payload = payload.orEmpty(),
             proxy = ProxyConfig(
                 host = proxy?.host.orEmpty(),
@@ -314,6 +317,7 @@ fun VpnProfile.toJson() = VpnProfileJson(
     connectionMode = connectionMode,
     sslEnabled = sslEnabled,
     sni = sni,
+    tlsVerificationMode = selectedTlsVerificationMode.id,
     payload = payload,
     proxy = ProxyJson(proxy.host, proxy.port, proxy.type),
     tags = tags,

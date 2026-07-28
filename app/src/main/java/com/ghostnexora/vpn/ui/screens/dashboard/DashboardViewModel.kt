@@ -228,10 +228,16 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun preflightError(error: Throwable, profile: VpnProfile): String {
-        val detail = error.message
-            ?.replace('\n', ' ')
-            ?.take(180)
-            .orEmpty()
+        val detail = generateSequence(error) { it.cause }
+            .mapNotNull { cause ->
+                cause.message
+                    ?.replace('\n', ' ')
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+            }
+            .distinct()
+            .joinToString(" → ")
+            .take(180)
         val suffix = detail.takeIf(String::isNotBlank)?.let { " Detalle: $it" }.orEmpty()
         return "El servidor no entregó acceso a Internet. Revisa host, puerto, credenciales/UUID, SNI, Host, path y transporte.$suffix [${profile.connectionModeLabel}]"
     }

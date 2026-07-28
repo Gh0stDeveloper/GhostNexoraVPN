@@ -45,6 +45,9 @@ data class VpnProfile(
     @ColumnInfo(name = "sni")
     val sni: String = "",
 
+    @ColumnInfo(name = "tls_verification_mode", defaultValue = "'strict'")
+    val tlsVerificationMode: String = TlsVerificationMode.STRICT.id,
+
     @ColumnInfo(name = "payload")
     val payload: String = "",
 
@@ -89,6 +92,10 @@ data class VpnProfile(
     /** Modo real seleccionado, con compatibilidad para perfiles antiguos */
     val selectedMode: ConnectionMode
         get() = ConnectionMode.fromStored(connectionMode, method, sslEnabled)
+
+    /** Política de certificado aplicada a los modos SSH sobre TLS. */
+    val selectedTlsVerificationMode: TlsVerificationMode
+        get() = TlsVerificationMode.fromStored(tlsVerificationMode)
 
     /** Etiqueta amigable para mostrar en UI */
     val connectionModeLabel: String

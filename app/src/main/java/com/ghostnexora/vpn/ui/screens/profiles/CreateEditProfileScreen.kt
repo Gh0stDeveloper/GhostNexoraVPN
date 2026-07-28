@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -181,8 +182,32 @@ fun CreateEditProfileScreen(
                             label = { Text("SNI / Host TLS") },
                             modifier = Modifier.fillMaxWidth(),
                             supportingText = {
-                                Text("Debe coincidir con un nombre válido del certificado TLS.")
+                                Text(
+                                    if (
+                                        state.selectedMode.isSsh &&
+                                        state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
+                                    ) {
+                                        "Se enviará este SNI aunque sea distinto del SAN del certificado."
+                                    } else {
+                                        "Debe coincidir con un nombre válido del certificado TLS."
+                                    }
+                                )
                             }
+                        )
+                    }
+
+                    if (state.selectedMode.isSsh && state.selectedMode.usesTls) {
+                        SwitchRow(
+                            title = "Compatibilidad SNI tipo HTTP Custom",
+                            subtitle = if (
+                                state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
+                            ) {
+                                "Activa: permite SNI y SAN distintos. La cadena TLS y la huella SSH siguen verificándose."
+                            } else {
+                                "Desactivada: TLS estricto exige que el certificado pertenezca al SNI."
+                            },
+                            checked = state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI,
+                            onCheckedChange = viewModel::onCustomSniCompatibilityChange
                         )
                     }
 

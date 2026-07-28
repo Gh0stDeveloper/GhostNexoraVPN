@@ -29,10 +29,6 @@ import java.util.WeakHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.net.ssl.SNIHostName
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLParameters
-import javax.net.ssl.SSLSocket
 
 /**
  * Motor SSH para los modos directos, TLS/SNI, payload y proxy.
@@ -42,7 +38,8 @@ import javax.net.ssl.SSLSocket
  * Xray Core usa ese SOCKS como salida del TUN de Android.
  */
 class SshTunnelEngine(
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val onStatus: (String) -> Unit = {}
 ) {
 
     fun connect(profile: VpnProfile): Session {
@@ -74,7 +71,7 @@ class SshTunnelEngine(
         session.setServerAliveInterval(15_000)
         session.setServerAliveCountMax(3)
         session.setTimeout(25_000)
-        session.setSocketFactory(TunnelSocketFactory(profile))
+        session.setSocketFactory(TunnelSocketFactory(profile, onStatus))
 
         try {
             session.connect(25_000)
@@ -130,7 +127,8 @@ data class SshTunnelHandle(
 }
 
 private class TunnelSocketFactory(
-    private val profile: VpnProfile
+    private val profile: VpnProfile,
+    private val onStatus: (String) -> Unit
 ) : SocketFactory {
 
     private val wrappedInputs = Collections.synchronizedMap(WeakHashMap<Socket, InputStream>())
@@ -162,11 +160,18 @@ private class TunnelSocketFactory(
         }
 
         if (mode.usesTls) {
-            socket = wrapWithTls(
-                socket = socket,
+            val tlsSocket = TlsTransport.upgrade(
+                connectedSocket = socket,
+                targetHost = targetHost,
+                targetPort = targetPort,
                 sniHost = profile.sni.trim().ifBlank { targetHost },
-                targetPort = targetPort
+                verificationMode = profile.selectedTlsVerificationMode
             )
+            onStatus(
+                "[TLS] ${tlsSocket.session.protocol} · ${tlsSocket.session.cipherSuite} · " +
+                    profile.selectedTlsVerificationMode.label
+            )
+            socket = tlsSocket
         }
 
         if (mode.requiresPayload && !payloadAlreadySent) {
@@ -302,6 +307,7 @@ private class TunnelSocketFactory(
                 is PayloadAction.Delay -> Thread.sleep(action.millis)
             }
         }
+        onStatus("[PAYLOAD] ${plan.segmentCount} segmento(s) enviado(s) · contenido protegido")
 
         val input = PushbackInputStream(socket.getInputStream(), MAX_HANDSHAKE_BYTES)
         if (!looksLikeHttpPayload(plan.rendered)) return input
@@ -320,7 +326,13 @@ private class TunnelSocketFactory(
 
                 val crlfEnd = thirdPrevious == '\r'.code && beforePrevious == '\n'.code && previous == '\r'.code && current == '\n'.code
                 val lfEnd = previous == '\n'.code && current == '\n'.code
-                if (crlfEnd || lfEnd) break
+                val sshBannerComplete = current == '\n'.code &&
+                    captured.size() <= MAX_SSH_BANNER_BYTES &&
+                    captured.toByteArray()
+                        .toString(Charsets.ISO_8859_1)
+                        .trimStart()
+                        .startsWith("SSH-", ignoreCase = true)
+                if (crlfEnd || lfEnd || sshBannerComplete) break
 
                 thirdPrevious = beforePrevious
                 beforePrevious = previous
@@ -333,7 +345,10 @@ private class TunnelSocketFactory(
         }
 
         val responseBytes = captured.toByteArray()
-        if (responseBytes.isEmpty()) return input
+        if (responseBytes.isEmpty()) {
+            onStatus("[PAYLOAD] Sin cabecera HTTP inmediata · esperando banner SSH")
+            return input
+        }
 
         val responseText = responseBytes.toString(Charsets.ISO_8859_1)
         val firstLine = responseText.lineSequence().firstOrNull().orEmpty()
@@ -342,25 +357,15 @@ private class TunnelSocketFactory(
             if (code == null || (code !in 200..299 && code != 101)) {
                 throw IOException("El servidor rechazó el payload: $firstLine")
             }
+            onStatus("[PAYLOAD] Respuesta aceptada · HTTP $code")
         } else {
             input.unread(responseBytes)
+            if (firstLine.startsWith("SSH-", ignoreCase = true)) {
+                onStatus("[PAYLOAD] Banner SSH directo recibido")
+            }
         }
 
         return input
-    }
-
-    private fun wrapWithTls(socket: Socket, sniHost: String, targetPort: Int): SSLSocket {
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, null, null)
-
-        val sslSocket = sslContext.socketFactory.createSocket(socket, sniHost, targetPort, true) as SSLSocket
-        sslSocket.useClientMode = true
-        val params: SSLParameters = sslSocket.sslParameters
-        params.endpointIdentificationAlgorithm = "HTTPS"
-        runCatching { params.serverNames = listOf(SNIHostName(sniHost)) }
-        sslSocket.sslParameters = params
-        sslSocket.startHandshake()
-        return sslSocket
     }
 
     private fun looksLikeHttpPayload(payload: String): Boolean {
@@ -379,6 +384,7 @@ private class TunnelSocketFactory(
 
     companion object {
         private const val MAX_HANDSHAKE_BYTES = 16 * 1024
+        private const val MAX_SSH_BANNER_BYTES = 512
     }
 }
 

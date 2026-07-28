@@ -7,7 +7,7 @@ The SSH family is implemented as a staged socket pipeline. Each stage emits sani
 ```text
 physical network
   → optional HTTP CONNECT / SOCKS5 proxy
-  → optional TLS with SNI and hostname verification
+  → optional TLS with strict or HTTP Custom-compatible SNI policy
   → optional segmented HTTP payload
   → SSH key exchange and authentication
   → loopback SOCKS5 server
@@ -28,12 +28,14 @@ Android builds inject an application-owned `SecureRandom` provider directly into
 The TLS socket:
 
 - uses the platform trust store;
-- enables HTTPS endpoint identification;
 - sends the configured SNI;
-- rejects hostname/certificate mismatches;
+- enables HTTPS endpoint identification in strict mode;
+- can omit only SNI/SAN matching when the profile explicitly enables HTTP
+  Custom compatibility;
+- still rejects an untrusted, expired, or otherwise invalid certificate chain;
 - does not offer a global trust-all mode.
 
-Certificate pinning and selectable TLS/ALPN policy are roadmap features until their UI and tests are complete.
+Certificate pinning and selectable TLS/ALPN versions remain roadmap features.
 
 ## Payload layer
 

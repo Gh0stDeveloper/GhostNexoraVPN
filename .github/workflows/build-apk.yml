@@ -126,6 +126,38 @@ jobs:
           fi
           echo "No high-confidence token patterns found"
 
+      - name: Verify profile database migration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          database = Path("app/src/main/java/com/ghostnexora/vpn/data/local/AppDatabase.kt").read_text()
+          profile = Path("app/src/main/java/com/ghostnexora/vpn/data/model/VpnProfile.kt").read_text()
+          required_database = (
+              "version = 3",
+              "Migration(2, 3)",
+              "ADD COLUMN tls_verification_mode TEXT NOT NULL DEFAULT 'strict'",
+              ".addMigrations(MIGRATION_2_3)",
+          )
+          required_profile = (
+              'name = "tls_verification_mode"',
+              'defaultValue = "\'strict\'"',
+          )
+          missing = [
+              token
+              for token in required_database
+              if token not in database
+          ] + [
+              token
+              for token in required_profile
+              if token not in profile
+          ]
+          if missing:
+              raise SystemExit(f"TLS profile migration is incomplete: {missing}")
+          print("Profile migration 2 -> 3 verified")
+          PY
+
       - name: Run unit tests
         shell: bash
         run: |
@@ -198,11 +230,21 @@ jobs:
           trap 'rm -rf "$DEX_DIR"' EXIT
           unzip -qq "$APK" 'classes*.dex' -d "$DEX_DIR"
           for descriptor in \
+            'Lcom/jcraft/jsch/DHEC256;' \
+            'Lcom/jcraft/jsch/DHEC384;' \
+            'Lcom/jcraft/jsch/DHEC521;' \
+            'Lcom/jcraft/jsch/DHGEX256;' \
+            'Lcom/jcraft/jsch/UserAuthPassword;' \
+            'Lcom/jcraft/jsch/UserAuthKeyboardInteractive;' \
             'Lcom/jcraft/jsch/jce/Random;' \
             'Lcom/jcraft/jsch/jce/SHA256;' \
+            'Lcom/jcraft/jsch/jce/AES256CTR;' \
             'Lcom/jcraft/jsch/jce/AES256GCM;' \
+            'Lcom/jcraft/jsch/jce/HMACSHA512;' \
             'Lcom/jcraft/jsch/AndroidRandomBridge;' \
             'Lcom/ghostnexora/vpn/tunnel/AndroidSecureRandomProvider;' \
+            'Lcom/ghostnexora/vpn/tunnel/TlsTransport;' \
+            'Lcom/ghostnexora/vpn/data/model/TlsVerificationMode;' \
             'Lcom/ghostnexora/vpn/diagnostics/ConnectionDiagnosticsEngine;' \
             'Lcom/ghostnexora/vpn/tunnel/ConnectionErrorCatalog;' \
             'Lcom/ghostnexora/vpn/data/model/AppRoutingPreferences;' \

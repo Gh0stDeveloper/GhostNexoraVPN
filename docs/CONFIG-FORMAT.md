@@ -8,7 +8,7 @@ A stored profile contains:
 - server host and port;
 - username/UUID and password/auth;
 - connection mode;
-- TLS enabled flag and SNI;
+- TLS enabled flag, SNI, and per-profile SSH TLS verification policy;
 - payload or Xray option string;
 - proxy type, host, and port;
 - tags and notes;
@@ -38,7 +38,7 @@ Simplified document structure:
 ```json
 {
   "appName": "Ghost Nexora VPN",
-  "version": "1.0.36",
+  "version": "1.0.37",
   "exportedAt": "2026-07-28T00:00:00Z",
   "profiles": [
     {
@@ -49,6 +49,7 @@ Simplified document structure:
       "username": "uuid",
       "sslEnabled": true,
       "sni": "cdn.example.com",
+      "tlsVerificationMode": "strict",
       "payload": "protocol=vless | net=ws | path=/vpn | security=tls"
     }
   ]
@@ -73,7 +74,7 @@ The parser preserves recognized transport and security query fields. Unknown par
 Ghost Nexora accepts a practical SSH URI convention:
 
 ```text
-ssh://username:password@server:port?mode=ssl_payload_proxy&sni=cdn.example.com&payload=...&proxyHost=proxy.example.com&proxyPort=8080&proxyType=http#ProfileName
+ssh://username:password@server:port?mode=ssl_payload&sni=www.twitter.com&tlsMode=custom_sni&payload=...#ProfileName
 ```
 
 Recognized `mode` values include:
@@ -85,6 +86,11 @@ Recognized `mode` values include:
 - `proxy`
 - `payload_proxy`
 - `ssl_payload_proxy`
+
+`tlsMode=strict` is the safe default. `tlsMode=custom_sni` enables the
+HTTP Custom-compatible SSH policy: the configured SNI is sent without
+requiring it to match the certificate SAN, while platform certificate-chain
+validation and SSH host-key verification remain active.
 
 This is an application import convention, not a claim that all SSH clients use the same URI schema.
 
@@ -127,7 +133,7 @@ Duplicate detection hashes a canonical representation of security-relevant field
 - connection mode;
 - normalized host/port;
 - credentials;
-- TLS/SNI;
+- TLS/SNI and SSH TLS verification policy;
 - payload/Xray options;
 - proxy settings.
 
