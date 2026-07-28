@@ -202,7 +202,7 @@ jobs:
 
       - name: Upload Gradle diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: GhostNexoraVPN-gradle-diagnostics-${{ github.run_number }}
           path: |
@@ -218,7 +218,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: GhostNexoraVPN-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload R8 validation Release
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: GhostNexoraVPN-r8-validation-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
