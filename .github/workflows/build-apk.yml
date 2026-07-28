@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    name: Build, test and validate Phase 1
+    name: Build, test and validate product hardening
     runs-on: ubuntu-latest
 
     steps:
@@ -68,11 +68,62 @@ jobs:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x ./gradlew
 
+      - name: Verify Android manifest policy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          root = ET.parse(manifest).getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          permissions = {node.get(android + "name") for node in root.findall("uses-permission")}
+          forbidden = {
+              "android.permission.BIND_VPN_SERVICE",
+              "android.permission.WRITE_EXTERNAL_STORAGE",
+              "android.permission.QUERY_ALL_PACKAGES",
+          }
+          found = permissions & forbidden
+          if found:
+              raise SystemExit(f"Forbidden manifest permissions: {sorted(found)}")
+
+          application = root.find("application")
+          if application is None:
+              raise SystemExit("Missing application node")
+          services = application.findall("service")
+          vpn = next((service for service in services if service.get(android + "name") == ".service.GhostVpnService"), None)
+          if vpn is None:
+              raise SystemExit("Missing GhostVpnService")
+          if vpn.get(android + "permission") != "android.permission.BIND_VPN_SERVICE":
+              raise SystemExit("GhostVpnService is not protected by BIND_VPN_SERVICE")
+          if vpn.get(android + "exported") != "false":
+              raise SystemExit("GhostVpnService must not be exported")
+          print("Manifest policy verified")
+          PY
+
+      - name: Scan tracked source for high-confidence secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='(ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{32,})'
+          if git grep -nE "$PATTERN" -- 'app/**' '.github/**' 'gradle*' ':!app/src/test/**'; then
+            echo "High-confidence secret pattern found in tracked source"
+            exit 1
+          fi
+          echo "No high-confidence token patterns found"
+
       - name: Run unit tests
         shell: bash
         run: |
           set -o pipefail
           ./gradlew testDebugUnitTest --stacktrace --warning-mode all 2>&1 | tee gradle-test.log
+
+      - name: Generate dependency inventory
+        shell: bash
+        run: |
+          ./gradlew app:dependencies --configuration debugRuntimeClasspath > dependency-inventory.txt
+          test -s dependency-inventory.txt
 
       - name: Run Android Lint
         shell: bash
@@ -85,6 +136,25 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew assembleDebug --stacktrace --warning-mode all 2>&1 | tee gradle-debug.log
+
+      - name: Verify native ABIs in Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          unzip -l "$APK" > debug-apk-contents.txt
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            grep -Fq "lib/$abi/libghostguard.so" debug-apk-contents.txt || {
+              echo "Missing libghostguard.so for $abi"
+              exit 1
+            }
+            grep -Eq "lib/$abi/[^/]+\\.so" debug-apk-contents.txt || {
+              echo "No native libraries found for $abi"
+              exit 1
+            }
+          done
+          echo "Required native ABIs verified"
 
       - name: Validate Release R8 and resource shrinking
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
@@ -104,7 +174,7 @@ jobs:
           fi
           echo "No tracked Kotlin/Android deprecation warnings found."
 
-      - name: Verify Phase 1 runtime after R8
+      - name: Verify hardened runtime after R8
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         shell: bash
         run: |
@@ -121,11 +191,14 @@ jobs:
             'Lcom/jcraft/jsch/AndroidRandomBridge;' \
             'Lcom/ghostnexora/vpn/tunnel/AndroidSecureRandomProvider;' \
             'Lcom/ghostnexora/vpn/diagnostics/ConnectionDiagnosticsEngine;' \
-            'Lcom/ghostnexora/vpn/tunnel/ConnectionErrorCatalog;'
+            'Lcom/ghostnexora/vpn/tunnel/ConnectionErrorCatalog;' \
+            'Lcom/ghostnexora/vpn/data/model/AppRoutingPreferences;' \
+            'Lcom/ghostnexora/vpn/util/PayloadEngine;' \
+            'Lcom/ghostnexora/vpn/util/ProtocolLinkParser;'
           do
             grep -aR -Fq "$descriptor" "$DEX_DIR" || { echo "Missing runtime class: $descriptor"; exit 1; }
           done
-          echo "Phase 1 runtime classes survived R8."
+          echo "Hardened runtime classes survived R8."
 
       - name: Upload Gradle diagnostics
         if: always()
@@ -137,6 +210,8 @@ jobs:
             gradle-lint.log
             gradle-debug.log
             gradle-release.log
+            dependency-inventory.txt
+            debug-apk-contents.txt
             app/build/reports/tests/**
             app/build/reports/lint-results-debug.*
             app/build/outputs/mapping/**
@@ -190,10 +265,12 @@ jobs:
           PUBLISH_APK="app/build/publish/GhostNexoraVPN-${VERSION_NAME}.apk"
           cp "$APK_PATH" "$PUBLISH_APK"
           SHA256="$(sha256sum "$PUBLISH_APK" | awk '{print $1}')"
+          SIGNER_SHA256="$(apksigner verify --print-certs "$PUBLISH_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
           printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
           echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
           echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=$SIGNER_SHA256" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
@@ -219,7 +296,8 @@ jobs:
           "versionCode: ${{ steps.release_meta.outputs.version_code }}"$'\n'\
           "Xray Core: ${{ env.XRAY_LIB_TAG }}"$'\n'\
           "Commit: ${{ github.sha }}"$'\n'\
-          "APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}"
+          "APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}"$'\n'\
+          "SIGNER_SHA256: ${{ steps.release_meta.outputs.signer_sha256 }}"
           gh release create "$TAG" \
             "${{ steps.release_meta.outputs.apk_path }}" \
             "${{ steps.release_meta.outputs.sha256_path }}" \
