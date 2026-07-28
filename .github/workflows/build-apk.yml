@@ -40,6 +40,21 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Resolve Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER_PATH="$(
+            find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
+              -type f -name apksigner -perm -111 -print |
+              sort -V |
+              tail -n 1
+          )"
+          test -n "$APKSIGNER_PATH"
+          test -x "$APKSIGNER_PATH"
+          "$APKSIGNER_PATH" version
+          echo "APKSIGNER=$APKSIGNER_PATH" >> "$GITHUB_ENV"
+
       - name: Install NDK and CMake
         shell: bash
         run: |
@@ -265,7 +280,8 @@ jobs:
           PUBLISH_APK="app/build/publish/GhostNexoraVPN-${VERSION_NAME}.apk"
           cp "$APK_PATH" "$PUBLISH_APK"
           SHA256="$(sha256sum "$PUBLISH_APK" | awk '{print $1}')"
-          SIGNER_SHA256="$(apksigner verify --print-certs "$PUBLISH_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          SIGNER_SHA256="$("$APKSIGNER" verify --print-certs "$PUBLISH_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          test -n "$SIGNER_SHA256"
           printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
           echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
           echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
