@@ -10,7 +10,10 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ghostnexora.vpn.data.model.AppRoutingMode
+import com.ghostnexora.vpn.data.model.AppRoutingPreferences
 import com.ghostnexora.vpn.data.model.DnsMode
 import com.ghostnexora.vpn.data.model.IpMode
 import com.ghostnexora.vpn.data.model.NetworkPreferences
@@ -51,6 +54,8 @@ class DataStoreManager @Inject constructor(
         val DNS_PRIMARY = stringPreferencesKey("network_dns_primary")
         val DNS_SECONDARY = stringPreferencesKey("network_dns_secondary")
         val RECONNECT_MAX_ATTEMPTS = intPreferencesKey("reconnect_max_attempts")
+        val APP_ROUTING_MODE = stringPreferencesKey("app_routing_mode")
+        val APP_ROUTING_PACKAGES = stringSetPreferencesKey("app_routing_packages")
     }
 
     val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
@@ -74,6 +79,12 @@ class DataStoreManager @Inject constructor(
             customDnsPrimary = values[DNS_PRIMARY] ?: "1.1.1.1",
             customDnsSecondary = values[DNS_SECONDARY] ?: "8.8.8.8",
             reconnectMaxAttempts = (values[RECONNECT_MAX_ATTEMPTS] ?: 8).coerceIn(1, 12)
+        )
+    }
+    val appRoutingPreferences: Flow<AppRoutingPreferences> = dataStore.data.safeCatch().map { values ->
+        AppRoutingPreferences(
+            mode = AppRoutingMode.fromId(values[APP_ROUTING_MODE]),
+            packages = values[APP_ROUTING_PACKAGES]?.toSet().orEmpty()
         )
     }
 
@@ -102,6 +113,10 @@ class DataStoreManager @Inject constructor(
         it[DNS_SECONDARY] = secondary.trim()
     }
     suspend fun setReconnectMaxAttempts(value: Int) = edit { it[RECONNECT_MAX_ATTEMPTS] = value.coerceIn(1, 12) }
+    suspend fun setAppRoutingMode(value: AppRoutingMode) = edit { it[APP_ROUTING_MODE] = value.id }
+    suspend fun setAppRoutingPackages(value: Set<String>) = edit {
+        it[APP_ROUTING_PACKAGES] = AppRoutingPreferences(packages = value).normalizedPackages
+    }
     suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
     suspend fun clearAll() {
