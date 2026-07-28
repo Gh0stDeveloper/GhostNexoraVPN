@@ -13,9 +13,9 @@ Only packages selected in **Applications by VPN** are allowed into the TUN. Andr
 The mode fails closed when:
 
 - no packages are selected (`APP-ROUTE-001`);
-- every selected package is no longer installed (`APP-ROUTE-404`).
+- any selected package is no longer installed or cannot be resolved (`APP-ROUTE-404`).
 
-It never silently changes to all-app routing.
+It never silently drops stale entries or changes to all-app routing.
 
 ### Exclude selected applications
 

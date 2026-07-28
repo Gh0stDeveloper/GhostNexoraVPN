@@ -6,11 +6,17 @@
 - Gradle wrapper 8.9
 - Android Gradle Plugin 8.7.3
 - Kotlin 2.0
+- Kotlin Coroutines 1.9.0
 - compile/target SDK 35
 - min SDK 26
 - NDK `27.0.12077973`
 - CMake 3.22.1
 - AndroidLibXrayLite version pinned by CI
+
+Coroutines 1.10 and newer use a Kotlin metadata level that the current Kotlin
+2.0/KSP compiler cannot read. Kotlin, KSP, Compose compiler, and Coroutines
+must be upgraded together and validated in Debug and Release/R8; Dependabot is
+configured to avoid an isolated incompatible update.
 
 ## Local build
 

@@ -38,7 +38,7 @@ Simplified document structure:
 ```json
 {
   "appName": "Ghost Nexora VPN",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "exportedAt": "2026-07-28T00:00:00Z",
   "profiles": [
     {

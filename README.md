@@ -12,7 +12,7 @@ Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified rou
 
 A process running is not considered a successful VPN. The app verifies the remote outbound before creating Android default routes and verifies Internet access again after the active tunnel starts.
 
-Current development version: **1.0.34 (34)**.
+Current development version: **1.0.35 (35)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -28,6 +28,7 @@ Current development version: **1.0.34 (34)**.
 - MTU presets from 1280 to 1500 shared by Android and Xray.
 - Automatic protected, Cloudflare, Google, and custom DNS.
 - Kill Switch and bounded protected reconnection.
+- Tunnel-only live traffic counters read from the Xray proxy outbound.
 - Structured support error codes and corrective actions.
 - Application split tunneling: all, only selected, or exclude selected apps.
 - Fail-closed validation for empty or stale application allowlists.

@@ -19,7 +19,8 @@ class SshTunnelStrategy(
         ConnectionMode.SSH_PROXY,
         ConnectionMode.SSH_PAYLOAD,
         ConnectionMode.SSH_PAYLOAD_SSL,
-        ConnectionMode.SSH_PAYLOAD_PROXY -> true
+        ConnectionMode.SSH_PAYLOAD_PROXY,
+        ConnectionMode.SSH_PAYLOAD_PROXY_SSL -> true
 
         else -> false
     }

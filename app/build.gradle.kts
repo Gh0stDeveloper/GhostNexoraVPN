@@ -18,8 +18,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.0.34"
+        versionCode = 35
+        versionName = "1.0.35"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -141,7 +141,7 @@ dependencies {
     implementation("com.github.mwiede:jsch:0.2.25")
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation(libs.kotlinx.coroutines.android)
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -149,7 +149,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260522")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

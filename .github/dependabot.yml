@@ -11,6 +11,16 @@ updates:
     labels:
       - dependencies
       - android
+    # Coroutines 1.10+ requires a newer Kotlin metadata level than the current
+    # Kotlin 2.0/KSP toolchain. Upgrade those components together instead of
+    # allowing an isolated dependency PR that cannot compile.
+    ignore:
+      - dependency-name: org.jetbrains.kotlinx:kotlinx-coroutines-android
+        versions:
+          - "[1.10,)"
+      - dependency-name: org.jetbrains.kotlinx:kotlinx-coroutines-test
+        versions:
+          - "[1.10,)"
     groups:
       android-build-tooling:
         patterns:

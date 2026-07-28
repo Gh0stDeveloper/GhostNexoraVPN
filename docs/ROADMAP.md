@@ -105,9 +105,9 @@ Replace remaining generic Xray option text with typed fields for:
 - public server administration guide;
 - final privacy policy and store disclosures.
 
-## Immediate validation backlog
+## Post-merge device qualification backlog
 
-Before the current draft PR is merged:
+For the 1.0.35 device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the JSch error.
 2. Run diagnostics for the same SSH + SSL profile.

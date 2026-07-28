@@ -2,7 +2,7 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
-## Unreleased
+## 1.0.35
 
 ### Added
 
@@ -24,12 +24,24 @@ All notable changes to Ghost Nexora VPN are documented here. The project follows
 - Android TUN application rules are created before `Builder.establish()` and cannot silently fall back from an empty allowlist to all applications.
 - JSON Xray parsing runs before legacy Ghost Nexora JSON parsing.
 - Connection errors now include application-routing codes `APP-ROUTE-001` and `APP-ROUTE-404`.
+- Hysteria2 obfuscation, bandwidth, and port hopping now use Xray 26.5's canonical `finalmask` structure.
+- Session traffic counters now read the Xray proxy outbound instead of counting every byte used by the Android process.
+- Coroutines Android and test artifacts are pinned together at 1.9.0 for the Kotlin 2.0/KSP metadata level.
+
+### Fixed
+
+- Dashboard preflight now uses the selected IP, DNS, and MTU preferences.
+- The VPN foreground notification starts synchronously before profile/database work.
+- Only-selected application routing now rejects the entire stale list when any selected package is unavailable.
+- The SSH strategy now recognizes the payload + proxy + TLS mode.
+- Dependabot no longer proposes an isolated Coroutines update that cannot compile with the current Kotlin toolchain.
 
 ### Security
 
 - Payload size, action count, individual delay, and total delay are bounded.
 - Duplicate detection includes credentials and transport-security parameters without writing them to logs.
 - The VPN application remains excluded from full-device and exclusion-list modes to prevent routing loops.
+- A partially stale only-selected allowlist cannot silently widen or change the intended application scope.
 
 ## 1.0.33
 

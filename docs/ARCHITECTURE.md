@@ -50,7 +50,7 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 - `NetworkPreferences`: IP mode, MTU, DNS mode, custom resolvers, reconnect limit.
 - `AppRoutingPreferences`: all, only selected, or exclude selected applications.
 - `LogEntry`: sanitized timestamped stage event.
-- `VpnTrafficStats`: session counters and current rates.
+- `VpnTrafficStats`: Xray proxy-outbound session counters and current rates.
 
 Sensitive `VpnProfile` fields are encrypted before Room persistence. DataStore contains non-secret operational preferences.
 
