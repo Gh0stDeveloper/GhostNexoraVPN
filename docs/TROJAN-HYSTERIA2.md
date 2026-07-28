@@ -1,0 +1,80 @@
+# Trojan and Hysteria2
+
+## Trojan
+
+Trojan profiles use password authentication and a TLS-protected Xray outbound.
+
+Implemented fields:
+
+- server and port;
+- password;
+- SNI;
+- ALPN;
+- fingerprint;
+- TCP, WebSocket, gRPC, XHTTP, and HTTPUpgrade stream settings;
+- Host, path, authority, and service name.
+
+The application requires TLS and does not expose a trust-all option. Import is supported from `trojan://`, standard Xray JSON, Ghost Nexora JSON, and GNX2.
+
+## Hysteria2
+
+Hysteria2 is represented by the UDP mode and uses Xray's Hysteria/QUIC transport.
+
+Implemented/imported fields:
+
+- auth/password;
+- server and port;
+- TLS/SNI;
+- ALPN;
+- obfuscation method;
+- obfuscation password;
+- optional bandwidth hints;
+- optional port range/hopping parameters when supplied by links.
+
+Supported link schemes:
+
+- `hysteria2://`
+- `hy2://`
+
+## Network behavior
+
+Hysteria2 is more sensitive to:
+
+- UDP blocking by carriers or Wi-Fi networks;
+- packet loss and high jitter;
+- path MTU;
+- network handover;
+- NAT rebinding;
+- background restrictions.
+
+Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400. The diagnostic result must record carrier/network type, IP mode, MTU, DNS mode, latency, and failure stage.
+
+## Status
+
+- Trojan configuration/import/routing: CI verified, physical interoperability pending.
+- Hysteria2 configuration/import/routing: CI verified.
+- Hysteria2 stability across carriers, loss, handover, and sleep: experimental until documented.
+
+## Required tests
+
+### Trojan
+
+- TCP/TLS with valid certificate;
+- invalid SNI;
+- WebSocket/TLS;
+- gRPC/TLS;
+- server authentication rejection;
+- IPv4-only and dual stack.
+
+### Hysteria2
+
+- direct QUIC on mobile data and Wi-Fi;
+- UDP-blocked network;
+- obfuscation success/failure;
+- 1%, 5%, and 10% simulated packet loss;
+- Wi-Fi to mobile handover;
+- screen-off/background session;
+- MTU 1280, 1360, and 1400;
+- IPv6-capable and IPv4-only servers.
+
+A successful core start is insufficient. The connection must pass active outbound verification and sustain traffic during the observation window.
