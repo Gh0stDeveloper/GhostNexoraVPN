@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -78,7 +79,14 @@ fun ImportScreen(
 
     LaunchedEffect(state.importSuccess) {
         if (state.importSuccess) {
-            snackbar.showSnackbar("${state.importedCount} perfil(es) importado(s)")
+            val skipped = state.skippedDuplicateCount
+            snackbar.showSnackbar(
+                if (skipped > 0) {
+                    "${state.importedCount} perfil(es) importado(s) · $skipped duplicado(s) omitido(s)"
+                } else {
+                    "${state.importedCount} perfil(es) importado(s)"
+                }
+            )
             viewModel.clearImportMessage()
         }
     }
@@ -121,10 +129,10 @@ fun ImportScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                             Icon(Icons.Filled.Lock, null, tint = NeonCyan)
-                            Text("Importación protegida GNX2", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+                            Text("Importación protegida y verificable", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         }
                         Text(
-                            "Los archivos .gnx se autentican y descifran con la contraseña de exportación. También puedes escanear QR de VLESS, VMess, Trojan o Hysteria2 y migrar JSON antiguos.",
+                            "Admite GNX2, vmess://, vless://, trojan://, hysteria2://, hy2://, ssh://, JSON Xray, QR, portapapeles y archivos. Siempre muestra una vista previa antes de guardar.",
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -218,19 +226,48 @@ fun ImportScreen(
                             state.validation?.let {
                                 Text(it.message, color = if (it.isValid) NeonGreen else NeonAmber, style = MaterialTheme.typography.bodySmall)
                             }
+                            if (state.duplicateCount > 0) {
+                                Text(
+                                    "Al fusionar se omitirán ${state.duplicateCount} configuración(es) idéntica(s). Reemplazar conserva una sola copia de cada configuración importada.",
+                                    color = NeonAmber,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
                 }
             }
 
             if (state.previewProfiles.isNotEmpty()) {
-                item { Text("Vista previa (${state.previewProfiles.size})", color = TextPrimary, style = MaterialTheme.typography.titleMedium) }
-                items(state.previewProfiles.take(8), key = { it.id }) { profile ->
+                item { Text("Vista previa técnica (${state.previewProfiles.size})", color = TextPrimary, style = MaterialTheme.typography.titleMedium) }
+                itemsIndexed(state.previewProfiles.take(12), key = { _, profile -> profile.id }) { index, profile ->
+                    val summary = state.technicalSummaries.getOrNull(index)
                     GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
                         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-                            Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary)
-                            Text("${profile.host}:${profile.port} · ${profile.connectionModeLabel}", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                            Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("${summary?.protocol ?: profile.connectionModeLabel} · ${summary?.server ?: profile.serverAddress}", color = NeonCyan, style = MaterialTheme.typography.bodySmall)
+                            summary?.let {
+                                TechnicalRow("Transporte", it.transport)
+                                TechnicalRow("Seguridad", it.security)
+                                if (it.sni.isNotBlank()) TechnicalRow("SNI", it.sni)
+                                if (it.hostHeader.isNotBlank()) TechnicalRow("Host", it.hostHeader)
+                                if (it.path.isNotBlank()) TechnicalRow("Path", it.path)
+                                if (it.serviceName.isNotBlank()) TechnicalRow("Service", it.serviceName)
+                                if (it.proxy.isNotBlank()) TechnicalRow("Proxy", it.proxy)
+                                it.warnings.forEach { warning ->
+                                    Text(warning, color = NeonAmber, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
                         }
+                    }
+                }
+                if (state.previewProfiles.size > 12) {
+                    item {
+                        Text(
+                            "Se muestran 12 de ${state.previewProfiles.size} perfiles. Todos se validarán al importar.",
+                            color = TextTertiary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
                 item {
@@ -239,7 +276,7 @@ fun ImportScreen(
                             Text("Reemplazar", color = NeonAmber)
                         }
                         TextButton(onClick = { viewModel.confirmImport(true) }, enabled = state.canImport) {
-                            Text("Fusionar", color = NeonCyan)
+                            Text("Fusionar sin duplicados", color = NeonCyan)
                         }
                     }
                 }
@@ -248,11 +285,19 @@ fun ImportScreen(
             item {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    "Formato recomendado: .gnx cifrado. Los JSON sin cifrar solo se aceptan para migrar configuraciones antiguas.",
+                    "Formato recomendado: .gnx cifrado. Ninguna protección cliente impide de forma absoluta la extracción por un usuario que controla el dispositivo.",
                     color = TextTertiary,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TechnicalRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+        Text(value, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
     }
 }
