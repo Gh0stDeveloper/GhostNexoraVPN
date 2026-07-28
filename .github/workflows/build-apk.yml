@@ -19,6 +19,7 @@ env:
   XRAY_LIB_TAG: v26.5.19
   ANDROID_NDK_VERSION: 27.0.12077973
   CMAKE_VERSION: 3.22.1
+  ANDROID_BUILD_TOOLS_VERSION: 35.0.0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -40,29 +41,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Resolve Android build tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          APKSIGNER_PATH="$(
-            find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
-              -type f -name apksigner -perm -111 -print |
-              sort -V |
-              tail -n 1
-          )"
-          test -n "$APKSIGNER_PATH"
-          test -x "$APKSIGNER_PATH"
-          "$APKSIGNER_PATH" version
-          echo "APKSIGNER=$APKSIGNER_PATH" >> "$GITHUB_ENV"
-
-      - name: Install NDK and CMake
+      - name: Install Android toolchain
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --install "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          "$SDKMANAGER" --install \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;${ANDROID_NDK_VERSION}" \
+            "cmake;${CMAKE_VERSION}"
+
+      - name: Resolve Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER_PATH="$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          test -x "$APKSIGNER_PATH"
+          "$APKSIGNER_PATH" version
+          echo "APKSIGNER=$APKSIGNER_PATH" >> "$GITHUB_ENV"
 
       - name: Download AndroidLibXrayLite
         uses: robinraju/release-downloader@v1.13
@@ -268,20 +266,38 @@ jobs:
         run: ./gradlew clean assembleRelease --stacktrace --warning-mode all
 
       - name: Prepare Release metadata and checksum
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: release_meta
         shell: bash
         run: |
           set -euo pipefail
-          APK_PATH="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          APK_PATH="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
           VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -s "$APK_PATH"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
           mkdir -p app/build/publish
           PUBLISH_APK="app/build/publish/GhostNexoraVPN-${VERSION_NAME}.apk"
           cp "$APK_PATH" "$PUBLISH_APK"
           SHA256="$(sha256sum "$PUBLISH_APK" | awk '{print $1}')"
-          SIGNER_SHA256="$("$APKSIGNER" verify --print-certs "$PUBLISH_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-          test -n "$SIGNER_SHA256"
+          APKSIGNER_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$PUBLISH_APK" 2>&1)" || {
+            printf '%s\n' "$APKSIGNER_OUTPUT"
+            exit 1
+          }
+          printf '%s\n' "$APKSIGNER_OUTPUT"
+          SIGNER_SHA256=""
+          shopt -s nocasematch
+          while IFS= read -r line; do
+            if [[ "$line" =~ certificate[[:space:]]SHA-256[[:space:]]digest:[[:space:]]*([[:xdigit:]]{64}) ]]; then
+              SIGNER_SHA256="${BASH_REMATCH[1]}"
+              break
+            fi
+          done <<< "$APKSIGNER_OUTPUT"
+          shopt -u nocasematch
+          if [[ ! "$SIGNER_SHA256" =~ ^[[:xdigit:]]{64}$ ]]; then
+            echo "Unable to parse signer SHA-256 digest from apksigner output"
+            exit 1
+          fi
           printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
           echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
           echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
