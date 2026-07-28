@@ -31,6 +31,13 @@ Implemented/imported fields:
 - optional bandwidth hints;
 - optional port range/hopping parameters when supplied by links.
 
+The bundled Xray 26.5 schema stores authentication and UDP idle timeout in
+`hysteriaSettings`. Salamander obfuscation and QUIC tuning are emitted in
+`streamSettings.finalmask`: the `udp` mask contains the Salamander password,
+while `quicParams` contains Brutal bandwidth and `udpHop` ports/interval.
+Standard Xray JSON import reads the same structure and retains a legacy
+fallback for older exported objects.
+
 Supported link schemes:
 
 - `hysteria2://`

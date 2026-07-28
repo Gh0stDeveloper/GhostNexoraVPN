@@ -75,6 +75,24 @@ class XrayCoreEngine(
         }
     }
 
+    /**
+     * Reads and resets the proxy outbound counters exposed by the bundled
+     * core. These values exclude updater, UI and other process traffic.
+     */
+    @Synchronized
+    fun drainProxyTraffic(): XrayTrafficDelta {
+        val activeController = controller?.takeIf { it.isRunning }
+            ?: return XrayTrafficDelta()
+        return XrayTrafficDelta(
+            receivedBytes = runCatching {
+                activeController.queryStats("proxy", "downlink")
+            }.getOrDefault(0L).coerceAtLeast(0L),
+            sentBytes = runCatching {
+                activeController.queryStats("proxy", "uplink")
+            }.getOrDefault(0L).coerceAtLeast(0L)
+        )
+    }
+
     @Synchronized
     fun stop() {
         val activeController = controller ?: return
@@ -162,4 +180,9 @@ class XrayCoreEngine(
 data class OutboundCheck(
     val latencyMs: Long,
     val endpoint: String
+)
+
+data class XrayTrafficDelta(
+    val receivedBytes: Long = 0L,
+    val sentBytes: Long = 0L
 )

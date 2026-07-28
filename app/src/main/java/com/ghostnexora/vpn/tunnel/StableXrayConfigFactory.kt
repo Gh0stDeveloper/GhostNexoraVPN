@@ -88,7 +88,7 @@ object StableXrayConfigFactory {
             "settings",
             JSONObject()
                 .put("name", "ghostnexora0")
-                .put("MTU", preferences.validatedMtu)
+                .put("mtu", preferences.validatedMtu)
                 .put("userLevel", 8)
         )
         .put(
@@ -268,10 +268,15 @@ object StableXrayConfigFactory {
         val hysteria = JSONObject()
             .put("version", 2)
             .put("auth", profile.password)
-        options["obfs"]?.takeIf(String::isNotBlank)?.let { hysteria.put("obfs", it) }
-        (options["obfs-password"] ?: options["obfsPassword"])
-            ?.takeIf(String::isNotBlank)
-            ?.let { hysteria.put("obfsPassword", it) }
+        normalizeSeconds(options["udpIdleTimeout"], minimum = 2, maximum = 600)
+            ?.let { hysteria.put("udpIdleTimeout", it) }
+
+        val streamSettings = JSONObject()
+            .put("network", "hysteria")
+            .put("security", "tls")
+            .put("hysteriaSettings", hysteria)
+            .put("tlsSettings", tlsSettings(profile.sni.ifBlank { profile.host }, options))
+        hysteriaFinalMask(options)?.let { streamSettings.put("finalmask", it) }
 
         return JSONObject()
             .put("tag", "proxy")
@@ -283,15 +288,53 @@ object StableXrayConfigFactory {
                     .put("port", profile.port)
                     .put("version", 2)
             )
-            .put(
-                "streamSettings",
-                JSONObject()
-                    .put("network", "hysteria")
-                    .put("security", "tls")
-                    .put("hysteriaSettings", hysteria)
-                    .put("tlsSettings", tlsSettings(profile.sni.ifBlank { profile.host }, options))
-            )
+            .put("streamSettings", streamSettings)
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
+    }
+
+    /**
+     * Xray 26.5 stores Hysteria2 obfuscation and QUIC tuning in finalmask,
+     * not in hysteriaSettings. Keeping these values in the old object makes
+     * imports look successful while the core silently ignores the options.
+     */
+    private fun hysteriaFinalMask(options: Map<String, String>): JSONObject? {
+        val udpMasks = JSONArray()
+        val obfs = options["obfs"].orEmpty().trim().lowercase()
+        val obfsPassword = (options["obfs-password"] ?: options["obfsPassword"]).orEmpty().trim()
+        if (obfs.isNotBlank() || obfsPassword.isNotBlank()) {
+            require(obfs == "salamander") {
+                "Hysteria2 obfuscation '$obfs' is not supported by the bundled Xray core"
+            }
+            require(obfsPassword.isNotBlank()) {
+                "Hysteria2 Salamander obfuscation requires a password"
+            }
+            udpMasks.put(
+                JSONObject()
+                    .put("type", "salamander")
+                    .put("settings", JSONObject().put("password", obfsPassword))
+            )
+        }
+
+        val quicParams = JSONObject()
+        normalizeMbps(options["upmbps"])?.let { quicParams.put("brutalUp", it) }
+        normalizeMbps(options["downmbps"])?.let { quicParams.put("brutalDown", it) }
+        if (quicParams.has("brutalUp") || quicParams.has("brutalDown")) {
+            quicParams.put("congestion", "brutal")
+        }
+
+        val ports = normalizePortList(options["ports"])
+        val hopInterval = normalizeSecondsRange(options["hopInterval"], minimum = 5)
+        if (ports != null || hopInterval != null) {
+            val udpHop = JSONObject()
+            ports?.let { udpHop.put("ports", it) }
+            hopInterval?.let { udpHop.put("interval", it) }
+            quicParams.put("udpHop", udpHop)
+        }
+
+        if (udpMasks.length() == 0 && quicParams.length() == 0) return null
+        return JSONObject()
+            .putOpt("udp", udpMasks.takeIf { it.length() > 0 })
+            .putOpt("quicParams", quicParams.takeIf { it.length() > 0 })
     }
 
     private fun streamSettings(
@@ -375,6 +418,64 @@ object StableXrayConfigFactory {
         )
         .putOpt("pinnedPeerCertSha256", options["pcs"]?.takeIf(String::isNotBlank))
         .putOpt("verifyPeerCertByName", options["vcn"]?.takeIf(String::isNotBlank))
+
+    private fun normalizeMbps(raw: String?): String? {
+        val value = raw?.trim()?.lowercase().orEmpty()
+        if (value.isBlank()) return null
+        val numeric = Regex("""\d+(?:\.\d+)?""")
+        if (numeric.matches(value)) return "${value}mbps"
+        require(Regex("""\d+(?:\.\d+)?\s*(?:k|m|g|t)?bps""").matches(value)) {
+            "Invalid Hysteria2 bandwidth value: $value"
+        }
+        return value.replace(" ", "")
+    }
+
+    private fun normalizePortList(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank()) return null
+        val normalized = value.replace(" ", "")
+        require(Regex("""\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*""").matches(normalized)) {
+            "Invalid Hysteria2 port list: $value"
+        }
+        normalized.split(',').forEach { part ->
+            val from = part.substringBefore('-').toInt()
+            val to = part.substringAfter('-', part).toInt()
+            require(from in 1..65535 && to in 1..65535 && from <= to) {
+                "Invalid Hysteria2 port range: $part"
+            }
+        }
+        return normalized
+    }
+
+    private fun normalizeSeconds(raw: String?, minimum: Int, maximum: Int): Int? {
+        val value = raw?.trim()?.lowercase().orEmpty()
+        if (value.isBlank()) return null
+        val seconds = value.removeSuffix("seconds").removeSuffix("second").removeSuffix("s").trim().toIntOrNull()
+            ?: error("Invalid duration: $value")
+        require(seconds in minimum..maximum) {
+            "Duration must be between $minimum and $maximum seconds"
+        }
+        return seconds
+    }
+
+    private fun normalizeSecondsRange(raw: String?, minimum: Int): String? {
+        val value = raw?.trim()?.lowercase().orEmpty()
+        if (value.isBlank()) return null
+        val normalized = value
+            .replace("seconds", "")
+            .replace("second", "")
+            .replace("s", "")
+            .replace(" ", "")
+        require(Regex("""\d+(?:-\d+)?""").matches(normalized)) {
+            "Invalid duration range: $value"
+        }
+        normalized.split('-').forEach { seconds ->
+            require(seconds.toInt() >= minimum) {
+                "Hysteria2 hop interval must be at least $minimum seconds"
+            }
+        }
+        return normalized
+    }
 
     private fun normalizeNetwork(raw: String): String = when (raw.trim().lowercase()) {
         "ws", "websocket" -> "ws"

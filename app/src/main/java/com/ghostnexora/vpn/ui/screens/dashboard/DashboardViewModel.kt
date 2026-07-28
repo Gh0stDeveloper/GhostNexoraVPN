@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -170,7 +171,8 @@ class DashboardViewModel @Inject constructor(
 
             try {
                 val result = withContext(Dispatchers.IO) {
-                    preflightManager.verify(profile)
+                    val preferences = repository.networkPreferences.first()
+                    preflightManager.verify(profile, preferences)
                 }
                 repository.log(
                     LogLevel.SUCCESS,

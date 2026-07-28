@@ -128,6 +128,8 @@ class TunnelManager(
     @Synchronized
     fun verifyActive(): OutboundCheck = xrayEngine.verifyActiveOutbound()
 
+    fun drainTraffic(): XrayTrafficDelta = xrayEngine.drainProxyTraffic()
+
     @Synchronized
     fun stop(runtime: TunnelRuntime?) {
         onCoreStatus("[TUN] Deteniendo core y liberando transporte")

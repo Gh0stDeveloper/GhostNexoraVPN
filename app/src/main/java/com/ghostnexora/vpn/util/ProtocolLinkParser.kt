@@ -370,9 +370,36 @@ object ProtocolLinkParser {
         val hysteria = stream.optJSONObject("hysteriaSettings") ?: JSONObject()
         val auth = hysteria.optString("auth").ifBlank { settings.optString("auth") }
         if (host.isBlank() || port !in 1..65535 || auth.isBlank()) return null
+        val finalMask = stream.optJSONObject("finalmask") ?: JSONObject()
+        val quicParams = finalMask.optJSONObject("quicParams") ?: JSONObject()
+        val udpHop = quicParams.optJSONObject("udpHop") ?: JSONObject()
+        val salamander = finalMask.optJSONArray("udp")?.let { masks ->
+            (0 until masks.length())
+                .asSequence()
+                .mapNotNull(masks::optJSONObject)
+                .firstOrNull { it.optString("type").equals("salamander", true) }
+        }
         val options = extractStreamOptions(stream, host).toMutableMap().apply {
-            put("obfs", hysteria.optString("obfs"))
-            put("obfs-password", hysteria.optString("obfsPassword"))
+            hysteria.optString("udpIdleTimeout").takeIf(String::isNotBlank)
+                ?.let { put("udpIdleTimeout", it) }
+            val obfs = salamander?.optString("type")
+                .orEmpty()
+                .ifBlank { hysteria.optString("obfs") }
+            val obfsPassword = salamander
+                ?.optJSONObject("settings")
+                ?.optString("password")
+                .orEmpty()
+                .ifBlank { hysteria.optString("obfsPassword") }
+            obfs.takeIf(String::isNotBlank)?.let { put("obfs", it) }
+            obfsPassword.takeIf(String::isNotBlank)?.let { put("obfs-password", it) }
+            quicParams.optString("brutalUp").takeIf(String::isNotBlank)
+                ?.let { put("upmbps", it) }
+            quicParams.optString("brutalDown").takeIf(String::isNotBlank)
+                ?.let { put("downmbps", it) }
+            udpHop.optString("ports").takeIf(String::isNotBlank)
+                ?.let { put("ports", it) }
+            udpHop.optString("interval").takeIf(String::isNotBlank)
+                ?.let { put("hopInterval", it) }
         }
         return VpnProfile(
             id = UUID.randomUUID().toString(),

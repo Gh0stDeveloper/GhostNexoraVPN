@@ -68,4 +68,61 @@ class ProtocolLinkParserTest {
         assertTrue(profile.payload.contains("flow=xtls-rprx-vision"))
         assertTrue(profile.payload.contains("serviceName=ghost"))
     }
+
+    @Test
+    fun parsesCanonicalHysteria2FinalMaskOptions() {
+        val json = """
+            {
+              "outbounds": [{
+                "tag": "production-hy2",
+                "protocol": "hysteria",
+                "settings": {
+                  "address": "hy2.example.com",
+                  "port": 443,
+                  "version": 2
+                },
+                "streamSettings": {
+                  "network": "hysteria",
+                  "security": "tls",
+                  "hysteriaSettings": {
+                    "auth": "auth-secret",
+                    "udpIdleTimeout": 60
+                  },
+                  "tlsSettings": {
+                    "serverName": "cdn.example.com",
+                    "alpn": ["h3"]
+                  },
+                  "finalmask": {
+                    "udp": [{
+                      "type": "salamander",
+                      "settings": {"password": "mask-secret"}
+                    }],
+                    "quicParams": {
+                      "congestion": "brutal",
+                      "brutalUp": "20mbps",
+                      "brutalDown": "100mbps",
+                      "udpHop": {
+                        "ports": "443,8443-8445",
+                        "interval": "30"
+                      }
+                    }
+                  }
+                }
+              }]
+            }
+        """.trimIndent()
+
+        val profile = ProtocolLinkParser.parseXrayJson(json).single()
+        assertEquals(ConnectionMode.UDP, profile.selectedMode)
+        assertEquals("hy2.example.com", profile.host)
+        assertEquals("auth-secret", profile.password)
+        assertEquals("cdn.example.com", profile.sni)
+        assertTrue(profile.payload.contains("obfs=salamander"))
+        assertTrue(profile.payload.contains("obfs-password=mask-secret"))
+        assertTrue(profile.payload.contains("ports=443,8443-8445"))
+        assertTrue(profile.payload.contains("hopInterval=30"))
+        assertTrue(profile.payload.contains("upmbps=20mbps"))
+        assertTrue(profile.payload.contains("downmbps=100mbps"))
+        assertTrue(profile.payload.contains("udpIdleTimeout=60"))
+    }
 }
