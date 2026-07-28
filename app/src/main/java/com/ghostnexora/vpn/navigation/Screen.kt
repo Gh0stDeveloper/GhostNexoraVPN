@@ -1,6 +1,8 @@
 package com.ghostnexora.vpn.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.outlined.FactCheck
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,8 +49,8 @@ sealed class Screen(
     object Compatibility : Screen(
         route = "compatibility",
         title = "Compatibilidad",
-        icon = Icons.Outlined.FactCheck,
-        iconSelected = Icons.Filled.FactCheck
+        icon = Icons.AutoMirrored.Outlined.FactCheck,
+        iconSelected = Icons.AutoMirrored.Filled.FactCheck
     )
 
     object Import : Screen(
