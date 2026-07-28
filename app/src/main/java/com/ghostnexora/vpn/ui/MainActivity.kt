@@ -302,6 +302,8 @@ private fun screenTitle(route: String?): String = when {
     route == Screen.Profiles.route -> "VPN Profiles"
     route == Screen.CreateProfile.route -> "New Profile"
     route.startsWith("edit_profile") -> "Edit Profile"
+    route == Screen.AppRouting.route -> "Application Routing"
+    route == Screen.Compatibility.route -> "Compatibility"
     route == Screen.Import.route -> "Import Profiles"
     route == Screen.Export.route -> "Export Profiles"
     route == Screen.History.route -> "History"

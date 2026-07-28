@@ -148,7 +148,14 @@ class JsonManager @Inject constructor(
 
     private fun parseImportText(rawText: String): ImportResult {
         if (rawText.isBlank()) return ImportResult.Error("El archivo está vacío")
-        parseJson(rawText)?.let { return it }
+        val trimmed = rawText.trim()
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            val xrayProfiles = ProtocolLinkParser.parseXrayJson(trimmed)
+            if (xrayProfiles.isNotEmpty()) {
+                return ImportResult.Success(xrayProfiles, "Configuración JSON Xray")
+            }
+            parseJson(trimmed)?.let { return it }
+        }
 
         val protocolProfiles = ProtocolLinkParser.parseText(rawText)
         if (protocolProfiles.isNotEmpty()) {
@@ -157,6 +164,7 @@ class JsonManager @Inject constructor(
                 rawText.contains("vless://", true) -> "Enlaces VLESS"
                 rawText.contains("trojan://", true) -> "Enlaces Trojan"
                 rawText.contains("hysteria2://", true) || rawText.contains("hy2://", true) -> "Enlaces Hysteria2"
+                rawText.contains("ssh://", true) -> "Enlaces SSH"
                 else -> "Enlaces compatibles"
             }
             return ImportResult.Success(protocolProfiles, source)

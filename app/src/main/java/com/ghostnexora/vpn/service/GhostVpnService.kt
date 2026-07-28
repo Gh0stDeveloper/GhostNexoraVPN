@@ -21,6 +21,8 @@ import androidx.core.app.NotificationCompat
 import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.GhostNexoraApp
 import com.ghostnexora.vpn.R
+import com.ghostnexora.vpn.data.model.AppRoutingMode
+import com.ghostnexora.vpn.data.model.AppRoutingPreferences
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.NetworkPreferences
@@ -239,12 +241,22 @@ class GhostVpnService : VpnService() {
             validateProfile(profile)
             ensurePhysicalNetwork()
             val preferences = repository.networkPreferences.first()
+            val appRouting = repository.appRoutingPreferences.first()
+            require(appRouting.isValid) {
+                "App-routing invalid: select at least one selected application [APP-ROUTE-001]"
+            }
             activeNetworkPreferences = preferences
             logSafe(
                 LogLevel.INFO,
                 "Red VPN: ${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · ${preferences.dnsMode.label}",
                 profile.id,
                 "SETTINGS"
+            )
+            logSafe(
+                LogLevel.INFO,
+                "Aplicaciones: ${appRouting.mode.label} · ${appRouting.normalizedPackages.size} regla(s)",
+                profile.id,
+                "APP_ROUTING"
             )
             logSafe(LogLevel.INFO, "Iniciando ${profile.connectionModeLabel}", profile.id, "VPN")
             logConnectionSnapshot(profile)
@@ -269,7 +281,7 @@ class GhostVpnService : VpnService() {
                 )
             }
 
-            val tun = buildTunInterface(profile, preferences) ?: error("Android no pudo establecer la interfaz VPN")
+            val tun = buildTunInterface(profile, preferences, appRouting) ?: error("Android no pudo establecer la interfaz VPN")
             tunInterface = tun
             underlyingNetwork?.let { network -> runCatching { setUnderlyingNetworks(arrayOf(network)) } }
             logSafe(LogLevel.INFO, "TUN activo · MTU ${preferences.validatedMtu} · ${preferences.ipMode.label} · rutas completas", profile.id, "NETWORK")
@@ -572,7 +584,8 @@ class GhostVpnService : VpnService() {
 
     private fun buildTunInterface(
         profile: VpnProfile,
-        preferences: NetworkPreferences
+        preferences: NetworkPreferences,
+        appRouting: AppRoutingPreferences
     ): ParcelFileDescriptor? = try {
         val builder = Builder()
             .setSession(profile.name)
@@ -589,7 +602,7 @@ class GhostVpnService : VpnService() {
                 runCatching { builder.addDnsServer(address) }
             }
         }
-        runCatching { builder.addDisallowedApplication(packageName) }
+        applyAppRouting(builder, appRouting)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
         builder.establish()
     } catch (error: Throwable) {
@@ -597,6 +610,35 @@ class GhostVpnService : VpnService() {
             logSafe(LogLevel.ERROR, "Error creando TUN: ${error.message}", profile.id, "NETWORK")
         }
         null
+    }
+
+    private fun applyAppRouting(builder: Builder, preferences: AppRoutingPreferences) {
+        val packages = preferences.normalizedPackages.filterNot { it == packageName }
+        when (preferences.mode) {
+            AppRoutingMode.ALL -> {
+                runCatching { builder.addDisallowedApplication(packageName) }
+            }
+            AppRoutingMode.ONLY_SELECTED -> {
+                require(packages.isNotEmpty()) {
+                    "App-routing invalid: no selected application [APP-ROUTE-001]"
+                }
+                val applied = packages.count { selectedPackage ->
+                    runCatching {
+                        builder.addAllowedApplication(selectedPackage)
+                        true
+                    }.getOrDefault(false)
+                }
+                require(applied > 0) {
+                    "App-routing invalid: selected application packages were not found [APP-ROUTE-404]"
+                }
+            }
+            AppRoutingMode.EXCLUDE_SELECTED -> {
+                runCatching { builder.addDisallowedApplication(packageName) }
+                packages.forEach { selectedPackage ->
+                    runCatching { builder.addDisallowedApplication(selectedPackage) }
+                }
+            }
+        }
     }
 
     private suspend fun logTransportReady(profile: VpnProfile) {
