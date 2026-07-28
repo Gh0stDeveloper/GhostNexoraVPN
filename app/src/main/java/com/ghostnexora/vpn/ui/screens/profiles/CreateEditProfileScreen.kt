@@ -187,21 +187,14 @@ fun CreateEditProfileScreen(
                     }
 
                     if (state.selectedMode.requiresPayload) {
-                        PayloadPresetPanel(
+                        AdvancedPayloadEditor(
+                            payload = state.payload,
                             host = state.host,
                             port = state.port.toIntOrNull() ?: 443,
-                            sni = state.sni.ifBlank { state.host },
-                            onUsePayload = viewModel::onPayloadChange
-                        )
-                        OutlinedTextField(
-                            value = state.payload,
-                            onValueChange = viewModel::onPayloadChange,
-                            label = { Text("Payload HTTP") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 5,
-                            supportingText = {
-                                Text("Variables: [host], [host_port], [port], [sni], [crlf].")
-                            }
+                            sni = state.sni,
+                            proxyHost = state.proxyHost,
+                            proxyPort = state.proxyPort.toIntOrNull() ?: 0,
+                            onPayloadChange = viewModel::onPayloadChange
                         )
                     }
 
