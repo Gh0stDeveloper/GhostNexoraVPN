@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Tijuana
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - android
+    groups:
+      android-build-tooling:
+        patterns:
+          - "com.android.*"
+          - "org.jetbrains.kotlin.*"
+          - "com.google.devtools.ksp"
+          - "com.google.dagger.*"
+      androidx:
+        patterns:
+          - "androidx.*"
+      security-and-network:
+        patterns:
+          - "org.bouncycastle:*"
+          - "com.github.mwiede:jsch"
+          - "com.google.code.gson:gson"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: America/Tijuana
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci

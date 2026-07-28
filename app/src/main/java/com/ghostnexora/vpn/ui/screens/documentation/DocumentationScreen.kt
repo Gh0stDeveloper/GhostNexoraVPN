@@ -8,9 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,7 +21,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
@@ -30,19 +28,19 @@ import com.ghostnexora.vpn.ui.theme.Dimens
 import com.ghostnexora.vpn.ui.theme.GhostCard
 import com.ghostnexora.vpn.ui.theme.NeonAmber
 import com.ghostnexora.vpn.ui.theme.NeonCyan
+import com.ghostnexora.vpn.ui.theme.NeonGreen
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 
 @Composable
 fun DocumentationScreen() {
-    val scrollState = rememberScrollState()
-    val supported = ConnectionMode.entries.filter { it.supported }
-    val planned = ConnectionMode.entries.filterNot { it.supported }
+    val supported = ConnectionMode.entries.filter(ConnectionMode::supported)
+    val planned = ConnectionMode.entries.filterNot(ConnectionMode::supported)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Documentación de métodos") },
+                title = { Text("Manual de Ghost Nexora VPN") },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
@@ -53,81 +51,89 @@ fun DocumentationScreen() {
                 .fillMaxSize()
                 .background(BackgroundDark)
                 .padding(padding)
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceLG)
         ) {
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Qué hace esta sección", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text(
-                        "Aquí se explican los métodos de conexión, los campos que requiere cada uno y cuáles están activos dentro del motor actual.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                }
-            }
+            InfoBlock(
+                "Estado real de compatibilidad",
+                "La aplicación separa CI verificado, prueba física pendiente y experimental. Un core iniciado no demuestra que el servidor entregue Internet.",
+                NeonCyan
+            )
 
+            InfoBlock(
+                "Conexión aceptada",
+                "El flujo valida perfil, red física, DNS/TCP/TLS y salida remota antes del TUN. Después inicia SSH/Xray, verifica Internet de nuevo y recién entonces muestra Conectado.",
+                NeonGreen
+            )
 
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Navegación principal", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text("• Inicio: estado actual, perfil activo y resumen rápido de conexión.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("• Log: panel deslizable con registros persistentes y copia completa.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("• Perfiles: administración, importación y exportación.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("• Ajustes: permisos, actualizaciones y opciones del sistema.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            }
+            InfoBlock(
+                "Diagnóstico",
+                "Ajustes > Motor de conexión ejecuta pruebas independientes sin cambiar las rutas normales del teléfono. Cada fallo incluye código y solución. Exporta el reporte desde Logs.",
+                NeonCyan
+            )
 
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Actualizaciones", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text("La app consulta GitHub Releases automáticamente al abrirse y también permite una búsqueda manual desde Ajustes.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("La comparación se hace por versionCode para evitar falsos positivos y las nuevas APK se instalan encima de la anterior si la firma coincide.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            }
+            InfoBlock(
+                "Importación",
+                "Admite GNX2, JSON legado, JSON Xray, vmess://, vless://, trojan://, hysteria2://, hy2:// y ssh://. QR, archivo y portapapeles muestran protocolo, transporte, seguridad, SNI, Host y path antes de guardar.",
+                NeonCyan
+            )
 
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Importación de protocolos", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text("La pantalla de importación acepta JSON exportado y enlaces vmess://, vless:// y trojan:// desde archivo o portapapeles.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("También puedes crear perfiles manuales con campos dinámicos y generar payloads por caso de uso desde el editor.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            }
+            InfoBlock(
+                "Payload avanzado",
+                "Incluye plantillas CONNECT, GET, POST, HEAD y WebSocket. Variables, CRLF visible, [split] y [delay=N] tienen límites estrictos y se validan antes de guardar o transmitir.",
+                NeonAmber
+            )
 
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Logs y diagnóstico", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text("El registro mantiene el historial persistente en Room y solo se trunca cuando el usuario lo limpia o se supera el límite configurado.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("Desde el panel de logs se puede filtrar, copiar y revisar el detalle completo de cada evento de conexión.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            }
+            InfoBlock(
+                "Aplicaciones por VPN",
+                "Puedes enrutar todas las apps, solo una selección o excluir una selección. El modo solo seleccionadas falla de forma segura si la lista está vacía o las apps fueron desinstaladas.",
+                NeonCyan
+            )
+
+            InfoBlock(
+                "Privacidad y seguridad",
+                "Perfiles cifrados con Android Keystore, exportaciones GNX2 autenticadas, TLS estricto, fingerprints SSH, logs saneados y bloqueo de capturas en pantallas de credenciales. No existe Trust All global.",
+                NeonGreen
+            )
 
             SectionBlock(
-                title = "Métodos activos",
-                subtitle = "Son los que el motor actual puede leer y usar en la conexión.",
+                title = "Métodos disponibles en el motor",
+                subtitle = "La implementación existe; consulta Compatibilidad para saber qué combinaciones todavía requieren servidor y dispositivo real.",
                 color = NeonCyan,
                 modes = supported
             )
 
             SectionBlock(
-                title = "Métodos documentados para futuras integraciones",
-                subtitle = "Aparecen en la app como referencia, pero todavía necesitan un core dedicado.",
+                title = "Métodos pendientes de integración",
+                subtitle = "No se presentan como disponibles hasta tener motor, validación, UI y pruebas.",
                 color = NeonAmber,
                 modes = planned
             )
 
-            GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                    Text("Flujo recomendado", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text("1. Crea un perfil.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("2. Elige el método correcto según tu servidor.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("3. Completa solo los campos que el método requiera.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                    Text("4. Selecciona ese perfil antes de conectar.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            }
+            InfoBlock(
+                "Prueba recomendada",
+                "1. Selecciona perfil. 2. Ejecuta Diagnóstico. 3. Revisa código de error. 4. Conecta. 5. Comprueba subida y bajada. 6. Exporta logs si falla. Empieza con IPv4, MTU 1400 y DNS automático.",
+                NeonCyan
+            )
+
+            InfoBlock(
+                "Documentación completa",
+                "El repositorio contiene arquitectura, modos, SSH, payloads, Xray, DNS, split tunneling, seguridad, formatos, importación, troubleshooting, matriz de pruebas, build, privacidad, changelog y roadmap.",
+                NeonGreen
+            )
 
             Spacer(Modifier.height(Dimens.Space3XL))
+        }
+    }
+}
+
+@Composable
+private fun InfoBlock(title: String, text: String, color: Color) {
+    GhostCard(borderColor = color.copy(alpha = 0.35f), contentPadding = PaddingValues(Dimens.SpaceMD)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = color)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         }
     }
 }
@@ -140,13 +146,7 @@ private fun SectionBlock(
     modes: List<ConnectionMode>
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-        GhostCard(borderColor = color.copy(alpha = 0.3f), contentPadding = PaddingValues(Dimens.SpaceMD)) {
-            Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = color)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            }
-        }
-
+        InfoBlock(title, subtitle, color)
         modes.forEach { mode ->
             GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
@@ -157,13 +157,11 @@ private fun SectionBlock(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
-                    if (!mode.supported) {
-                        Text(
-                            "Estado: pendiente de motor dedicado",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NeonAmber
-                        )
-                    }
+                    Text(
+                        if (mode.supported) "Estado: implementado; evidencia física según combinación" else "Estado: no implementado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (mode.supported) NeonCyan else NeonAmber
+                    )
                 }
             }
         }

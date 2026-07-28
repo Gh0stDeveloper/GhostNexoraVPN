@@ -21,12 +21,17 @@ import androidx.core.app.NotificationCompat
 import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.GhostNexoraApp
 import com.ghostnexora.vpn.R
+import com.ghostnexora.vpn.data.model.AppRoutingMode
+import com.ghostnexora.vpn.data.model.AppRoutingPreferences
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.LogLevel
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog
+import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory
 import com.ghostnexora.vpn.tunnel.TunnelManager
 import com.ghostnexora.vpn.tunnel.TunnelRuntime
 import com.ghostnexora.vpn.ui.MainActivity
@@ -70,6 +75,7 @@ class GhostVpnService : VpnService() {
     private var baselineTx = 0L
     private var lastRx = 0L
     private var lastTx = 0L
+    private var activeNetworkPreferences = NetworkPreferences()
 
     @Volatile
     private var physicalNetworkAvailable = false
@@ -234,6 +240,24 @@ class GhostVpnService : VpnService() {
         try {
             validateProfile(profile)
             ensurePhysicalNetwork()
+            val preferences = repository.networkPreferences.first()
+            val appRouting = repository.appRoutingPreferences.first()
+            require(appRouting.isValid) {
+                "App-routing invalid: select at least one selected application [APP-ROUTE-001]"
+            }
+            activeNetworkPreferences = preferences
+            logSafe(
+                LogLevel.INFO,
+                "Red VPN: ${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · ${preferences.dnsMode.label}",
+                profile.id,
+                "SETTINGS"
+            )
+            logSafe(
+                LogLevel.INFO,
+                "Aplicaciones: ${appRouting.mode.label} · ${appRouting.normalizedPackages.size} regla(s)",
+                profile.id,
+                "APP_ROUTING"
+            )
             logSafe(LogLevel.INFO, "Iniciando ${profile.connectionModeLabel}", profile.id, "VPN")
             logConnectionSnapshot(profile)
 
@@ -248,7 +272,7 @@ class GhostVpnService : VpnService() {
                     profile.id,
                     "NETWORK"
                 )
-                val preflight = tunnelManager.verify(profile)
+                val preflight = tunnelManager.verify(profile, preferences)
                 logSafe(
                     LogLevel.SUCCESS,
                     "Servidor validado antes del TUN · ${preflight.latencyMs} ms",
@@ -257,12 +281,12 @@ class GhostVpnService : VpnService() {
                 )
             }
 
-            val tun = buildTunInterface(profile) ?: error("Android no pudo establecer la interfaz VPN")
+            val tun = buildTunInterface(profile, preferences, appRouting) ?: error("Android no pudo establecer la interfaz VPN")
             tunInterface = tun
             underlyingNetwork?.let { network -> runCatching { setUnderlyingNetworks(arrayOf(network)) } }
-            logSafe(LogLevel.INFO, "TUN activo · IPv4/IPv6 · rutas completas", profile.id, "NETWORK")
+            logSafe(LogLevel.INFO, "TUN activo · MTU ${preferences.validatedMtu} · ${preferences.ipMode.label} · rutas completas", profile.id, "NETWORK")
 
-            tunnelRuntime = tunnelManager.start(profile, tun.fd)
+            tunnelRuntime = tunnelManager.start(profile, tun.fd, preferences)
             logTransportReady(profile)
             repository.markLastUsed(profile.id)
 
@@ -363,10 +387,14 @@ class GhostVpnService : VpnService() {
             return
         }
 
-        logSafe(LogLevel.WARNING, "$reason · iniciando reconexión protegida", profile.id, "NETWORK")
+        val preferences = repository.networkPreferences.first()
+        activeNetworkPreferences = preferences
+        val maxAttempts = preferences.validatedReconnectAttempts
+        logSafe(LogLevel.WARNING, "$reason · iniciando reconexión protegida · máximo $maxAttempts", profile.id, "NETWORK")
         var attempt = 0
-        while (serviceScope.isActive && !intentionalDisconnect && tunInterface != null) {
-            val waitMs = RECONNECT_DELAYS[attempt.coerceAtMost(RECONNECT_DELAYS.lastIndex)]
+        while (serviceScope.isActive && !intentionalDisconnect && tunInterface != null && attempt < maxAttempts) {
+            val baseDelay = RECONNECT_DELAYS[attempt.coerceAtMost(RECONNECT_DELAYS.lastIndex)]
+            val waitMs = baseDelay + ((attempt * 173L) % 650L)
             val state = VpnConnectionState.Reconnecting(profile.name, attempt + 1, waitMs)
             updateState(state)
             updateNotification(state)
@@ -381,11 +409,12 @@ class GhostVpnService : VpnService() {
             if (intentionalDisconnect || tunInterface == null) return
 
             val result = runCatching {
+                tunnelManager.verify(profile, preferences)
                 connectionMutex.withLock {
                     tunnelManager.stop(tunnelRuntime)
                     tunnelRuntime = null
                     val tun = tunInterface ?: error("TUN no disponible durante reconexión")
-                    tunnelRuntime = tunnelManager.start(profile, tun.fd)
+                    tunnelRuntime = tunnelManager.start(profile, tun.fd, preferences)
                 }
             }
 
@@ -396,7 +425,7 @@ class GhostVpnService : VpnService() {
                 updateNotification(connected)
                 logSafe(
                     LogLevel.SUCCESS,
-                    "Reconexión verificada en intento ${attempt + 1}",
+                    "Reconexión y salida a Internet verificadas en intento ${attempt + 1}",
                     profile.id,
                     "NETWORK"
                 )
@@ -405,14 +434,22 @@ class GhostVpnService : VpnService() {
                 return
             }
 
-            val error = result.exceptionOrNull()
-            logSafe(
-                LogLevel.WARNING,
-                "Intento ${attempt + 1} fallido: ${error?.message?.take(160).orEmpty()}",
-                profile.id,
-                "NETWORK"
-            )
+            val error = result.exceptionOrNull() ?: IllegalStateException("Transport not alive")
+            val failure = ConnectionErrorCatalog.classify(error, profile)
+            logSafe(LogLevel.WARNING, "Intento ${attempt + 1}/$maxAttempts · ${failure.logMessage()}", profile.id, failure.stage)
             attempt += 1
+        }
+
+        val exhausted = "Reconnect attempts exhausted ($maxAttempts) [RECONNECT-408]"
+        if (killSwitch) {
+            updateState(VpnConnectionState.Error(exhausted, profile.name))
+            updateNotification(VpnConnectionState.Error(exhausted, profile.name))
+            logSafe(LogLevel.ERROR, "$exhausted · Kill Switch keeps traffic blocked", profile.id, "NETWORK")
+        } else {
+            cleanupTunnel(closeTun = true)
+            updateState(VpnConnectionState.Error(exhausted, profile.name))
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 
@@ -420,28 +457,34 @@ class GhostVpnService : VpnService() {
         healthJob?.cancel()
         healthJob = serviceScope.launch {
             var ticks = 0
+            var consecutiveOutboundFailures = 0
             while (isActive && !intentionalDisconnect) {
-                delay(3_000L)
+                delay(5_000L)
                 if (connectionState.value !is VpnConnectionState.Connected) continue
 
                 if (!tunnelManager.isAlive(tunnelRuntime)) {
-                    logSafe(LogLevel.WARNING, "El transporte dejó de responder", profile.id, "CORE")
+                    logSafe(LogLevel.WARNING, "El transporte dejó de responder [HEALTH-TRANSPORT]", profile.id, "CORE")
                     triggerReconnect("Fallo detectado en el transporte")
                     return@launch
                 }
 
                 ticks += 1
-                if (ticks % 5 == 0) {
+                if (ticks % 3 == 0) {
                     val internetCheck = runCatching { tunnelManager.verifyActive() }
-                    if (internetCheck.isFailure) {
+                    if (internetCheck.isSuccess) {
+                        consecutiveOutboundFailures = 0
+                    } else {
+                        consecutiveOutboundFailures += 1
                         logSafe(
                             LogLevel.WARNING,
-                            "El core sigue activo pero el servidor ya no entrega Internet",
+                            "Comprobación de Internet fallida $consecutiveOutboundFailures/2 [HEALTH-OUTBOUND]",
                             profile.id,
                             "CORE"
                         )
-                        triggerReconnect("Salida de Internet perdida")
-                        return@launch
+                        if (consecutiveOutboundFailures >= 2) {
+                            triggerReconnect("Salida de Internet perdida en dos comprobaciones consecutivas")
+                            return@launch
+                        }
                     }
                 }
             }
@@ -539,18 +582,27 @@ class GhostVpnService : VpnService() {
         registerUnderlyingNetwork(network)
     }
 
-    private fun buildTunInterface(profile: VpnProfile): ParcelFileDescriptor? = try {
+    private fun buildTunInterface(
+        profile: VpnProfile,
+        preferences: NetworkPreferences,
+        appRouting: AppRoutingPreferences
+    ): ParcelFileDescriptor? = try {
         val builder = Builder()
             .setSession(profile.name)
-            .setMtu(1500)
+            .setMtu(preferences.validatedMtu)
             .addAddress("10.20.0.2", 30)
-            .addAddress("fd00:20::2", 126)
             .addRoute("0.0.0.0", 0)
-            .addRoute("::", 0)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("2606:4700:4700::1111")
             .setBlocking(true)
-        runCatching { builder.addDisallowedApplication(packageName) }
+        if (preferences.ipMode.capturesIpv6) {
+            builder.addAddress("fd00:20::2", 126)
+            builder.addRoute("::", 0)
+        }
+        preferences.dnsServers().forEach { address ->
+            if (preferences.ipMode.capturesIpv6 || !address.contains(':')) {
+                runCatching { builder.addDnsServer(address) }
+            }
+        }
+        applyAppRouting(builder, appRouting)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
         builder.establish()
     } catch (error: Throwable) {
@@ -558,6 +610,35 @@ class GhostVpnService : VpnService() {
             logSafe(LogLevel.ERROR, "Error creando TUN: ${error.message}", profile.id, "NETWORK")
         }
         null
+    }
+
+    private fun applyAppRouting(builder: Builder, preferences: AppRoutingPreferences) {
+        val packages = preferences.normalizedPackages.filterNot { it == packageName }
+        when (preferences.mode) {
+            AppRoutingMode.ALL -> {
+                runCatching { builder.addDisallowedApplication(packageName) }
+            }
+            AppRoutingMode.ONLY_SELECTED -> {
+                require(packages.isNotEmpty()) {
+                    "App-routing invalid: no selected application [APP-ROUTE-001]"
+                }
+                val applied = packages.count { selectedPackage ->
+                    runCatching {
+                        builder.addAllowedApplication(selectedPackage)
+                        true
+                    }.getOrDefault(false)
+                }
+                require(applied > 0) {
+                    "App-routing invalid: selected application packages were not found [APP-ROUTE-404]"
+                }
+            }
+            AppRoutingMode.EXCLUDE_SELECTED -> {
+                runCatching { builder.addDisallowedApplication(packageName) }
+                packages.forEach { selectedPackage ->
+                    runCatching { builder.addDisallowedApplication(selectedPackage) }
+                }
+            }
+        }
     }
 
     private suspend fun logTransportReady(profile: VpnProfile) {
@@ -634,27 +715,9 @@ class GhostVpnService : VpnService() {
     }
 
     private fun friendlyConnectionError(error: Throwable, profile: VpnProfile): String {
-        val raw = generateSequence(error) { it.cause }
-            .mapNotNull { it.message?.takeIf(String::isNotBlank) }
-            .joinToString(" · ")
-            .take(260)
-        val lower = raw.lowercase()
-        val base = when {
-            lower.contains("auth fail") || lower.contains("autenticación ssh") ->
-                "Autenticación SSH fallida. Verifica usuario y contraseña."
-            lower.contains("hostkey") || lower.contains("host key") ->
-                "La identidad SSH del servidor cambió. Conexión bloqueada por seguridad."
-            lower.contains("certificate") || lower.contains("certificado") || lower.contains("trust anchor") ->
-                "TLS rechazó el certificado o el SNI del servidor."
-            lower.contains("no entregan acceso") || lower.contains("no pudo entregar") || lower.contains("generate_204") ->
-                "El perfil inició el core, pero el servidor no pudo entregar acceso a Internet. Revisa UUID/credenciales, SNI, Host, path y transporte."
-            lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") ->
-                "El servidor no respondió a la prueba de Internet dentro del tiempo permitido."
-            lower.contains("libv2ray") || lower.contains("xray core") || lower.contains("go_seq") ->
-                "No se pudo iniciar Xray Core."
-            else -> raw.ifBlank { error.javaClass.simpleName.ifBlank { "Error desconocido" } }
-        }
-        return "$base [${profile.connectionModeLabel}]"
+        val failure = ConnectionErrorCatalog.classify(error, profile)
+        serviceScope.launch { logSafe(LogLevel.ERROR, failure.logMessage(), profile.id, failure.stage) }
+        return "${failure.userMessage()} [${profile.connectionModeLabel}]"
     }
 
     private suspend fun logConnectionSnapshot(profile: VpnProfile) {
@@ -709,16 +772,19 @@ class GhostVpnService : VpnService() {
     }
 
     private fun findUsablePhysicalNetwork(excluding: Network? = null): Network? {
-        val candidates = connectivityManager.allNetworks.filter { network ->
-            network != excluding && connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            } == true
+        val active = connectivityManager.activeNetwork
+        if (active != null && active != excluding && isUsablePhysicalNetwork(active)) {
+            return active
         }
-        return candidates.firstOrNull { network ->
-            connectivityManager.getNetworkCapabilities(network)
-                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        } ?: candidates.firstOrNull()
+        return underlyingNetwork?.takeIf { network ->
+            network != excluding && isUsablePhysicalNetwork(network)
+        }
+    }
+
+    private fun isUsablePhysicalNetwork(network: Network): Boolean {
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
     }
 
     private fun networkType(capabilities: NetworkCapabilities): String = when {

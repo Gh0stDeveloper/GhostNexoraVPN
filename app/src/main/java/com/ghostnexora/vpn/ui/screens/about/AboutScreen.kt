@@ -8,6 +8,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,7 +30,7 @@ import com.ghostnexora.vpn.ui.theme.*
 // ABOUT SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 
-private const val GITHUB_URL   = "https://github.com/CHICO-CP"
+private const val GITHUB_URL   = "https://github.com/Gh0stDeveloper"
 private const val TELEGRAM_URL = "https://t.me/Gh0stDeveloper"
 private const val EMAIL        = "ghostnexora@gmail.com"
 private val APP_VERSION = BuildConfig.VERSION_NAME
@@ -47,7 +49,7 @@ fun AboutScreen() {
         context.startActivity(
             Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("mailto:$EMAIL")
-                putExtra(Intent.EXTRA_SUBJECT, "Ghost Nexora VPN — Contacto")
+                putExtra(Intent.EXTRA_SUBJECT, "Ghost Nexora VPN — Contact")
             }
         )
     }
@@ -63,240 +65,125 @@ fun AboutScreen() {
     ) {
         Spacer(Modifier.height(Dimens.SpaceSM))
 
-        // ── 1. Header animado ──────────────────────────────────────────────
         AboutHeader()
-
-        // ── 2. Descripción del proyecto ────────────────────────────────────
         ProjectDescriptionCard()
-
-        // ── 3. Características clave ───────────────────────────────────────
         FeaturesCard()
-
-        // ── 4. Desarrollador ──────────────────────────────────────────────
         DeveloperCard(
-            onGithub   = { openUrl(GITHUB_URL) },
+            onGithub = { openUrl(GITHUB_URL) },
             onTelegram = { openUrl(TELEGRAM_URL) },
-            onEmail    = { openEmail() }
+            onEmail = { openEmail() }
         )
-
-        // ── 5. Links rápidos ──────────────────────────────────────────────
-        QuickLinksCard(
-            onSourceCode  = { openUrl("$GITHUB_URL/GhostNexoraVPN") },
-            onIssues      = { openUrl("$GITHUB_URL/GhostNexoraVPN/issues") },
-            onPrivacy     = { openUrl("$GITHUB_URL/GhostNexoraVPN/blob/main/PRIVACY.md") },
-            onChangelog   = { openUrl("$GITHUB_URL/GhostNexoraVPN/blob/main/CHANGELOG.md") }
-        )
-
-        // ── 6. Versión y créditos ─────────────────────────────────────────
-        VersionFooter()
-
-        Spacer(Modifier.height(Dimens.Space3XL))
+        TechStackCard()
+        VersionCard()
+        Spacer(Modifier.height(Dimens.SpaceXXL))
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════
-// HEADER ANIMADO
-// ══════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun AboutHeader() {
-    // Glow pulsante del logo
-    val glowAlpha by rememberInfiniteTransition(label = "glow")
-        .animateFloat(
-            initialValue = 0.3f,
-            targetValue  = 0.7f,
-            animationSpec = infiniteRepeatable(
-                animation  = tween(2000, easing = EaseInOut),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "glow_alpha"
-        )
+    val transition = rememberInfiniteTransition(label = "about_header")
+    val glowAlpha by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "header_glow"
+    )
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-    ) {
-        // Logo circular con glow neon
-        Box(contentAlignment = Alignment.Center) {
-            // Anillo exterior de glow
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .clip(CircleShape)
-                    .background(NeonCyan.copy(alpha = glowAlpha * 0.15f))
-            )
-            // Círculo principal
-            Box(
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                NeonCyan.copy(0.25f),
-                                SurfaceVariant
-                            )
-                        )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .shadow(24.dp, CircleShape, ambientColor = NeonCyan, spotColor = NeonCyan)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(NeonCyan.copy(alpha = glowAlpha), NeonBlue.copy(alpha = 0.3f), SurfaceDark)
                     )
-                    .border(2.dp, NeonCyan, CircleShape)
-                    .neonGlow(NeonCyan, radius = 20.dp, alpha = glowAlpha * 0.5f),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Shield,
-                    contentDescription = null,
-                    tint     = NeonCyan,
-                    modifier = Modifier.size(46.dp)
                 )
-            }
-        }
-
-        // Nombre de la app
-        Text(
-            text  = "Ghost Nexora VPN",
-            style = MaterialTheme.typography.headlineSmall.copy(
-                color      = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
-        )
-
-        // Tagline
-        Text(
-            text  = "Gestión profesional de perfiles VPN",
-            style = MaterialTheme.typography.bodyMedium,
-            color = NeonCyanDim,
-            textAlign = TextAlign.Center
-        )
-
-        // Badge de versión
-        Box(
-            modifier = Modifier
-                .clip(TagShape)
-                .background(NeonCyan.copy(0.1f))
-                .border(Dimens.BorderNormal, NeonCyan.copy(0.3f), TagShape)
-                .padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceXS)
-        ) {
-            Text(
-                text  = "v$APP_VERSION",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    color = NeonCyan,
-                    letterSpacing = 1.sp
-                )
-            )
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// DESCRIPCIÓN DEL PROYECTO
-// ══════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun ProjectDescriptionCard() {
-    GhostCard(
-        borderColor     = NeonCyan.copy(0.2f),
-        backgroundColor = NeonCyan.copy(0.03f)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-            // Título de sección
-            SectionLabel(text = "SOBRE EL PROYECTO", icon = Icons.Filled.Info, color = NeonCyan)
-
-            Text(
-                text = "Ghost Nexora VPN es una aplicación Android nativa diseñada para " +
-                       "centralizar la gestión de perfiles de conexión VPN de forma " +
-                       "moderna, segura y minimalista.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-
-            Text(
-                text = "A diferencia de los gestores convencionales, Ghost Nexora ofrece " +
-                       "una experiencia similar a las VPN comerciales premium: importación " +
-                       "y exportación de perfiles en JSON, creación manual con soporte para " +
-                       "múltiples métodos (SSH, V2Ray, Shadowsocks, WireGuard), dashboard " +
-                       "con estados visuales en tiempo real y ejecución persistente en " +
-                       "segundo plano mediante VpnService.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-
-            Text(
-                text = "El proyecto está diseñado para escalar hacia funcionalidades " +
-                       "avanzadas como per-app VPN, cifrado de exportaciones, " +
-                       "sincronización en nube y bloqueo biométrico.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// CARACTERÍSTICAS CLAVE
-// ══════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun FeaturesCard() {
-    GhostCard(borderColor = BorderSubtle) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-            SectionLabel(text = "CARACTERÍSTICAS", icon = Icons.Filled.Star, color = NeonAmber)
-
-            val features = listOf(
-                Triple(Icons.Filled.VpnKey,          NeonCyan,   "Gestión completa de perfiles VPN"),
-                Triple(Icons.Filled.FileDownload,     NeonBlue,   "Importación y exportación en JSON"),
-                Triple(Icons.Filled.Shield,           NeonGreen,  "Interfaz TUN nativa con VpnService"),
-                Triple(Icons.Filled.Layers,           NeonPurple, "Ventana flotante de control rápido"),
-                Triple(Icons.Filled.Notifications,   NeonAmber,  "Notificación persistente de sesión"),
-                Triple(Icons.Filled.DarkMode,         NeonCyan,   "Tema oscuro con acentos neon"),
-                Triple(Icons.Filled.Terminal,         NeonBlue,   "Registro de logs en tiempo real"),
-                Triple(Icons.Filled.RestartAlt,       NeonGreen,  "Reconexión automática al inicio"),
-                Triple(Icons.Filled.Security,         NeonPurple, "Almacenamiento seguro con Keystore"),
-                Triple(Icons.Filled.Code,             NeonCyan,   "Código fuente abierto en GitHub")
-            )
-
-            features.forEach { (icon, color, label) ->
-                FeatureRow(icon = icon, color = color, label = label)
-            }
-        }
-    }
-}
-
-@Composable
-private fun FeatureRow(
-    icon: ImageVector,
-    color: Color,
-    label: String
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(MaterialTheme.shapes.extraSmall)
-                .background(color.copy(0.12f)),
+                .border(1.dp, NeonCyan.copy(alpha = 0.8f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = icon,
+                imageVector = Icons.Filled.Security,
                 contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(14.dp)
+                tint = TextPrimary,
+                modifier = Modifier.size(48.dp)
             )
         }
+        Spacer(Modifier.height(Dimens.SpaceLG))
         Text(
-            text  = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            text = "Ghost Nexora VPN",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+        Text(
+            text = "Verified, encrypted Android tunneling",
+            style = MaterialTheme.typography.bodyMedium,
+            color = NeonCyan
         )
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// TARJETA DE DESARROLLADOR
-// ══════════════════════════════════════════════════════════════════════════
+@Composable
+private fun ProjectDescriptionCard() {
+    GhostCard(borderColor = BorderAccent) {
+        Text(
+            text = "ABOUT THE PROJECT",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.8.sp
+            ),
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        Text(
+            text = "Ghost Nexora VPN is a native Android VPN client built around verified outbound routing, encrypted profile storage, secure diagnostics, and modern SSH/Xray transports.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            textAlign = TextAlign.Start
+        )
+    }
+}
+
+@Composable
+private fun FeaturesCard() {
+    GhostCard {
+        Text(
+            text = "CORE CAPABILITIES",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.8.sp
+            ),
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        FeatureRow(Icons.Filled.VpnLock, "Verified VPN routing", "Outbound access is checked before reporting connected")
+        FeatureRow(Icons.Filled.Lock, "Encrypted profiles", "Android Keystore and authenticated encryption")
+        FeatureRow(Icons.Filled.Sync, "Protected reconnection", "Kill Switch and controlled recovery")
+        FeatureRow(Icons.Filled.Terminal, "Secure diagnostics", "Sanitized, filterable connection logs")
+    }
+}
+
+@Composable
+private fun FeatureRow(icon: ImageVector, title: String, subtitle: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Dimens.SpaceSM),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+    ) {
+        Icon(icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
+    }
+}
 
 @Composable
 private fun DeveloperCard(
@@ -304,342 +191,83 @@ private fun DeveloperCard(
     onTelegram: () -> Unit,
     onEmail: () -> Unit
 ) {
-    GhostCard(
-        borderColor     = NeonGreen.copy(0.3f),
-        glowColor       = NeonGreen,
-        backgroundColor = NeonGreen.copy(0.03f)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXXL)) {
-            SectionLabel(text = "DESARROLLADOR", icon = Icons.Filled.Person, color = NeonGreen)
-
-            // Avatar + nombre
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-            ) {
-                // Avatar
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(NeonGreen.copy(0.3f), SurfaceElevated)
-                            )
-                        )
-                        .border(2.dp, NeonGreen.copy(0.5f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text  = "G",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            color      = NeonGreen,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                }
-
-                Column {
-                    Text(
-                        text  = "Ghost Developer",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color      = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                    Text(
-                        text  = "Desarrollador independiente Android",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text  = "Kotlin · Jetpack Compose · VpnService",
-                        style = MonoStyle.copy(fontSize = 10.sp, color = NeonGreenDim)
-                    )
-                }
-            }
-
-            NeonDivider(color = BorderSubtle)
-
-            // Links de contacto
-            Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                ContactLinkRow(
-                    icon      = Icons.Filled.Code,
-                    platform  = "GitHub",
-                    handle    = "github.com/CHICO-CP",
-                    color     = TextPrimary,
-                    bgColor   = SurfaceElevated,
-                    onClick   = onGithub
-                )
-                ContactLinkRow(
-                    icon      = Icons.Filled.Send,
-                    platform  = "Telegram",
-                    handle    = "t.me/Gh0stDeveloper",
-                    color     = NeonBlue,
-                    bgColor   = NeonBlue.copy(0.08f),
-                    onClick   = onTelegram
-                )
-                ContactLinkRow(
-                    icon      = Icons.Filled.Email,
-                    platform  = "Correo",
-                    handle    = EMAIL,
-                    color     = NeonAmber,
-                    bgColor   = NeonAmber.copy(0.08f),
-                    onClick   = onEmail
-                )
-            }
-        }
+    GhostCard {
+        Text(
+            text = "DEVELOPER AND CONTACT",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.8.sp
+            ),
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        Text("Ghost Developer", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Text("@Gh0stDeveloper", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        ContactButton(Icons.Filled.Code, "GitHub", "@Gh0stDeveloper", onGithub)
+        ContactButton(Icons.AutoMirrored.Filled.Send, "Telegram", "@Gh0stDeveloper", onTelegram)
+        ContactButton(Icons.Filled.Email, "Email", EMAIL, onEmail)
     }
 }
 
 @Composable
-private fun ContactLinkRow(
+private fun ContactButton(
     icon: ImageVector,
-    platform: String,
-    handle: String,
-    color: Color,
-    bgColor: Color,
+    label: String,
+    value: String,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .background(bgColor)
-            .border(Dimens.BorderNormal, color.copy(0.2f), MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .padding(Dimens.SpaceMD),
+            .padding(vertical = Dimens.SpaceSM),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = platform,
-            tint = color,
-            modifier = Modifier.size(Dimens.IconMD)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text  = platform,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    color      = color,
-                    fontWeight = FontWeight.SemiBold
-                )
-            )
-            Text(
-                text  = handle,
-                style = MonoStyle.copy(fontSize = 11.sp, color = TextTertiary)
-            )
+        Icon(icon, contentDescription = null, tint = NeonCyan)
+        Column(Modifier.weight(1f)) {
+            Text(label, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
+            Text(value, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
-        Icon(
-            imageVector = Icons.Filled.OpenInNew,
-            contentDescription = "Abrir",
-            tint = color.copy(0.5f),
-            modifier = Modifier.size(Dimens.IconSM)
-        )
+        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = TextTertiary)
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// LINKS RÁPIDOS
-// ══════════════════════════════════════════════════════════════════════════
-
 @Composable
-private fun QuickLinksCard(
-    onSourceCode: () -> Unit,
-    onIssues: () -> Unit,
-    onPrivacy: () -> Unit,
-    onChangelog: () -> Unit
-) {
-    GhostCard(borderColor = BorderSubtle) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-            SectionLabel(
-                text  = "RECURSOS",
-                icon  = Icons.Filled.Link,
-                color = NeonPurple
-            )
-
-            val links = listOf(
-                QuadLink(Icons.Filled.Code,          NeonCyan,   "Código Fuente",      "Ver repositorio en GitHub",          onSourceCode),
-                QuadLink(Icons.Filled.BugReport,     NeonAmber,  "Reportar un bug",    "Abrir un issue en GitHub",           onIssues),
-                QuadLink(Icons.Filled.PrivacyTip,    NeonBlue,   "Privacidad",         "Política de privacidad del proyecto", onPrivacy),
-                QuadLink(Icons.Filled.NewReleases,   NeonGreen,  "Changelog",          "Historial de versiones",             onChangelog)
-            )
-
-            links.forEach { link ->
-                QuickLinkRow(
-                    icon     = link.icon,
-                    color    = link.color,
-                    title    = link.title,
-                    subtitle = link.subtitle,
-                    onClick  = link.onClick
-                )
-                if (link != links.last()) {
-                    NeonDivider(
-                        modifier = Modifier.padding(horizontal = Dimens.SpaceXS),
-                        color    = BorderSubtle
-                    )
-                }
-            }
-        }
-    }
-}
-
-private data class QuadLink(
-    val icon: ImageVector,
-    val color: Color,
-    val title: String,
-    val subtitle: String,
-    val onClick: () -> Unit
-)
-
-@Composable
-private fun QuickLinkRow(
-    icon: ImageVector,
-    color: Color,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClick = onClick)
-            .padding(vertical = Dimens.SpaceXS),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(color.copy(0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(Dimens.IconSM)
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text  = title,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    color      = TextPrimary,
-                    fontWeight = FontWeight.Medium
-                )
-            )
-            Text(
-                text  = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextTertiary
-            )
-        }
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = TextTertiary,
-            modifier = Modifier.size(Dimens.IconSM)
+private fun TechStackCard() {
+    GhostCard {
+        Text(
+            text = "TECHNOLOGY",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.8.sp
+            ),
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        Text(
+            text = "Kotlin · Jetpack Compose · Material 3 · Hilt · Room · DataStore · Android Keystore · JSch · Xray Core · NDK/CMake",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
         )
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// FOOTER DE VERSIÓN
-// ══════════════════════════════════════════════════════════════════════════
-
 @Composable
-private fun VersionFooter() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS),
-        modifier = Modifier.padding(vertical = Dimens.SpaceSM)
-    ) {
-        // Stack técnico
+private fun VersionCard() {
+    GhostCard(borderColor = NeonGreen.copy(alpha = 0.35f)) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TechBadge("Kotlin", NeonCyan)
-            TechBadge("Compose", NeonBlue)
-            TechBadge("Hilt", NeonPurple)
-            TechBadge("Room", NeonGreen)
+            Icon(Icons.Filled.Verified, contentDescription = null, tint = NeonGreen)
+            Spacer(Modifier.width(Dimens.SpaceMD))
+            Column(Modifier.weight(1f)) {
+                Text("Installed version", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text(APP_VERSION, color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+            }
+            Text("Build ${BuildConfig.VERSION_CODE}", color = NeonGreen, style = MaterialTheme.typography.labelMedium)
         }
-
-        Spacer(Modifier.height(Dimens.SpaceXS))
-
-        Text(
-            text  = "Ghost Nexora VPN  v$APP_VERSION",
-            style = MaterialTheme.typography.labelSmall.copy(
-                color         = TextTertiary,
-                letterSpacing = 1.sp
-            )
-        )
-        Text(
-            text  = "Desarrollado  por Ghost Developer",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextTertiary,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text  = "© 2026 Ghost Developer · Todos los derechos reservados",
-            style = MaterialTheme.typography.labelSmall.copy(
-                color     = TextTertiary.copy(0.5f),
-                fontSize  = 10.sp
-            ),
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun TechBadge(label: String, color: Color) {
-    Box(
-        modifier = Modifier
-            .clip(TagShape)
-            .background(color.copy(0.08f))
-            .border(Dimens.BorderThin, color.copy(0.3f), TagShape)
-            .padding(horizontal = Dimens.SpaceSM, vertical = 3.dp)
-    ) {
-        Text(
-            text  = label,
-            style = MaterialTheme.typography.labelSmall.copy(
-                color     = color,
-                fontSize  = 10.sp,
-                letterSpacing = 0.5.sp
-            )
-        )
-    }
-}
-
-// ── Helper compartido ─────────────────────────────────────────────────────
-
-@Composable
-private fun SectionLabel(
-    text: String,
-    icon: ImageVector,
-    color: Color
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(Dimens.IconSM)
-        )
-        Text(
-            text  = text,
-            style = MaterialTheme.typography.labelSmall.copy(
-                color         = color,
-                letterSpacing = 2.sp,
-                fontWeight    = FontWeight.SemiBold
-            )
-        )
     }
 }

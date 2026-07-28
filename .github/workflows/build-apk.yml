@@ -19,38 +19,37 @@ env:
   XRAY_LIB_TAG: v26.5.19
   ANDROID_NDK_VERSION: 27.0.12077973
   CMAKE_VERSION: 3.22.1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    name: Compilar, probar y validar protección
+    name: Build, test and validate product hardening
     runs-on: ubuntu-latest
 
     steps:
-      - name: Descargar código
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v6
 
-      - name: Configurar JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
 
-      - name: Configurar Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Instalar NDK y CMake
+      - name: Install NDK and CMake
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          fi
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
 
-      - name: Descargar AndroidLibXrayLite
+      - name: Download AndroidLibXrayLite
         uses: robinraju/release-downloader@v1.13
         with:
           repository: 2dust/AndroidLibXrayLite
@@ -58,38 +57,124 @@ jobs:
           fileName: libv2ray.aar
           out-file-path: app/libs/
 
-      - name: Verificar dependencias nativas
+      - name: Verify native dependencies
         run: |
           test -s app/libs/libv2ray.aar
           test -s app/src/main/cpp/CMakeLists.txt
           test -s app/src/main/cpp/native_guard.cpp
-          ls -lh app/libs/libv2ray.aar
 
-      - name: Preparar Gradle
+      - name: Prepare Gradle
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x ./gradlew
 
-      - name: Ejecutar pruebas unitarias
+      - name: Verify Android manifest policy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          root = ET.parse(manifest).getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          permissions = {node.get(android + "name") for node in root.findall("uses-permission")}
+          forbidden = {
+              "android.permission.BIND_VPN_SERVICE",
+              "android.permission.WRITE_EXTERNAL_STORAGE",
+              "android.permission.QUERY_ALL_PACKAGES",
+          }
+          found = permissions & forbidden
+          if found:
+              raise SystemExit(f"Forbidden manifest permissions: {sorted(found)}")
+
+          application = root.find("application")
+          if application is None:
+              raise SystemExit("Missing application node")
+          services = application.findall("service")
+          vpn = next((service for service in services if service.get(android + "name") == ".service.GhostVpnService"), None)
+          if vpn is None:
+              raise SystemExit("Missing GhostVpnService")
+          if vpn.get(android + "permission") != "android.permission.BIND_VPN_SERVICE":
+              raise SystemExit("GhostVpnService is not protected by BIND_VPN_SERVICE")
+          if vpn.get(android + "exported") != "false":
+              raise SystemExit("GhostVpnService must not be exported")
+          print("Manifest policy verified")
+          PY
+
+      - name: Scan tracked source for high-confidence secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='(ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{32,})'
+          if git grep -nE "$PATTERN" -- 'app/**' '.github/**' 'gradle*' ':!app/src/test/**'; then
+            echo "High-confidence secret pattern found in tracked source"
+            exit 1
+          fi
+          echo "No high-confidence token patterns found"
+
+      - name: Run unit tests
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee gradle-test.log
+          ./gradlew testDebugUnitTest --stacktrace --warning-mode all 2>&1 | tee gradle-test.log
 
-      - name: Compilar APK Debug con JNI
+      - name: Generate dependency inventory
+        shell: bash
+        run: |
+          ./gradlew app:dependencies --configuration debugRuntimeClasspath > dependency-inventory.txt
+          test -s dependency-inventory.txt
+
+      - name: Run Android Lint
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-debug.log
+          ./gradlew lintDebug --stacktrace --warning-mode all 2>&1 | tee gradle-lint.log
 
-      - name: Validar R8 y shrinking de Release
+      - name: Build Debug APK with JNI
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace --warning-mode all 2>&1 | tee gradle-debug.log
+
+      - name: Verify native ABIs in Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          unzip -l "$APK" > debug-apk-contents.txt
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            grep -Fq "lib/$abi/libghostguard.so" debug-apk-contents.txt || {
+              echo "Missing libghostguard.so for $abi"
+              exit 1
+            }
+            grep -Eq "lib/$abi/[^/]+\\.so" debug-apk-contents.txt || {
+              echo "No native libraries found for $abi"
+              exit 1
+            }
+          done
+          echo "Required native ABIs verified"
+
+      - name: Validate Release R8 and resource shrinking
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee gradle-release.log
+          ./gradlew assembleRelease --stacktrace --warning-mode all 2>&1 | tee gradle-release.log
 
-      - name: Verificar proveedores JSch después de R8
+      - name: Reject source deprecation warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          WARNINGS="$(grep -hE 'w: file://.*(is deprecated|needs opt-in)|WARNING: We recommend using a newer Android Gradle plugin' gradle-*.log || true)"
+          if [ -n "$WARNINGS" ]; then
+            printf '%s\n' "$WARNINGS"
+            exit 1
+          fi
+          echo "No tracked Kotlin/Android deprecation warnings found."
+
+      - name: Verify hardened runtime after R8
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         shell: bash
         run: |
@@ -99,108 +184,124 @@ jobs:
           DEX_DIR="$(mktemp -d)"
           trap 'rm -rf "$DEX_DIR"' EXIT
           unzip -qq "$APK" 'classes*.dex' -d "$DEX_DIR"
-
           for descriptor in \
             'Lcom/jcraft/jsch/jce/Random;' \
             'Lcom/jcraft/jsch/jce/SHA256;' \
             'Lcom/jcraft/jsch/jce/AES256GCM;' \
-            'Lcom/jcraft/jsch/jgss/GSSContextKrb5;'
+            'Lcom/jcraft/jsch/AndroidRandomBridge;' \
+            'Lcom/ghostnexora/vpn/tunnel/AndroidSecureRandomProvider;' \
+            'Lcom/ghostnexora/vpn/diagnostics/ConnectionDiagnosticsEngine;' \
+            'Lcom/ghostnexora/vpn/tunnel/ConnectionErrorCatalog;' \
+            'Lcom/ghostnexora/vpn/data/model/AppRoutingPreferences;' \
+            'Lcom/ghostnexora/vpn/util/PayloadEngine;' \
+            'Lcom/ghostnexora/vpn/util/ProtocolLinkParser;'
           do
-            if ! grep -aR -Fq "$descriptor" "$DEX_DIR"; then
-              echo "R8 eliminó una clase JSch cargada por reflexión: $descriptor"
-              exit 1
-            fi
+            grep -aR -Fq "$descriptor" "$DEX_DIR" || { echo "Missing runtime class: $descriptor"; exit 1; }
           done
+          echo "Hardened runtime classes survived R8."
 
-          echo "Proveedores criptográficos JSch presentes en el APK Release"
-
-      - name: Subir diagnósticos Gradle
+      - name: Upload Gradle diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: GhostNexoraVPN-gradle-diagnostics-${{ github.run_number }}
           path: |
             gradle-test.log
+            gradle-lint.log
             gradle-debug.log
             gradle-release.log
+            dependency-inventory.txt
+            debug-apk-contents.txt
             app/build/reports/tests/**
+            app/build/reports/lint-results-debug.*
             app/build/outputs/mapping/**
           if-no-files-found: warn
 
-      - name: Subir APK Debug
-        uses: actions/upload-artifact@v4
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v6
         with:
           name: GhostNexoraVPN-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Subir Release de validación R8
+      - name: Upload R8 validation Release
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: GhostNexoraVPN-r8-validation-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      - name: Restaurar keystore Release
+      - name: Restore Release keystore
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/ghostnexora-release.jks
           test -s app/ghostnexora-release.jks
 
-      - name: Verificar keystore Release
+      - name: Verify Release keystore
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          keytool -list \
-            -keystore app/ghostnexora-release.jks \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
-            -alias "${{ secrets.KEY_ALIAS }}" >/dev/null
+          keytool -list -keystore app/ghostnexora-release.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}" >/dev/null
 
-      - name: Compilar APK Release firmado
+      - name: Build signed Release APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew clean assembleRelease --stacktrace
+        run: ./gradlew clean assembleRelease --stacktrace --warning-mode all
 
-      - name: Obtener APK Release y hash
+      - name: Prepare Release metadata and checksum
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        id: apk_hash
+        id: release_meta
+        shell: bash
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "No se encontró el APK release"
-            exit 1
-          fi
-          SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
-          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          APK_PATH="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          mkdir -p app/build/publish
+          PUBLISH_APK="app/build/publish/GhostNexoraVPN-${VERSION_NAME}.apk"
+          cp "$APK_PATH" "$PUBLISH_APK"
+          SHA256="$(sha256sum "$PUBLISH_APK" | awk '{print $1}')"
+          SIGNER_SHA256="$(apksigner verify --print-certs "$PUBLISH_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
+          echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
+          echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=$SIGNER_SHA256" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
-      - name: Verificar si cambió el APK
+      - name: Decide whether to publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: should_publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}
+          APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}
         run: |
           LATEST_BODY="$(gh release view --repo "${{ github.repository }}" --json body --jq '.body' 2>/dev/null || true)"
-          if echo "$LATEST_BODY" | grep -q "APK_SHA256: $APK_SHA256"; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
+          if echo "$LATEST_BODY" | grep -q "APK_SHA256: $APK_SHA256"; then echo "publish=false" >> "$GITHUB_OUTPUT"; else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Crear Release y subir APK
+      - name: Create GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.should_publish.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          TAG="release-${{ github.run_number }}"
-          APK="${{ steps.apk_hash.outputs.apk_path }}"
-          NOTES="Construcción automática desde el commit \`${{ github.sha }}\`"$'\n'"Xray Core: ${{ env.XRAY_LIB_TAG }}"$'\n'"APK_SHA256: ${{ steps.apk_hash.outputs.sha256 }}"
-          gh release create "$TAG" "$APK" \
+          TAG="v${{ steps.release_meta.outputs.version_name }}-build${{ github.run_number }}"
+          NOTES="Ghost Nexora VPN production build"$'\n\n'\
+          "versionName: ${{ steps.release_meta.outputs.version_name }}"$'\n'\
+          "versionCode: ${{ steps.release_meta.outputs.version_code }}"$'\n'\
+          "Xray Core: ${{ env.XRAY_LIB_TAG }}"$'\n'\
+          "Commit: ${{ github.sha }}"$'\n'\
+          "APK_SHA256: ${{ steps.release_meta.outputs.sha256 }}"$'\n'\
+          "SIGNER_SHA256: ${{ steps.release_meta.outputs.signer_sha256 }}"
+          gh release create "$TAG" \
+            "${{ steps.release_meta.outputs.apk_path }}" \
+            "${{ steps.release_meta.outputs.sha256_path }}" \
             --repo "${{ github.repository }}" \
-            --title "Ghost Nexora VPN $TAG" \
-            --notes "$NOTES"
+            --title "Ghost Nexora VPN ${{ steps.release_meta.outputs.version_name }}" \
+            --notes "$NOTES" \
+            --latest

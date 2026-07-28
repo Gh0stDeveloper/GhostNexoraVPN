@@ -16,13 +16,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.ghostnexora.vpn.ui.screens.about.AboutScreen
+import com.ghostnexora.vpn.ui.screens.approuting.AppRoutingScreen
+import com.ghostnexora.vpn.ui.screens.compatibility.CompatibilityScreen
 import com.ghostnexora.vpn.ui.screens.history.HistoryScreen
 import com.ghostnexora.vpn.ui.screens.documentation.DocumentationScreen
 import com.ghostnexora.vpn.ui.screens.dashboard.DashboardScreen
@@ -34,10 +35,6 @@ import com.ghostnexora.vpn.ui.screens.profiles.ProfileListScreen
 import com.ghostnexora.vpn.ui.screens.settings.SettingsScreen
 import com.ghostnexora.vpn.ui.theme.*
 import kotlinx.coroutines.launch
-
-// ══════════════════════════════════════════════════════════════════════════
-// NAVIGATION HOST
-// ══════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun GhostNavHost(
@@ -62,7 +59,6 @@ fun GhostNavHost(
             fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { it / 10 }
         }
     ) {
-        // ── Dashboard ──────────────────────────────────────────────────────
         composable(Screen.Dashboard.route) {
             DashboardScreen(
                 onNavigateToProfiles = {
@@ -71,7 +67,6 @@ fun GhostNavHost(
             )
         }
 
-        // ── Lista de perfiles ──────────────────────────────────────────────
         composable(Screen.Profiles.route) {
             ProfileListScreen(
                 onBack = { navController.popBackStack() },
@@ -82,7 +77,6 @@ fun GhostNavHost(
             )
         }
 
-        // ── Crear perfil ───────────────────────────────────────────────────
         composable(Screen.CreateProfile.route) {
             CreateEditProfileScreen(
                 profileId = null,
@@ -90,7 +84,6 @@ fun GhostNavHost(
             )
         }
 
-        // ── Editar perfil (con argumento) ──────────────────────────────────
         composable(
             route = Screen.EditProfile.route,
             arguments = listOf(
@@ -107,27 +100,30 @@ fun GhostNavHost(
             )
         }
 
-        // ── Importar ───────────────────────────────────────────────────────
+        composable(Screen.AppRouting.route) {
+            AppRoutingScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.Compatibility.route) {
+            CompatibilityScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Screen.Import.route) {
             ImportScreen(onBack = { navController.popBackStack() })
         }
 
-        // ── Exportar ───────────────────────────────────────────────────────
         composable(Screen.Export.route) {
             ExportScreen(onBack = { navController.popBackStack() })
         }
 
-        // ── Historial (placeholder Fase 2) ────────────────────────────────
         composable(Screen.History.route) {
             HistoryScreen(onBack = { navController.popBackStack() })
         }
 
-        // ── Logs ───────────────────────────────────────────────────────────
         composable(Screen.Logs.route) {
             LogsScreen(onBack = { navController.popBackStack() })
         }
 
-        // ── Ajustes ────────────────────────────────────────────────────────
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
@@ -135,21 +131,15 @@ fun GhostNavHost(
             )
         }
 
-        // ── Documentación ───────────────────────────────────────────────────
         composable(Screen.Documentation.route) {
             DocumentationScreen()
         }
 
-        // ── Acerca de ──────────────────────────────────────────────────────
         composable(Screen.About.route) {
             AboutScreen()
         }
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════
-// NAVIGATION DRAWER COMPLETO
-// ══════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun GhostNavigationDrawer(
@@ -170,7 +160,6 @@ fun GhostNavigationDrawer(
                 drawerContainerColor = SurfaceDark,
                 drawerContentColor = TextPrimary
             ) {
-                // ── Header del Drawer ──────────────────────────────────────
                 DrawerHeader()
 
                 NeonDivider(
@@ -180,10 +169,7 @@ fun GhostNavigationDrawer(
 
                 Spacer(modifier = Modifier.height(Dimens.SpaceSM))
 
-                // ── Items del drawer ───────────────────────────────────────
                 Screen.drawerItems.forEach { screen ->
-
-                    // Separador antes de Settings y About
                     if (screen == Screen.Settings) {
                         Spacer(modifier = Modifier.weight(1f))
                         NeonDivider(
@@ -218,10 +204,6 @@ fun GhostNavigationDrawer(
     )
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// COMPONENTES DEL DRAWER
-// ══════════════════════════════════════════════════════════════════════════
-
 @Composable
 private fun DrawerHeader() {
     Box(
@@ -240,7 +222,6 @@ private fun DrawerHeader() {
         contentAlignment = Alignment.BottomStart
     ) {
         Column {
-            // Logo / icono
             Box(
                 modifier = Modifier
                     .size(48.dp)

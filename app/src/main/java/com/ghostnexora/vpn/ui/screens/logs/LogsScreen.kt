@@ -2,6 +2,8 @@
 
 package com.ghostnexora.vpn.ui.screens.logs
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +22,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,6 +78,9 @@ fun LogsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri -> uri?.let { viewModel.exportLogs(it, logs) } }
 
     fun copyText(text: String, message: String = "Log copiado") {
         clipboard.setText(AnnotatedString(text))
@@ -95,12 +101,15 @@ fun LogsScreen(
                 title = { Text("Registros") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
                     IconButton(onClick = { copyText(viewModel.exportLogsAsText(logs), "Logs copiados") }) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = "Copiar registros")
+                    }
+                    IconButton(onClick = { exportLauncher.launch(LogsViewModel.suggestedFileName()) }) {
+                        Icon(Icons.Filled.SaveAlt, contentDescription = "Exportar diagnóstico")
                     }
                     IconButton(onClick = { viewModel.clearLogs() }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Limpiar registros")
@@ -229,7 +238,7 @@ private fun EmptyLogsState() {
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
         ) {
             Icon(
-                Icons.Filled.Article,
+                Icons.AutoMirrored.Filled.Article,
                 null,
                 tint = TextTertiary,
                 modifier = Modifier.size(80.dp)

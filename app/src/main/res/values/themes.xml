@@ -1,14 +1,12 @@
 <resources>
-    <!-- Tema base de la app (definido en Compose, esto es para el sistema) -->
+    <!-- Base system theme; application visuals are rendered by Compose. -->
     <style name="Theme.GhostNexoraVPN" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/bg_dark</item>
         <item name="android:statusBarColor">@color/bg_dark</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
-    <!-- Tema del Splash Screen -->
     <style name="Theme.GhostNexoraVPN.SplashScreen" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/bg_dark</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>

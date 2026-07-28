@@ -6,6 +6,7 @@ import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.util.PayloadEngine
 import com.ghostnexora.vpn.util.isValidHost
 import com.ghostnexora.vpn.util.isValidPort
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -79,8 +80,6 @@ class CreateEditViewModel @Inject constructor(
             it.copy(
                 connectionMode = mode.id,
                 method = mode.family,
-                // Los perfiles V2Ray nuevos se crean como VLESS+TLS. El usuario
-                // puede desactivar TLS únicamente si configura VMess.
                 sslEnabled = if (mode == ConnectionMode.V2RAY) true else mode.usesTls,
                 proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType,
                 tags = nextTags,
@@ -91,7 +90,7 @@ class CreateEditViewModel @Inject constructor(
 
     fun onSslChange(v: Boolean) = _uiState.update { it.copy(sslEnabled = v) }
     fun onSniChange(v: String) = _uiState.update { it.copy(sni = v) }
-    fun onPayloadChange(v: String) = _uiState.update { it.copy(payload = v) }
+    fun onPayloadChange(v: String) = _uiState.update { it.copy(payload = v, error = null) }
     fun onProxyHostChange(v: String) = _uiState.update { it.copy(proxyHost = v) }
     fun onProxyPortChange(v: String) = _uiState.update { it.copy(proxyPort = v) }
     fun onProxyTypeChange(v: String) = _uiState.update { it.copy(proxyType = v) }
@@ -106,7 +105,6 @@ class CreateEditViewModel @Inject constructor(
         val s = _uiState.value
         val mode = s.selectedMode
         var error: String? = null
-
         var nameError: String? = null
         var hostError: String? = null
         var portError: String? = null
@@ -149,8 +147,11 @@ class CreateEditViewModel @Inject constructor(
                 else -> null
             }
         }
-        if (error == null && mode.requiresPayload && s.payload.isBlank()) {
-            error = "El modo seleccionado requiere payload"
+        if (error == null && mode.requiresPayload) {
+            val validation = PayloadEngine.validate(s.payload)
+            if (!validation.isValid) {
+                error = validation.errors.joinToString(" · ")
+            }
         }
 
         _uiState.update {

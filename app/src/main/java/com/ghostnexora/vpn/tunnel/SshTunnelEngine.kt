@@ -3,6 +3,9 @@ package com.ghostnexora.vpn.tunnel
 import android.content.Context
 import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.util.PayloadAction
+import com.ghostnexora.vpn.util.PayloadContext
+import com.ghostnexora.vpn.util.PayloadEngine
 import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
@@ -279,16 +282,29 @@ private class TunnelSocketFactory(
     }
 
     private fun performPayloadHandshake(socket: Socket, host: String, port: Int): PushbackInputStream {
-        val payload = renderPayload(profile.payload, host, port, profile.sni.ifBlank { host })
-        require(payload.isNotBlank()) { "El payload no puede estar vacío" }
-
-        socket.getOutputStream().apply {
-            write(payload.toByteArray(Charsets.UTF_8))
-            flush()
+        val plan = PayloadEngine.compile(
+            raw = profile.payload,
+            context = PayloadContext(
+                host = host,
+                port = port,
+                sni = profile.sni.ifBlank { host },
+                proxyHost = profile.proxy.host,
+                proxyPort = profile.proxy.port
+            )
+        )
+        val output = socket.getOutputStream()
+        plan.actions.forEach { action ->
+            when (action) {
+                is PayloadAction.Send -> {
+                    output.write(action.text.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                }
+                is PayloadAction.Delay -> Thread.sleep(action.millis)
+            }
         }
 
         val input = PushbackInputStream(socket.getInputStream(), MAX_HANDSHAKE_BYTES)
-        if (!looksLikeHttpPayload(payload)) return input
+        if (!looksLikeHttpPayload(plan.rendered)) return input
 
         val previousTimeout = socket.soTimeout
         socket.soTimeout = 8_000
@@ -346,15 +362,6 @@ private class TunnelSocketFactory(
         sslSocket.startHandshake()
         return sslSocket
     }
-
-    private fun renderPayload(raw: String, host: String, port: Int, sni: String): String = raw
-        .replace("[host_port]", "$host:$port", ignoreCase = true)
-        .replace("[host]", host, ignoreCase = true)
-        .replace("[port]", port.toString(), ignoreCase = true)
-        .replace("[sni]", sni, ignoreCase = true)
-        .replace("[crlf]", "\r\n", ignoreCase = true)
-        .replace("[lf]", "\n", ignoreCase = true)
-        .replace("[cr]", "\r", ignoreCase = true)
 
     private fun looksLikeHttpPayload(payload: String): Boolean {
         val first = payload.trimStart().substringBefore(' ').uppercase()

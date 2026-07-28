@@ -6,8 +6,16 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -15,45 +23,32 @@ class ProfileListViewModel @Inject constructor(
     private val repository: ProfileRepository
 ) : ViewModel() {
 
-    // ── Búsqueda ──────────────────────────────────────────────────────────
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    // ── Filtro activo ─────────────────────────────────────────────────────
     private val _activeFilter = MutableStateFlow(ProfileFilter.ALL)
     val activeFilter: StateFlow<ProfileFilter> = _activeFilter.asStateFlow()
 
-    // ── UI State ──────────────────────────────────────────────────────────
     private val _uiState = MutableStateFlow(ProfileListUiState())
     val uiState: StateFlow<ProfileListUiState> = _uiState.asStateFlow()
 
-    // ── Perfil activo (desde DataStore) ───────────────────────────────────
     val activeProfileId: StateFlow<String> = repository.activeProfileId
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-
-    // ══════════════════════════════════════════════════════════════════════
-    // LISTA REACTIVA DE PERFILES
-    // Combina búsqueda + filtro en un solo Flow
-    // ══════════════════════════════════════════════════════════════════════
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val profiles: StateFlow<List<VpnProfile>> = combine(
         _searchQuery,
         _activeFilter
-    ) { query, filter -> Pair(query, filter) }
+    ) { query, filter -> query to filter }
         .flatMapLatest { (query, filter) ->
             when {
-                query.isNotBlank() -> repository.searchProfiles(query)
+                query.isNotBlank() -> repository.searchProfiles(query.trim())
                 filter == ProfileFilter.FAVORITES -> repository.favoriteProfiles
-                filter == ProfileFilter.ENABLED   -> repository.enabledProfiles
-                else                              -> repository.allProfiles
+                filter == ProfileFilter.ENABLED -> repository.enabledProfiles
+                else -> repository.allProfiles
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // ══════════════════════════════════════════════════════════════════════
-    // ACCIONES
-    // ══════════════════════════════════════════════════════════════════════
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
@@ -67,7 +62,6 @@ class ProfileListViewModel @Inject constructor(
         _activeFilter.value = filter
     }
 
-    /** Selecciona el perfil como activo en DataStore */
     fun selectActiveProfile(profileId: String) {
         viewModelScope.launch {
             repository.setActiveProfileId(profileId)
@@ -75,14 +69,29 @@ class ProfileListViewModel @Inject constructor(
         }
     }
 
-    /** Alterna favorito */
     fun toggleFavorite(profile: VpnProfile) {
         viewModelScope.launch {
             repository.setFavorite(profile.id, !profile.isFavorite)
+            _uiState.update {
+                it.copy(snackbarMessage = if (profile.isFavorite) "Eliminado de favoritos" else "Añadido a favoritos")
+            }
         }
     }
 
-    /** Solicita confirmación de borrado */
+    fun duplicateProfile(profile: VpnProfile) {
+        viewModelScope.launch {
+            val copy = profile.copy(
+                id = UUID.randomUUID().toString(),
+                name = uniqueCopyName(profile.name),
+                isFavorite = false,
+                lastUsed = "",
+                createdAt = System.currentTimeMillis()
+            )
+            repository.saveProfile(copy)
+            _uiState.update { it.copy(snackbarMessage = "Perfil duplicado como \"${copy.name}\"") }
+        }
+    }
+
     fun requestDelete(profile: VpnProfile) {
         _uiState.update { it.copy(profileToDelete = profile) }
     }
@@ -91,11 +100,11 @@ class ProfileListViewModel @Inject constructor(
         _uiState.update { it.copy(profileToDelete = null) }
     }
 
-    /** Elimina el perfil pendiente */
     fun confirmDelete() {
         val profile = _uiState.value.profileToDelete ?: return
         viewModelScope.launch {
             repository.deleteProfile(profile)
+            if (activeProfileId.value == profile.id) repository.clearActiveProfile()
             _uiState.update {
                 it.copy(
                     profileToDelete = null,
@@ -108,15 +117,16 @@ class ProfileListViewModel @Inject constructor(
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
     }
-}
 
-// ══════════════════════════════════════════════════════════════════════════
-// MODELOS DE ESTADO
-// ══════════════════════════════════════════════════════════════════════════
+    private fun uniqueCopyName(name: String): String {
+        val clean = name.trim().ifBlank { "Perfil" }
+        return if (clean.endsWith("(copia)", ignoreCase = true)) "$clean 2" else "$clean (copia)"
+    }
+}
 
 data class ProfileListUiState(
     val profileToDelete: VpnProfile? = null,
-    val snackbarMessage: String?     = null
+    val snackbarMessage: String? = null
 )
 
 enum class ProfileFilter(val label: String) {

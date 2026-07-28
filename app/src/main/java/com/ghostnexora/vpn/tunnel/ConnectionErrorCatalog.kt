@@ -1,0 +1,108 @@
+package com.ghostnexora.vpn.tunnel
+
+import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.VpnProfile
+
+/** Stable user-facing error with a searchable code and remediation. */
+data class VpnFailure(
+    val code: String,
+    val stage: String,
+    val title: String,
+    val detail: String,
+    val solution: String
+) {
+    fun userMessage(): String = "$title · $solution [$code]"
+    fun logMessage(): String = "[$code] [$stage] $title · $detail · Solución: $solution"
+}
+
+object ConnectionErrorCatalog {
+    fun classify(error: Throwable, profile: VpnProfile): VpnFailure {
+        val raw = generateSequence(error) { it.cause }
+            .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .joinToString(" · ")
+            .take(360)
+        val lower = raw.lowercase()
+
+        return when {
+            lower.contains("no hay una red") || lower.contains("network is unreachable") -> failure(
+                "NET-001", "NETWORK", "No physical Internet connection", raw,
+                "Enable mobile data or Wi-Fi and retry."
+            )
+            lower.contains("unknownhost") || lower.contains("unable to resolve") || lower.contains("name or service") -> failure(
+                "DNS-001", "DNS", "The server name could not be resolved", raw,
+                "Check the host and the selected DNS servers."
+            )
+            lower.contains("connection refused") -> failure(
+                "TCP-002", "TCP", "The remote port rejected the connection", raw,
+                "Verify the server address, port and service status."
+            )
+            lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") -> failure(
+                "NET-003", "NETWORK", "The server did not respond in time", raw,
+                "Check signal quality, server availability and transport parameters."
+            )
+            lower.contains("407") || lower.contains("proxy authentication") -> failure(
+                "PROXY-407", "PROXY", "Proxy authentication is required", raw,
+                "Verify the proxy username and password."
+            )
+            lower.contains("proxy") && (lower.contains("refused") || lower.contains("failed")) -> failure(
+                "PROXY-002", "PROXY", "The proxy connection failed", raw,
+                "Check proxy type, host, port and credentials."
+            )
+            lower.contains("certificate") || lower.contains("certificado") ||
+                lower.contains("trust anchor") || lower.contains("hostname") || lower.contains("sni") -> failure(
+                "TLS-004", "TLS", "TLS certificate or SNI validation failed", raw,
+                "Use the SNI configured by the server and a certificate valid for that name."
+            )
+            lower.contains("auth fail") || lower.contains("authentication") || lower.contains("autenticación") -> failure(
+                if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",
+                if (profile.selectedMode.isSsh) "SSH" else "AUTH",
+                "Authentication failed", raw,
+                "Verify the username, password, UUID or authentication token."
+            )
+            lower.contains("hostkey") || lower.contains("host key") -> failure(
+                "SSH-409", "SSH", "The SSH server identity changed", raw,
+                "Confirm the server change and reset its stored fingerprint only when trusted."
+            )
+            lower.contains("classnotfoundexception") || lower.contains("com.jcraft.jsch") -> failure(
+                "SSH-500", "SSH", "The SSH runtime could not initialize", raw,
+                "Install the latest build and export the diagnostic report if it persists."
+            )
+            lower.contains("uuid") -> failure(
+                "XRAY-UUID", "XRAY", "The VLESS/VMess identifier is invalid", raw,
+                "Enter a valid UUID supplied by the server."
+            )
+            lower.contains("app-routing") || lower.contains("split tunneling") || lower.contains("selected application") -> failure(
+                "APP-ROUTE-001", "APP_ROUTING", "The application routing rule is invalid", raw,
+                "Select at least one installed application or change the routing mode."
+            )
+            lower.contains("package") && lower.contains("not found") -> failure(
+                "APP-ROUTE-404", "APP_ROUTING", "A selected application is no longer installed", raw,
+                "Refresh the application list and remove unavailable packages."
+            )
+            lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
+                lower.contains("generate_204") || lower.contains("outbound") -> failure(
+                "ROUTE-204", "ROUTING", "The tunnel started but the outbound has no Internet", raw,
+                "Check protocol, UUID/password, TLS, SNI, Host, path, service name and transport."
+            )
+            lower.contains("libv2ray") || lower.contains("xray core") || lower.contains("go_seq") -> failure(
+                "XRAY-500", "XRAY", "Xray Core could not start", raw,
+                "Review the profile transport fields and export the complete diagnostic report."
+            )
+            lower.contains("tun") || lower.contains("descriptor") -> failure(
+                "TUN-500", "TUN", "Android could not establish the VPN interface", raw,
+                "Disconnect other VPN applications, reauthorize VPN access and retry."
+            )
+            profile.selectedMode == ConnectionMode.V2RAY -> failure(
+                "XRAY-000", "XRAY", "V2Ray/Xray connection failed", raw,
+                "Run Connection diagnostics to identify DNS, TCP, TLS or outbound failure."
+            )
+            else -> failure(
+                "VPN-000", "VPN", "The connection could not be completed", raw.ifBlank { error.javaClass.simpleName },
+                "Run Connection diagnostics and export the report."
+            )
+        }
+    }
+
+    private fun failure(code: String, stage: String, title: String, detail: String, solution: String) =
+        VpnFailure(code, stage, title, detail.ifBlank { "No additional detail" }, solution)
+}
