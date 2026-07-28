@@ -6,6 +6,7 @@ on:
       - agent/modernize-permissions-updates-ui
     paths:
       - scripts/apply_product_hardening.py
+      - .github/workflows/apply-product-hardening.yml
   workflow_dispatch:
 
 permissions:
