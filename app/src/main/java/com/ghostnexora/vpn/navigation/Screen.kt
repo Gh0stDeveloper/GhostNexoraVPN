@@ -16,8 +16,6 @@ sealed class Screen(
     val iconSelected: ImageVector = icon,
     val showInDrawer: Boolean = true
 ) {
-    // ── Pantallas principales del drawer ──────────────────────────────────
-
     object Dashboard : Screen(
         route = "dashboard",
         title = "Dashboard",
@@ -37,6 +35,20 @@ sealed class Screen(
         title = "Crear Perfil",
         icon = Icons.Outlined.AddCircleOutline,
         iconSelected = Icons.Filled.AddCircle
+    )
+
+    object AppRouting : Screen(
+        route = "app_routing",
+        title = "Aplicaciones",
+        icon = Icons.Outlined.Apps,
+        iconSelected = Icons.Filled.Apps
+    )
+
+    object Compatibility : Screen(
+        route = "compatibility",
+        title = "Compatibilidad",
+        icon = Icons.Outlined.FactCheck,
+        iconSelected = Icons.Filled.FactCheck
     )
 
     object Import : Screen(
@@ -88,8 +100,6 @@ sealed class Screen(
         iconSelected = Icons.Filled.Info
     )
 
-    // ── Pantallas sin entrada directa en drawer ───────────────────────────
-
     object EditProfile : Screen(
         route = "edit_profile/{profileId}",
         title = "Editar Perfil",
@@ -101,11 +111,12 @@ sealed class Screen(
     }
 
     companion object {
-        /** Pantallas visibles en el Navigation Drawer, en orden */
         val drawerItems: List<Screen> = listOf(
             Dashboard,
             Profiles,
             CreateProfile,
+            AppRouting,
+            Compatibility,
             Import,
             Export,
             History,
