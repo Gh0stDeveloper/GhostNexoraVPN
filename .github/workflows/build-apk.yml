@@ -211,6 +211,12 @@ jobs:
           do
             grep -aR -Fq "$descriptor" "$DEX_DIR" || { echo "Missing runtime class: $descriptor"; exit 1; }
           done
+          MAPPING="$(find app/build/outputs/mapping/release -type f -name 'mapping.txt' -print -quit)"
+          test -s "$MAPPING"
+          if grep -Eq '^[[:space:]]+java\.util\.List drawerItems ->' "$MAPPING"; then
+            echo "Screen.drawerItems must not have a static backing list; it can capture null during class initialization."
+            exit 1
+          fi
           echo "Hardened runtime classes survived R8."
 
       - name: Upload Gradle diagnostics

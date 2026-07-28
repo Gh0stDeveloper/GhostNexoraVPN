@@ -113,19 +113,29 @@ sealed class Screen(
     }
 
     companion object {
-        val drawerItems: List<Screen> = listOf(
-            Dashboard,
-            Profiles,
-            CreateProfile,
-            AppRouting,
-            Compatibility,
-            Import,
-            Export,
-            History,
-            Logs,
-            Settings,
-            Documentation,
-            About
-        )
+        /**
+         * Build the drawer model only after [Screen] and its singleton
+         * subclasses have finished class initialization.
+         *
+         * Keeping this as a computed property is intentional. A static list
+         * creates a class-initialization cycle when [Dashboard] is the first
+         * screen referenced at launch. Release/R8 can then capture Dashboard's
+         * not-yet-initialized INSTANCE as a null list element.
+         */
+        val drawerItems: List<Screen>
+            get() = listOf(
+                Dashboard,
+                Profiles,
+                CreateProfile,
+                AppRouting,
+                Compatibility,
+                Import,
+                Export,
+                History,
+                Logs,
+                Settings,
+                Documentation,
+                About
+            )
     }
 }

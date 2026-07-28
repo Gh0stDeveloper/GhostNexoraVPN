@@ -2,6 +2,17 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.36
+
+### Fixed
+
+- Fixed the Release/R8 startup crash in the navigation drawer. The drawer model is now computed only after all `Screen` singletons finish class initialization, preventing a null dashboard entry.
+
+### Changed
+
+- Added a regression test that reproduces the application launch order and verifies every drawer route.
+- Release validation now rejects any R8 mapping that reintroduces a static `Screen.drawerItems` backing list.
+
 ## 1.0.35
 
 ### Added
