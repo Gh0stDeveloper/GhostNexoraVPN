@@ -1,115 +1,135 @@
 # Ghost Nexora VPN Roadmap
 
-This roadmap lists planned work after the Phase 1 stability milestone. Items are not considered supported until implementation, CI validation and physical-device interoperability tests are complete.
+This roadmap separates implemented work from planned work. An implemented item is not labeled interoperable until CI and physical-device/server tests are complete.
 
-## Phase 2 — Configuration compatibility
+## Completed foundation
 
-### Importers
+### Phase 1 — Runtime stability
 
-- `vless://`
-- `vmess://`
-- `trojan://`
-- `hysteria2://` and `hy2://`
-- `ssh://`
-- Xray JSON
-- clipboard detection
-- QR import preview
-- duplicate detection
+- non-destructive connection diagnostics;
+- outbound verification before TUN;
+- active outbound verification after startup;
+- IPv4-only, IPv4-preferred, and dual-stack modes;
+- synchronized Android/Xray MTU;
+- protected DNS modes;
+- bounded reconnection and Kill Switch behavior;
+- structured error catalog;
+- sanitized full diagnostic export;
+- unit, Lint, Debug/JNI, Release/R8, and DEX validation.
 
-### Protocol-specific profile editors
+### Phase 2A — Import compatibility
 
-Replace the generic form with fields specific to VLESS, VMess, Trojan, Hysteria2 and SSH transports.
+Implemented and awaiting final CI/device qualification:
 
-Planned fields include:
+- `vless://`;
+- `vmess://`;
+- `trojan://`;
+- `hysteria2://` and `hy2://`;
+- `ssh://` convention;
+- standard Xray outbound JSON;
+- clipboard and QR import;
+- technical preview;
+- duplicate detection and duplicate-safe merge/replace.
 
-- network transport;
-- TLS or REALITY;
-- Host and path;
-- gRPC service name;
-- ALPN;
-- fingerprint;
-- public key and short ID;
-- flow and encryption;
-- proxy authentication.
+### Phase 3A — Injector and profile foundation
 
-### SSH identity support
+Implemented and awaiting final CI/device qualification:
 
-- RSA, ECDSA and Ed25519 private keys;
-- OpenSSH key format;
+- visual CONNECT, GET, POST, HEAD, and WebSocket templates;
+- CRLF-aware preview;
+- validated payload variables;
+- split writes and bounded delays;
+- payload syntax validation before save;
+- profile search, filters, favorites, and duplication;
+- all/only-selected/excluded application split tunneling;
+- in-app evidence-based compatibility matrix.
+
+## Phase 2B — Protocol-specific editors
+
+Replace remaining generic Xray option text with typed fields for:
+
+- VLESS flow, encryption, TLS/REALITY, public key, short ID, fingerprint, spiderX;
+- VMess cipher and compatibility Alter ID;
+- Trojan SNI, ALPN, transport, Host, path, and service name;
+- Hysteria2 obfuscation, bandwidth hints, port hopping, and QUIC options;
+- reusable transport subforms for TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade, and mKCP.
+
+## Phase 2C — SSH identity and proxy authentication
+
+- RSA, ECDSA, and Ed25519 private keys;
+- modern OpenSSH key format;
 - encrypted keys with passphrase;
-- Android Keystore-backed local storage;
-- explicit password/key authentication selection.
+- Keystore-backed local key storage;
+- password/key authentication selector;
+- HTTP proxy user/password;
+- SOCKS5 user/password;
+- remote proxy DNS policy;
+- explicit 407 diagnostic tests;
+- certificate viewer and opt-in SHA-256 pinning;
+- selectable TLS 1.2/1.3 and ALPN.
 
-## Phase 3 — Advanced injector functionality
+## Phase 3B — Advanced injector functionality
 
-### Payload engine
-
-- visual GET, CONNECT, POST, HEAD and WebSocket templates;
-- CRLF-aware editor;
-- payload variables;
-- split writes;
-- configurable delays;
-- payload repetition;
-- response parser for HTTP 101, 200, 403 and 407;
-- history, favorites and reusable templates.
-
-### Profile management
-
-- folders and labels;
-- profile duplication;
-- last successful latency;
-- consecutive failure counter;
+- payload repetition with strict bounds;
+- response parser and UI for 101, 200, 403, and 407;
+- payload history, favorites, and named reusable templates;
+- payload import/export;
+- alternative TLS/payload ordering only after server fixtures exist;
 - batch diagnostics;
-- fastest-profile selection;
-- encrypted backup and restore.
+- fastest-profile selection with comparable test conditions.
 
-### Split tunneling
+## Phase 3C — Profile and routing management
 
-- all applications through VPN;
-- only selected applications;
-- excluded applications;
-- private-network bypass;
-- domain and CIDR rules;
+- folders and custom ordering;
+- last successful latency and timestamp;
+- consecutive failure count;
+- encrypted full backup/restore;
+- GNX expiration, minimum version, creator metadata, integrity signature, and optional device policy;
+- private-network/CIDR bypass;
+- domain include/exclude rules;
+- per-profile app groups;
 - TCP/UDP-specific routing.
 
 ## Phase 4 — Product completion
 
-- session speed chart;
-- public IP before and after connection;
+- lightweight session speed chart;
+- public IP before/after;
 - DNS leak test;
 - biometric or PIN application lock;
-- `FLAG_SECURE` for sensitive screens;
-- signed update verification against the installed signer;
-- SBOM and dependency vulnerability scanning;
-- localization audit;
-- accessibility audit;
-- complete user manual and troubleshooting catalog;
-- release qualification matrix for supported servers and Android versions.
+- `FLAG_SECURE` on sensitive screens;
+- signer-certificate verification for updates;
+- SBOM, secret scanning, and dependency vulnerability scanning;
+- localization, accessibility, and small-screen audits;
+- clear/AMOLED/dark themes;
+- release qualification matrix for supported servers and Android versions;
+- public server administration guide;
+- final privacy policy and store disclosures.
 
 ## Immediate validation backlog
 
 Before the current draft PR is merged:
 
-1. Install version 1.0.33 on the device that reproduced the JSch error.
-2. Run Connection diagnostics for the same SSH + SSL profile.
-3. Test the connection and export the diagnostic report.
+1. Install the newest validation APK on the device that reproduced the JSch error.
+2. Run diagnostics for the same SSH + SSL profile.
+3. Test segmented payloads against controlled 200/101/403/407 fixtures.
 4. Repeat with the V2Ray profile that previously removed Internet access.
-5. Test IPv4 only at MTU 1400.
-6. Test IPv4 preferred at MTU 1360 if pages stall.
-7. Test mobile-data to Wi-Fi and Wi-Fi to mobile-data handover.
-8. Confirm behavior with Kill Switch both enabled and disabled.
-9. Verify log export and secret redaction.
-10. Record each verified protocol/transport combination in a release test matrix.
+5. Test IPv4 only at MTU 1400, then 1360 if pages stall.
+6. Test all three application-routing modes.
+7. Test mobile-data/Wi-Fi handover.
+8. Confirm Kill Switch enabled and disabled behavior.
+9. Verify import preview and duplicate-safe merge.
+10. Record every successful exact combination in `TEST-MATRIX.md`.
 
 ## Release policy
 
-A transport should be labeled **verified** only when:
+A transport is labeled **device verified** only when:
 
-- unit and configuration tests pass;
-- Debug and Release/R8 builds pass;
-- the required runtime classes survive minification;
+- unit/configuration tests pass;
+- Lint, Debug/JNI, and Release/R8 pass;
+- runtime classes survive minification;
 - a real server accepts authentication;
-- DNS resolution works through the tunnel;
-- outbound HTTP traffic succeeds;
-- reconnection works after a network interruption;
-- no unintended direct traffic leak is observed.
+- DNS and TCP/HTTP traffic work through the tunnel;
+- upload and download are observed;
+- reconnection works after an interruption;
+- no unintended direct traffic leak is observed;
+- the evidence record identifies device, network, server, and application commit.
