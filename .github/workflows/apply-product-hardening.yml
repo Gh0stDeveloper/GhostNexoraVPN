@@ -34,13 +34,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/ghostnexora/vpn/tunnel/SshTunnelEngine.kt \
-                  app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt \
-                  app/src/main/java/com/ghostnexora/vpn/ui/MainActivity.kt \
-                  app/src/main/java/com/ghostnexora/vpn/util/JsonManager.kt
+          git add app/src/main/java/com/ghostnexora/vpn/ui/screens/profiles/CreateEditProfileScreen.kt
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Integrate split routing, payload engine, and Xray import"
+            git commit -m "Wire advanced segmented payload editor"
             git push origin HEAD:agent/modernize-permissions-updates-ui
           fi
