@@ -8,6 +8,9 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.util.ImportResult
 import com.ghostnexora.vpn.util.JsonManager
+import com.ghostnexora.vpn.util.ProfileFingerprint
+import com.ghostnexora.vpn.util.ProfileTechnicalSummaries
+import com.ghostnexora.vpn.util.ProfileTechnicalSummary
 import com.ghostnexora.vpn.util.ValidationResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -88,14 +92,17 @@ class ImportExportViewModel @Inject constructor(
         val profiles = _importState.value.previewProfiles
         if (profiles.isEmpty()) return
         viewModelScope.launch {
-            _importState.update { it.copy(isLoading = true) }
+            _importState.update { it.copy(isLoading = true, error = null) }
+            val existing = if (merge) repository.allProfiles.first() else emptyList()
+            val (unique, skipped) = ProfileFingerprint.uniqueAgainst(profiles, existing)
             if (!merge) repository.deleteAllProfiles()
-            repository.saveProfiles(profiles)
+            if (unique.isNotEmpty()) repository.saveProfiles(unique)
             _importState.update {
                 it.copy(
                     isLoading = false,
                     importSuccess = true,
-                    importedCount = profiles.size,
+                    importedCount = unique.size,
+                    skippedDuplicateCount = skipped,
                     password = ""
                 )
             }
@@ -119,17 +126,31 @@ class ImportExportViewModel @Inject constructor(
         _importState.update { it.copy(isLoading = true, error = null) }
         try {
             when (val result = loader()) {
-                is ImportResult.Success -> _importState.update {
-                    it.copy(
-                        isLoading = false,
-                        selectedUri = selectedUri,
-                        fileName = fileName,
-                        previewProfiles = result.profiles,
-                        sourceName = result.sourceName.ifBlank { sourceLabel },
-                        validation = ValidationResult(true, "Configuración válida y descifrada", result.profiles.size),
-                        passwordRequired = false,
-                        error = null
-                    )
+                is ImportResult.Success -> {
+                    val existing = repository.allProfiles.first()
+                    val (_, duplicateCount) = ProfileFingerprint.uniqueAgainst(result.profiles, existing)
+                    _importState.update {
+                        it.copy(
+                            isLoading = false,
+                            selectedUri = selectedUri,
+                            fileName = fileName,
+                            previewProfiles = result.profiles,
+                            technicalSummaries = result.profiles.map(ProfileTechnicalSummaries::from),
+                            sourceName = result.sourceName.ifBlank { sourceLabel },
+                            validation = ValidationResult(
+                                true,
+                                if (duplicateCount > 0) {
+                                    "Configuración válida · $duplicateCount posible(s) duplicado(s) al fusionar"
+                                } else {
+                                    "Configuración válida y lista para importar"
+                                },
+                                result.profiles.size
+                            ),
+                            duplicateCount = duplicateCount,
+                            passwordRequired = false,
+                            error = null
+                        )
+                    }
                 }
 
                 is ImportResult.PasswordRequired -> _importState.update {
@@ -140,7 +161,9 @@ class ImportExportViewModel @Inject constructor(
                         sourceName = sourceLabel,
                         passwordRequired = true,
                         previewProfiles = emptyList(),
+                        technicalSummaries = emptyList(),
                         validation = null,
+                        duplicateCount = 0,
                         error = result.message
                     )
                 }
@@ -153,6 +176,8 @@ class ImportExportViewModel @Inject constructor(
                         sourceName = sourceLabel,
                         error = result.message,
                         previewProfiles = emptyList(),
+                        technicalSummaries = emptyList(),
+                        duplicateCount = 0,
                         validation = ValidationResult(false, result.message, 0)
                     )
                 }
@@ -256,11 +281,14 @@ data class ImportUiState(
     val fileName: String = "",
     val sourceName: String = "",
     val previewProfiles: List<VpnProfile> = emptyList(),
+    val technicalSummaries: List<ProfileTechnicalSummary> = emptyList(),
     val validation: ValidationResult? = null,
+    val duplicateCount: Int = 0,
     val password: String = "",
     val passwordRequired: Boolean = false,
     val importSuccess: Boolean = false,
     val importedCount: Int = 0,
+    val skippedDuplicateCount: Int = 0,
     val error: String? = null
 ) {
     val hasFile: Boolean get() = selectedUri != null
