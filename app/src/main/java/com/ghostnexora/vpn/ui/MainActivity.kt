@@ -2,11 +2,14 @@ package com.ghostnexora.vpn.ui
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -26,7 +29,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -103,6 +105,8 @@ private fun GhostNexoraApp() {
     val currentRoute = currentBackStack?.destination?.route
     val currentTitle = screenTitle(currentRoute)
 
+    SensitiveWindowProtection(currentRoute)
+
     NativePermissionBootstrap(
         enabled = settingsState.initialized && settingsState.firstLaunch,
         settingsViewModel = settingsViewModel
@@ -174,6 +178,33 @@ private fun GhostNexoraApp() {
             }
         }
     }
+}
+
+@Composable
+private fun SensitiveWindowProtection(route: String?) {
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    val sensitive = route == Screen.CreateProfile.route ||
+        route?.startsWith("edit_profile") == true ||
+        route == Screen.Import.route ||
+        route == Screen.Export.route
+
+    DisposableEffect(activity, sensitive) {
+        if (sensitive) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose {
+            if (sensitive) activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 /**
