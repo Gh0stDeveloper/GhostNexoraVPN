@@ -71,6 +71,14 @@ object ConnectionErrorCatalog {
                 "XRAY-UUID", "XRAY", "The VLESS/VMess identifier is invalid", raw,
                 "Enter a valid UUID supplied by the server."
             )
+            lower.contains("app-routing") || lower.contains("split tunneling") || lower.contains("selected application") -> failure(
+                "APP-ROUTE-001", "APP_ROUTING", "The application routing rule is invalid", raw,
+                "Select at least one installed application or change the routing mode."
+            )
+            lower.contains("package") && lower.contains("not found") -> failure(
+                "APP-ROUTE-404", "APP_ROUTING", "A selected application is no longer installed", raw,
+                "Refresh the application list and remove unavailable packages."
+            )
             lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
                 lower.contains("generate_204") || lower.contains("outbound") -> failure(
                 "ROUTE-204", "ROUTING", "The tunnel started but the outbound has no Internet", raw,
