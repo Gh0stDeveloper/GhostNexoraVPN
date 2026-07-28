@@ -2,6 +2,7 @@ package com.ghostnexora.vpn.util
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -246,6 +247,15 @@ object ProtocolLinkParser {
             ?: query["proxy"].orEmpty().substringAfter(':', "").toIntOrNull()
             ?: 0
         val proxyType = query["proxyType"].orEmpty().ifBlank { "http" }
+        val tlsVerificationMode = when {
+            query["allowSniMismatch"].equals("true", ignoreCase = true) ->
+                TlsVerificationMode.CUSTOM_SNI
+
+            else -> TlsVerificationMode.fromStored(
+                query["tlsVerificationMode"].orEmpty()
+                    .ifBlank { query["tlsMode"].orEmpty() }
+            )
+        }
         val requestedMode = query["mode"].orEmpty().lowercase()
         val mode = when {
             requestedMode in setOf("ssl_payload_proxy", "payload_proxy_ssl") -> ConnectionMode.SSH_PAYLOAD_PROXY_SSL
@@ -273,6 +283,7 @@ object ProtocolLinkParser {
             connectionMode = mode.id,
             sslEnabled = mode.usesTls,
             sni = sni,
+            tlsVerificationMode = tlsVerificationMode.id,
             payload = payload,
             proxy = ProxyConfig(proxyHost, proxyPort, proxyType),
             tagsRaw = "ssh,imported",

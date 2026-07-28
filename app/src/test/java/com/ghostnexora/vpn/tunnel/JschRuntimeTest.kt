@@ -17,7 +17,18 @@ class JschRuntimeTest {
             JSch.getConfig("random")
         )
         assertTrue(JschRuntime.isDirectProviderInstalled())
-        assertTrue(messages.any { it.contains("sin reflexión") })
+        assertTrue(messages.any { it.contains("algoritmos esenciales verificados") })
+    }
+
+    @Test
+    fun everyRuntimeLoadedProviderExistsBeforeOpeningTheNetwork() {
+        JschRuntime.verifyEssentialProviders()
+
+        JschRuntime.essentialProviderKeys.forEach { algorithm ->
+            val className = JSch.getConfig(algorithm)
+            assertTrue(className.isNotBlank())
+            assertEquals(className, Class.forName(className).name)
+        }
     }
 
     @Test

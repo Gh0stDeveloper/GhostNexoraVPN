@@ -1,6 +1,7 @@
 package com.ghostnexora.vpn.util
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -28,6 +29,12 @@ class ProfileFingerprintTest {
     fun detectsSecurityRelevantChanges() {
         assertNotEquals(ProfileFingerprint.of(base), ProfileFingerprint.of(base.copy(password = "other")))
         assertNotEquals(ProfileFingerprint.of(base), ProfileFingerprint.of(base.copy(sni = "other.example.com")))
+        assertNotEquals(
+            ProfileFingerprint.of(base),
+            ProfileFingerprint.of(
+                base.copy(tlsVerificationMode = TlsVerificationMode.CUSTOM_SNI.id)
+            )
+        )
     }
 
     @Test

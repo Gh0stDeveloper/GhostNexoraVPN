@@ -28,7 +28,7 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Outbound preflight and active HTTP verification | CI verified; device behavior pending |
 | JSch Android random provider | CI verified |
 | SSH direct/password | Device testing pending |
-| SSH + TLS/SNI | Device testing pending |
+| SSH + TLS/SNI strict and HTTP Custom-compatible | CI verified; real-server device testing pending |
 | Segmented payload engine | CI verified; remote response matrix pending |
 | HTTP CONNECT/SOCKS5 upstream proxy without auth | Device testing pending |
 | Authenticated upstream proxy | Not implemented as a production claim |

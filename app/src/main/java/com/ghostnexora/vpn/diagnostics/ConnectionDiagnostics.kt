@@ -7,6 +7,7 @@ import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog
+import com.ghostnexora.vpn.tunnel.TlsTransport
 import com.ghostnexora.vpn.tunnel.TunnelManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,10 +15,6 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.security.cert.X509Certificate
-import javax.net.ssl.SNIHostName
-import javax.net.ssl.SSLParameters
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 
 
 enum class DiagnosticStatus { RUNNING, PASSED, FAILED, SKIPPED }
@@ -197,19 +194,27 @@ class ConnectionDiagnosticsEngine(
 
     private fun inspectTls(profile: VpnProfile): String {
         val sni = profile.sni.ifBlank { profile.host }
-        val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        val socket = factory.createSocket() as SSLSocket
-        socket.use {
-            it.connect(InetSocketAddress(profile.host, profile.port), 8_000)
-            it.soTimeout = 8_000
-            val parameters: SSLParameters = it.sslParameters
-            parameters.endpointIdentificationAlgorithm = "HTTPS"
-            parameters.serverNames = listOf(SNIHostName(sni))
-            it.sslParameters = parameters
-            it.startHandshake()
+        val rawSocket = Socket().apply {
+            connect(InetSocketAddress(profile.host, profile.port), 8_000)
+            soTimeout = 8_000
+        }
+        val tlsSocket = try {
+            TlsTransport.upgrade(
+                connectedSocket = rawSocket,
+                targetHost = profile.host,
+                targetPort = profile.port,
+                sniHost = sni,
+                verificationMode = profile.selectedTlsVerificationMode
+            )
+        } catch (error: Throwable) {
+            runCatching { rawSocket.close() }
+            throw error
+        }
+        tlsSocket.use {
             val certificate = it.session.peerCertificates.firstOrNull() as? X509Certificate
             val subject = certificate?.subjectX500Principal?.name.orEmpty().take(160)
-            return "${it.session.protocol} · ${it.session.cipherSuite} · $subject"
+            return "${it.session.protocol} · ${it.session.cipherSuite} · " +
+                "${profile.selectedTlsVerificationMode.label} · $subject"
         }
     }
 

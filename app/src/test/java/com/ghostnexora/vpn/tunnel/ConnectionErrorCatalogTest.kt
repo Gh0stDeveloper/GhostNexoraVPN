@@ -1,6 +1,7 @@
 package com.ghostnexora.vpn.tunnel
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,6 +36,17 @@ class ConnectionErrorCatalogTest {
         )
         assertEquals("TLS-004", failure.code)
         assertEquals("TLS", failure.stage)
+    }
+
+    @Test
+    fun customSniFailurePointsToCertificateTrustInsteadOfHostname() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException("certificate trust anchor failed"),
+            sshProfile.copy(tlsVerificationMode = TlsVerificationMode.CUSTOM_SNI.id)
+        )
+
+        assertEquals("TLS-004", failure.code)
+        assertTrue(failure.solution.contains("already allows an SNI/SAN mismatch"))
     }
 
     @Test

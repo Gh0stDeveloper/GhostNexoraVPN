@@ -35,6 +35,8 @@ object ProfileTechnicalSummaries {
         }
         val security = when {
             options["security"].equals("reality", true) -> "REALITY"
+            profile.selectedMode.isSsh && profile.selectedMode.usesTls ->
+                "TLS · ${profile.selectedTlsVerificationMode.label}"
             profile.selectedMode.usesTls || profile.sslEnabled || options["security"].equals("tls", true) -> "TLS"
             profile.selectedMode.isSsh -> "SSH"
             else -> "Sin TLS"
@@ -47,7 +49,14 @@ object ProfileTechnicalSummaries {
             ?.let { "${it.type.ifBlank { "http" }.uppercase()} ${it.host}:${it.port}" }
             .orEmpty()
         val warnings = buildList {
-            if ((security == "TLS" || security == "REALITY") && sni.isBlank()) add("SNI no configurado")
+            if ((security.startsWith("TLS") || security == "REALITY") && sni.isBlank()) add("SNI no configurado")
+            if (
+                profile.selectedMode.isSsh &&
+                profile.selectedMode.usesTls &&
+                !profile.selectedTlsVerificationMode.verifiesHostname
+            ) {
+                add("Compatibilidad SNI activa: no se exige coincidencia entre SNI y SAN")
+            }
             if (profile.selectedMode == ConnectionMode.V2RAY && protocol == "VLESS" && profile.username.isBlank()) add("UUID vacío")
             if (profile.selectedMode.requiresPayload && PayloadEngine.validate(profile.payload).isValid.not()) add("Payload con errores de sintaxis")
             if (profile.selectedMode.requiresProxy && proxy.isBlank()) add("Proxy incompleto")

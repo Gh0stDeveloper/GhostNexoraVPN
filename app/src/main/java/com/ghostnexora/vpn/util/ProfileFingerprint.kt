@@ -14,6 +14,7 @@ object ProfileFingerprint {
             profile.password,
             profile.sslEnabled.toString(),
             profile.sni.trim().lowercase(Locale.US),
+            profile.selectedTlsVerificationMode.id,
             profile.payload.trim(),
             profile.proxy.type.trim().lowercase(Locale.US),
             profile.proxy.host.trim().lowercase(Locale.US),

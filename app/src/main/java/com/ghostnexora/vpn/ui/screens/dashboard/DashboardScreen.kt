@@ -295,7 +295,7 @@ private fun SecurityStatusCard(state: DashboardUiState) {
                     )
                 }
             }
-            Text("IPv4 + IPv6 · DNS dentro del túnel · TLS estricto", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+            Text("IPv4 + IPv6 · DNS dentro del túnel · TLS por perfil", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

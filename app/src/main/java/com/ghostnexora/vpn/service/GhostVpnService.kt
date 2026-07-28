@@ -650,12 +650,27 @@ class GhostVpnService : VpnService() {
     private suspend fun logTransportReady(profile: VpnProfile) {
         when (profile.selectedMode) {
             ConnectionMode.SSH_DIRECT -> logSafe(LogLevel.SUCCESS, "SSH autenticado · bridge SOCKS/TUN activo", profile.id, "SSH")
-            ConnectionMode.SSL_SNI -> logSafe(LogLevel.SUCCESS, "TLS validado · SSH activo", profile.id, "TLS")
+            ConnectionMode.SSL_SNI -> logSafe(
+                LogLevel.SUCCESS,
+                "TLS activo · ${profile.selectedTlsVerificationMode.label} · SSH activo",
+                profile.id,
+                "TLS"
+            )
             ConnectionMode.SSH_PAYLOAD -> logSafe(LogLevel.SUCCESS, "Payload aceptado · SSH/TUN activo", profile.id, "SSH")
-            ConnectionMode.SSH_PAYLOAD_SSL -> logSafe(LogLevel.SUCCESS, "TLS + payload + SSH activos", profile.id, "TLS")
+            ConnectionMode.SSH_PAYLOAD_SSL -> logSafe(
+                LogLevel.SUCCESS,
+                "TLS + payload + SSH activos · ${profile.selectedTlsVerificationMode.label}",
+                profile.id,
+                "TLS"
+            )
             ConnectionMode.SSH_PROXY -> logSafe(LogLevel.SUCCESS, "Proxy + SSH activos", profile.id, "SSH")
             ConnectionMode.SSH_PAYLOAD_PROXY -> logSafe(LogLevel.SUCCESS, "Proxy + payload + SSH activos", profile.id, "SSH")
-            ConnectionMode.SSH_PAYLOAD_PROXY_SSL -> logSafe(LogLevel.SUCCESS, "Proxy + payload + TLS + SSH activos", profile.id, "TLS")
+            ConnectionMode.SSH_PAYLOAD_PROXY_SSL -> logSafe(
+                LogLevel.SUCCESS,
+                "Proxy + payload + TLS + SSH activos · ${profile.selectedTlsVerificationMode.label}",
+                profile.id,
+                "TLS"
+            )
             ConnectionMode.V2RAY -> logSafe(LogLevel.SUCCESS, "V2Ray/Xray con salida a Internet verificada", profile.id, "CORE")
             ConnectionMode.TROJAN -> logSafe(LogLevel.SUCCESS, "Trojan TLS con salida verificada", profile.id, "TLS")
             ConnectionMode.UDP -> logSafe(LogLevel.SUCCESS, "Hysteria2/QUIC/TLS con salida verificada", profile.id, "CORE")
@@ -743,9 +758,14 @@ class GhostVpnService : VpnService() {
         logSafe(LogLevel.INFO, "Red de salida: $physicalNetworkType", profile.id, "NETWORK")
         logSafe(LogLevel.INFO, "Servidor ${profile.host}:${profile.port}", profile.id, "NETWORK")
         if (profile.selectedMode.usesTls || profile.sslEnabled) {
+            val verification = if (profile.selectedMode.isSsh) {
+                profile.selectedTlsVerificationMode.label
+            } else {
+                "TLS estricto"
+            }
             logSafe(
                 LogLevel.INFO,
-                "TLS/SNI ${profile.sni.ifBlank { profile.host }} · verificación estricta",
+                "TLS/SNI ${profile.sni.ifBlank { profile.host }} · $verification",
                 profile.id,
                 "TLS"
             )

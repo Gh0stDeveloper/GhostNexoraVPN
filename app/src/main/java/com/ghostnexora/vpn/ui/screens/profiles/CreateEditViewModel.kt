@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.util.PayloadEngine
@@ -48,6 +49,7 @@ class CreateEditViewModel @Inject constructor(
                         connectionMode = profile.connectionMode,
                         sslEnabled = profile.sslEnabled,
                         sni = profile.sni,
+                        tlsVerificationMode = profile.selectedTlsVerificationMode.id,
                         payload = profile.payload,
                         proxyHost = profile.proxy.host,
                         proxyPort = profile.proxy.port.takeIf { p -> p > 0 }?.toString() ?: "",
@@ -90,6 +92,16 @@ class CreateEditViewModel @Inject constructor(
 
     fun onSslChange(v: Boolean) = _uiState.update { it.copy(sslEnabled = v) }
     fun onSniChange(v: String) = _uiState.update { it.copy(sni = v) }
+    fun onCustomSniCompatibilityChange(enabled: Boolean) = _uiState.update {
+        it.copy(
+            tlsVerificationMode = if (enabled) {
+                TlsVerificationMode.CUSTOM_SNI.id
+            } else {
+                TlsVerificationMode.STRICT.id
+            },
+            error = null
+        )
+    }
     fun onPayloadChange(v: String) = _uiState.update { it.copy(payload = v, error = null) }
     fun onProxyHostChange(v: String) = _uiState.update { it.copy(proxyHost = v) }
     fun onProxyPortChange(v: String) = _uiState.update { it.copy(proxyPort = v) }
@@ -184,6 +196,7 @@ class CreateEditViewModel @Inject constructor(
                 connectionMode = mode.id,
                 sslEnabled = if (mode == ConnectionMode.V2RAY) s.sslEnabled else mode.usesTls,
                 sni = s.sni.trim(),
+                tlsVerificationMode = TlsVerificationMode.fromStored(s.tlsVerificationMode).id,
                 payload = s.payload.trim(),
                 proxy = ProxyConfig(
                     host = s.proxyHost.trim(),
@@ -220,6 +233,7 @@ data class CreateEditUiState(
     val connectionMode: String = ConnectionMode.SSH_DIRECT.id,
     val sslEnabled: Boolean = false,
     val sni: String = "",
+    val tlsVerificationMode: String = TlsVerificationMode.STRICT.id,
     val payload: String = "",
     val proxyHost: String = "",
     val proxyPort: String = "",
@@ -236,6 +250,8 @@ data class CreateEditUiState(
     val title: String get() = if (isEditMode) "Editar Perfil" else "Nuevo Perfil"
     val hasErrors: Boolean get() = nameError != null || hostError != null || portError != null
     val selectedMode: ConnectionMode get() = ConnectionMode.fromStored(connectionMode, method, sslEnabled)
+    val selectedTlsVerificationMode: TlsVerificationMode
+        get() = TlsVerificationMode.fromStored(tlsVerificationMode)
     val isVmess: Boolean
         get() = tags.split(',').any { it.trim().equals("vmess", ignoreCase = true) } ||
             payload.contains("protocol=vmess", ignoreCase = true)

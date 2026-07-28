@@ -26,6 +26,8 @@ CI success alone is labeled **CI verified**.
 | SSH + SSL | TLS 1.2, valid SNI | strict certificate success | Pending |
 | SSH + SSL | TLS 1.3, valid SNI | strict certificate success | Pending |
 | SSH + SSL | invalid SNI | `TLS-004` before TUN | Pending |
+| SSH + SSL | custom SNI + trusted chain + different SAN | compatible handshake, SSH continues | Pending |
+| SSH + SSL | custom SNI + untrusted chain | `TLS-004`; no trust-all fallback | Pending |
 | SSH + Payload | HTTP 200 | SSH continues | Pending |
 | SSH + Payload | HTTP 101 | SSH continues | Pending |
 | SSH + Payload | 403 | structured payload failure | Pending |
@@ -35,6 +37,7 @@ CI success alone is labeled **CI verified**.
 | SSH + Proxy | SOCKS5 | tunnel established | Pending |
 | SSH + Proxy | partial response | deterministic timeout/failure | Pending |
 | SSH + SSL + Payload | TLS → payload → SSH | Internet verified | Pending |
+| SSH + SSL + Payload | custom SNI → HTTP 200 → SSH | HTTP Custom-compatible Internet | Pending |
 
 ## Xray matrix
 

@@ -27,12 +27,45 @@ object JschRuntime {
             check(AndroidRandomBridge.isInstalled()) { "JSch random bridge did not install" }
         }
 
+        verifyEssentialProviders()
         JSch.setLogger(SanitizedJschLogger(onStatus))
-        onStatus("[SSH] JSch ${JSch.VERSION} listo · SecureRandom inyectado sin reflexión")
+        onStatus("[SSH] JSch ${JSch.VERSION} listo · algoritmos esenciales verificados")
     }
 
     fun configuredRandomProvider(): String = JSch.getConfig("random")
     fun isDirectProviderInstalled(): Boolean = AndroidRandomBridge.isInstalled()
+
+    /**
+     * JSch resuelve estos proveedores mediante nombres de clase guardados en
+     * configuración. La comprobación temprana convierte una eliminación de R8
+     * en un error identificable antes de abrir el socket de producción.
+     */
+    fun verifyEssentialProviders() {
+        ESSENTIAL_PROVIDER_KEYS.forEach { algorithm ->
+            val className = JSch.getConfig(algorithm)
+            check(className.isNotBlank()) { "JSch no registró el algoritmo $algorithm" }
+            runCatching {
+                Class.forName(className, false, JschRuntime::class.java.classLoader)
+            }.getOrElse { error ->
+                throw IllegalStateException(
+                    "Proveedor JSch ausente para $algorithm: $className",
+                    error
+                )
+            }
+        }
+    }
+
+    internal val essentialProviderKeys: List<String>
+        get() = ESSENTIAL_PROVIDER_KEYS
+
+    private val ESSENTIAL_PROVIDER_KEYS = listOf(
+        "ecdh-sha2-nistp256",
+        "diffie-hellman-group-exchange-sha256",
+        "aes256-ctr",
+        "hmac-sha2-512",
+        "userauth.password",
+        "userauth.keyboard-interactive"
+    )
 }
 
 /** Directly referenced JSch random provider backed by Android/Java SecureRandom. */

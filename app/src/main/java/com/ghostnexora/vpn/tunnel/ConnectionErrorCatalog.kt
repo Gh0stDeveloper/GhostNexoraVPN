@@ -51,7 +51,15 @@ object ConnectionErrorCatalog {
             lower.contains("certificate") || lower.contains("certificado") ||
                 lower.contains("trust anchor") || lower.contains("hostname") || lower.contains("sni") -> failure(
                 "TLS-004", "TLS", "TLS certificate or SNI validation failed", raw,
-                "Use the SNI configured by the server and a certificate valid for that name."
+                if (
+                    profile.selectedMode.isSsh &&
+                    profile.selectedMode.usesTls &&
+                    !profile.selectedTlsVerificationMode.verifiesHostname
+                ) {
+                    "Compatibility mode already allows an SNI/SAN mismatch. Check certificate trust, validity and the TLS service."
+                } else {
+                    "Use the SNI configured by the server and a certificate valid for that name, or explicitly enable HTTP Custom SNI compatibility for this SSH profile."
+                }
             )
             lower.contains("auth fail") || lower.contains("authentication") || lower.contains("autenticación") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",

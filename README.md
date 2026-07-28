@@ -12,7 +12,7 @@ Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified rou
 
 A process running is not considered a successful VPN. The app verifies the remote outbound before creating Android default routes and verifies Internet access again after the active tunnel starts.
 
-Current development version: **1.0.36 (36)**.
+Current development version: **1.0.37 (37)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -45,7 +45,7 @@ Current development version: **1.0.36 (36)**.
 ### SSH and payloads
 
 - Direct SSH.
-- SSH over strict TLS/SNI.
+- SSH over strict TLS/SNI or per-profile HTTP Custom-compatible SNI.
 - SSH with HTTP payload.
 - SSH with TLS and payload.
 - SSH through HTTP CONNECT or SOCKS5 proxy.
@@ -87,7 +87,7 @@ Configuration generation and packaging are automated. Exact real-server combinat
 
 - AES-256-GCM profile protection with Android Keystore.
 - GNX2 authenticated encryption with random keys, nonces, and salts.
-- Strict TLS hostname verification; no global trust-all mode.
+- Strict TLS by default, with an explicit per-profile SSH SNI compatibility mode; no global trust-all mode.
 - Persistent SSH known-host verification.
 - Direct Android `SecureRandom` injection into JSch.
 - Sanitization before log storage, display, copy, and export.

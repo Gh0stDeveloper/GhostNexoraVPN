@@ -7,14 +7,19 @@ This document describes implemented behavior. It does not certify interoperabili
 | Mode | Transport chain | Current status |
 |---|---|---|
 | Direct SSH | TCP → SSH → local SOCKS → Xray TUN | Device testing pending |
-| SSH + SSL | TCP → strict TLS/SNI → SSH → SOCKS → TUN | Device testing pending |
+| SSH + SSL | TCP → TLS/SNI (strict or custom-compatible) → SSH → SOCKS → TUN | Device testing pending |
 | SSH + Payload | TCP → segmented HTTP payload → SSH → SOCKS → TUN | Device testing pending |
-| SSH + SSL + Payload | TCP → TLS/SNI → payload → SSH → SOCKS → TUN | Device testing pending |
+| SSH + SSL + Payload | TCP → TLS/SNI (strict or custom-compatible) → payload → SSH → SOCKS → TUN | Device testing pending |
 | SSH + Proxy | HTTP CONNECT or SOCKS5 → SSH → SOCKS → TUN | Device testing pending |
 | SSH + Payload + Proxy | proxy → payload → SSH → SOCKS → TUN | Device testing pending |
 | SSH + Payload + Proxy + SSL | proxy → TLS/SNI → payload → SSH → SOCKS → TUN | Device testing pending |
 
 SSH uses password authentication in the current production path. Private-key authentication, proxy credentials, and alternate payload/TLS ordering remain roadmap items until implemented and tested.
+
+The HTTP Custom-compatible policy applies only to SSH modes that use TLS. It
+sends an arbitrary valid DNS SNI and skips only SNI/SAN hostname matching. It
+does not install a trust-all certificate manager. Payload-only SSH has no TLS
+certificate stage and is unaffected by that selector.
 
 The local SSH bridge supports SOCKS5 CONNECT and carries TCP through JSch `direct-tcpip` channels. It does not claim generic UDP tunneling over SSH.
 

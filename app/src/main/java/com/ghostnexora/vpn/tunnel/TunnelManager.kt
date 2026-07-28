@@ -16,7 +16,7 @@ class TunnelManager(
     context: Context,
     private val onCoreStatus: (String) -> Unit = {}
 ) {
-    private val sshEngine = SshTunnelEngine(context.applicationContext)
+    private val sshEngine = SshTunnelEngine(context.applicationContext, onCoreStatus)
     private val xrayEngine = XrayCoreEngine(context.applicationContext, onCoreStatus)
 
     /** Validates the real outbound before Android creates a full-device route. */
@@ -116,7 +116,10 @@ class TunnelManager(
             onCoreStatus("[PROXY] ${profile.proxy.type.uppercase()} · ${profile.proxy.host}:${profile.proxy.port}")
         }
         if (profile.selectedMode.usesTls) {
-            onCoreStatus("[TLS] Handshake SNI · ${profile.sni.ifBlank { profile.host }}")
+            onCoreStatus(
+                "[TLS] Handshake SNI · ${profile.sni.ifBlank { profile.host }} · " +
+                    profile.selectedTlsVerificationMode.label
+            )
         }
         if (profile.selectedMode.requiresPayload) {
             onCoreStatus("[PAYLOAD] Inyección HTTP preparada · contenido protegido")

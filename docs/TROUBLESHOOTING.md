@@ -32,7 +32,11 @@ The upstream proxy requested credentials. Current production proxy-auth support 
 - Use the exact SNI supplied by the server administrator.
 - Confirm the certificate includes that name.
 - Check device date/time.
-- Do not disable hostname verification.
+- For an SSH profile known to work in HTTP Custom with a different SNI and
+  certificate name, enable **Compatibilidad SNI tipo HTTP Custom** on that
+  profile.
+- Compatibility skips only SNI/SAN matching; an expired, untrusted, or invalid
+  certificate chain still fails.
 - For private certificates, use future explicit pinning rather than trust-all.
 
 ## SSH authentication — `SSH-401`

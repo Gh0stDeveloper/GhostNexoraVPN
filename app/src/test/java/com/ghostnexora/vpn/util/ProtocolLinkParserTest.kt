@@ -1,6 +1,7 @@
 package com.ghostnexora.vpn.util
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,7 +9,7 @@ import org.junit.Test
 class ProtocolLinkParserTest {
     @Test
     fun parsesSshTlsPayloadProxyLink() {
-        val link = "ssh://ghost:secret@ssh.example.com:443?mode=ssl_payload_proxy&sni=cdn.example.com&payload=CONNECT%20%5Bhost_port%5D%20HTTP%2F1.1%5Bcrlf%5D%5Bcrlf%5D&proxyHost=proxy.example.com&proxyPort=8080&proxyType=http#Servidor%20SSH"
+        val link = "ssh://ghost:secret@ssh.example.com:443?mode=ssl_payload_proxy&sni=cdn.example.com&tlsMode=custom_sni&payload=CONNECT%20%5Bhost_port%5D%20HTTP%2F1.1%5Bcrlf%5D%5Bcrlf%5D&proxyHost=proxy.example.com&proxyPort=8080&proxyType=http#Servidor%20SSH"
         val profile = ProtocolLinkParser.parseText(link).single()
 
         assertEquals(ConnectionMode.SSH_PAYLOAD_PROXY_SSL, profile.selectedMode)
@@ -16,6 +17,7 @@ class ProtocolLinkParserTest {
         assertEquals("ghost", profile.username)
         assertEquals("secret", profile.password)
         assertEquals("cdn.example.com", profile.sni)
+        assertEquals(TlsVerificationMode.CUSTOM_SNI, profile.selectedTlsVerificationMode)
         assertEquals("proxy.example.com", profile.proxy.host)
         assertTrue(profile.payload.contains("[host_port]"))
     }

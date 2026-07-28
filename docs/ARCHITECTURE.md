@@ -46,7 +46,7 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 
 ## Data model
 
-- `VpnProfile`: server, credentials, mode, SNI, payload, proxy, tags, notes, state.
+- `VpnProfile`: server, credentials, mode, SNI, SSH TLS policy, payload, proxy, tags, notes, state.
 - `NetworkPreferences`: IP mode, MTU, DNS mode, custom resolvers, reconnect limit.
 - `AppRoutingPreferences`: all, only selected, or exclude selected applications.
 - `LogEntry`: sanitized timestamped stage event.
