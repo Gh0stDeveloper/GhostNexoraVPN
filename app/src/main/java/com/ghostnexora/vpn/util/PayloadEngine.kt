@@ -4,7 +4,6 @@ import java.security.SecureRandom
 import java.util.Locale
 import java.util.Random
 
-
 data class PayloadContext(
     val host: String,
     val port: Int,
@@ -102,7 +101,7 @@ object PayloadEngine {
         if (!raw.contains("[crlf]", ignoreCase = true) && !raw.contains("\r\n")) {
             warnings += "El payload no contiene CRLF explícito"
         }
-        if (raw.contains("[split]", ignoreCase = true) && raw.startsWith("[split]", ignoreCase = true)) {
+        if (raw.trimStart().startsWith("[split]", ignoreCase = true)) {
             warnings += "El primer segmento está vacío"
         }
 
@@ -123,8 +122,7 @@ object PayloadEngine {
         val actions = mutableListOf<PayloadAction>()
         var cursor = 0
         controlRegex.findAll(raw).forEach { match ->
-            val text = raw.substring(cursor, match.range.first)
-            addSend(actions, expand(text, context, random))
+            addSend(actions, expand(raw.substring(cursor, match.range.first), context, random))
             val control = match.groupValues[1]
             if (control.startsWith("delay", ignoreCase = true)) {
                 val delay = delayRegex.find(control)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
@@ -157,10 +155,30 @@ object PayloadEngine {
         PayloadTemplate.WEBSOCKET -> "GET / HTTP/1.1[crlf]Host: [sni][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf]Sec-WebSocket-Version: 13[crlf]Sec-WebSocket-Key: [random][crlf][crlf]"
     }
 
-    fun toVisiblePreview(value: String): String = value
-        .replace("\r\n", "␍␊\n")
-        .replace("\r", "␍")
-        .replace("\n", "␊\n")
+    fun toVisiblePreview(value: String): String = buildString(value.length * 2) {
+        var index = 0
+        while (index < value.length) {
+            when (val character = value[index]) {
+                '\r' -> {
+                    if (index + 1 < value.length && value[index + 1] == '\n') {
+                        append("␍␊\n")
+                        index += 2
+                    } else {
+                        append("␍")
+                        index += 1
+                    }
+                }
+                '\n' -> {
+                    append("␊\n")
+                    index += 1
+                }
+                else -> {
+                    append(character)
+                    index += 1
+                }
+            }
+        }
+    }
 
     private fun addSend(actions: MutableList<PayloadAction>, value: String) {
         if (value.isNotEmpty()) actions += PayloadAction.Send(value)
@@ -173,7 +191,7 @@ object PayloadEngine {
         val proxy = context.proxyHost.trim()
         val proxyPort = context.proxyPort.takeIf { it in 1..65535 }?.toString().orEmpty()
         val rotationValues = listOf(sni, host, proxy).filter(String::isNotBlank).distinct()
-        val rotation = rotationValues.getOrElse(random.nextInt(rotationValues.size.coerceAtLeast(1))) { host }
+        val rotation = if (rotationValues.isEmpty()) host else rotationValues[random.nextInt(rotationValues.size)]
         val randomToken = buildString {
             repeat(16) { append(RANDOM_ALPHABET[random.nextInt(RANDOM_ALPHABET.length)]) }
         }
