@@ -6,182 +6,205 @@
 [![Xray Core](https://img.shields.io/badge/Core-Xray-00A8E8)](https://github.com/XTLS/Xray-core)
 [![License](https://img.shields.io/badge/License-MIT-2EA44F)](LICENSE)
 
-Ghost Nexora VPN is a native Android VPN client focused on verified routing, encrypted profile management, secure diagnostics, and modern SSH/Xray transports. The app does not report a connection merely because a core process started: it validates the remote outbound before creating the Android TUN interface and verifies Internet access again through the active tunnel.
+Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified routing, strict security defaults, encrypted profile management, actionable diagnostics, and transparent compatibility status.
 
-Current application version: **1.0.33 (33)**.
+A process running is not considered a successful VPN. The app verifies the remote outbound before creating Android default routes and verifies Internet access again after the active tunnel starts.
 
-## Core capabilities
+Current development version: **1.0.34 (34)**.
 
-- Real Android `VpnService` TUN routing with configurable IPv4/IPv6 behavior.
-- Physical network tracking across cellular data, Wi-Fi, and Ethernet.
-- Preflight server validation before Android routes device traffic into the VPN.
-- Active outbound verification after Xray starts.
-- Automatic non-destructive connection diagnostics.
-- Configurable DNS, TUN MTU, IP mode, and reconnect limit.
-- Kill Switch for a previously verified VPN that loses its transport.
-- Protected automatic reconnection with outbound revalidation and bounded retries.
-- Structured support error codes with corrective actions.
-- Local traffic statistics, latency, duration, and reconnect counters.
-- Secure, filterable, and exportable diagnostic logs.
+> The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
-## Phase 1 stability milestone
+## Current product capabilities
 
-Version 1.0.33 implements the complete first stability phase:
+### Stability and routing
 
-- physical-network, DNS, TCP, TLS/SNI, settings, and outbound diagnostics;
-- IPv4-only, IPv4-preferred, and dual-stack modes;
-- MTU presets from 1280 to 1500, shared by Android and Xray;
-- protected automatic, Cloudflare, Google, and custom DNS;
-- bounded reconnection with preflight and active outbound verification;
-- stable error codes such as `TLS-004`, `SSH-401`, `ROUTE-204`, and `RECONNECT-408`;
-- Android Storage Access Framework export of complete sanitized reports;
-- Android Lint, unit-test, Debug/JNI, Release/R8, deprecation, and DEX validation in CI.
+- Android `VpnService` TUN routing.
+- Physical network tracking for cellular, Wi-Fi, and Ethernet.
+- Remote outbound preflight before TUN activation.
+- Active outbound verification after startup.
+- IPv4-only, IPv4-preferred, and dual-stack modes.
+- MTU presets from 1280 to 1500 shared by Android and Xray.
+- Automatic protected, Cloudflare, Google, and custom DNS.
+- Kill Switch and bounded protected reconnection.
+- Structured support error codes and corrective actions.
+- Application split tunneling: all, only selected, or exclude selected apps.
+- Fail-closed validation for empty or stale application allowlists.
 
-Detailed documentation:
+### Diagnostics and logs
 
-- [Phase 1 stability and diagnostics](docs/PHASE-1-STABILITY.md)
-- [Post-Phase 1 roadmap](docs/ROADMAP.md)
+- Non-destructive staged diagnostics for physical network, DNS, TCP, TLS/SNI, settings, transport preflight, and real Internet response.
+- Single sanitized timeline-style log console.
+- Debug, Info, Warning, Error, and Success levels.
+- Search, filtering, copy, clear, and complete UTF-8 diagnostic export.
+- Device/version/ABI metadata and structured error codes in reports.
+- In-app compatibility matrix distinguishing CI verified, device testing pending, and experimental features.
 
-## Supported transports
-
-### SSH family
+### SSH and payloads
 
 - Direct SSH.
-- SSH over TLS/SNI.
+- SSH over strict TLS/SNI.
 - SSH with HTTP payload.
-- SSH with TLS/SNI and payload.
-- SSH through HTTP CONNECT or SOCKS proxy.
-- SSH with proxy, payload, and optional TLS.
+- SSH with TLS and payload.
+- SSH through HTTP CONNECT or SOCKS5 proxy.
+- Proxy/payload/TLS combinations represented by explicit modes.
+- Loopback SOCKS bridge using JSch `direct-tcpip` channels.
+- Advanced payload templates: CONNECT, GET, POST, HEAD, and WebSocket Upgrade.
+- Variables, exact CRLF preview, split writes, bounded delays, rotation, and random token generation.
+- Payload syntax validation before profile storage and before socket transmission.
 
-SSH traffic is transported through `direct-tcpip` channels and a local SOCKS bridge. It supports TCP routing; it does not claim generic UDP tunneling over SSH.
+SSH currently carries TCP through the local SOCKS bridge. Generic UDP-over-SSH, production private-key authentication, and authenticated upstream proxies remain documented roadmap items.
 
 ### Xray family
 
-- VLESS.
-- VMess.
+- VLESS and VMess.
 - Trojan over TLS.
-- Hysteria2 over QUIC/TLS for dedicated UDP transport.
-- WebSocket, gRPC, XHTTP, HTTPUpgrade, mKCP, raw TCP, TLS, and REALITY parameters where supported by the selected protocol.
-- Import of `vless://`, `vmess://`, `trojan://`, `hysteria2://`, and `hy2://` links.
+- Hysteria2/QUIC transport.
+- TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade, mKCP, TLS, and REALITY parameters where supported by Xray and the selected protocol.
+- Explicit TUN-to-proxy and DNS routing with no silent direct fallback.
+- Import of standard Xray outbound JSON.
 
-## Security model
+Configuration generation and packaging are automated. Exact real-server combinations remain subject to the physical test matrix.
 
-### Local profile protection
+### Import, export, and profiles
 
-Sensitive profile fields are encrypted before Room persistence with an AES-256-GCM key stored in Android Keystore. The key is non-exportable. Each encrypted field uses a random nonce and additional authenticated data bound to the profile and field identity.
+- `vmess://`
+- `vless://`
+- `trojan://`
+- `hysteria2://` and `hy2://`
+- `ssh://` Ghost Nexora import convention
+- standard Xray outbound JSON
+- QR, clipboard, and Android file picker
+- GNX2 password-protected encrypted format
+- legacy JSON migration
+- technical preview before import
+- duplicate-safe merge and replace using security-relevant fingerprints
+- profile search, filters, favorites, duplication, tags, and notes
 
-### GNX2 portable configuration format
+### Security
 
-New exports use the password-protected `.gnx` format:
+- AES-256-GCM profile protection with Android Keystore.
+- GNX2 authenticated encryption with random keys, nonces, and salts.
+- Strict TLS hostname verification; no global trust-all mode.
+- Persistent SSH known-host verification.
+- Direct Android `SecureRandom` injection into JSch.
+- Sanitization before log storage, display, copy, and export.
+- `FLAG_SECURE` on create/edit profile and import/export screens.
+- R8/resource shrinking and native hardening.
+- Scoped package visibility for the split-tunneling selector.
+- Manifest, token-pattern, native ABI, DEX, Lint, Debug, and Release checks in CI.
+- Weekly Gradle and GitHub Actions dependency monitoring.
 
-1. Internal JSON is compressed with GZIP.
-2. A random 256-bit data key is generated for every export.
-3. The payload is encrypted with AES-256-GCM.
-4. PBKDF2-HMAC-SHA256 with 310,000 iterations and a random salt derives wrapping and authentication keys.
-5. A separate AES-256-GCM operation wraps the random data key.
-6. HMAC-SHA256 authenticates the complete container.
-7. Random nonces and salts are stored with the versioned container.
+## Documentation
 
-There is no embedded master password or fixed master key in Kotlin or C++. IVs and nonces are not secrets; the security boundary is provided by random or password-derived keys and authenticated encryption. Plain JSON import remains available only for legacy migration.
+| Document | Scope |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | runtime layers, state machine, invariants |
+| [Connection modes](docs/CONNECTION-MODES.md) | implemented chains and status |
+| [SSH transport](docs/SSH-TRANSPORT.md) | TLS, payload, JSch, SOCKS pipeline |
+| [Payload engine](docs/PAYLOAD-ENGINE.md) | variables, controls, limits, examples |
+| [Xray/V2Ray](docs/XRAY-V2RAY.md) | VLESS, VMess, TLS, REALITY, routing |
+| [Trojan and Hysteria2](docs/TROJAN-HYSTERIA2.md) | parameters, limitations, tests |
+| [DNS and routing](docs/DNS-AND-ROUTING.md) | IP modes, DNS, MTU, application rules |
+| [Split tunneling](docs/SPLIT-TUNNELING.md) | allow/exclude behavior and security |
+| [Security architecture](docs/SECURITY.md) | threat model and controls |
+| [Configuration formats](docs/CONFIG-FORMAT.md) | GNX2, links, JSON, fingerprints |
+| [Import and export](docs/IMPORT-EXPORT.md) | preview, merge, replace, limits |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | error codes and corrective actions |
+| [Compatibility](docs/COMPATIBILITY.md) | evidence labels and current status |
+| [Test matrix](docs/TEST-MATRIX.md) | required real-device/server evidence |
+| [Build and release](docs/BUILD-AND-RELEASE.md) | toolchain, CI, signing, release gate |
+| [Privacy](docs/PRIVACY.md) | local data, network behavior, permissions |
+| [Phase 1](docs/PHASE-1-STABILITY.md) | stability milestone |
+| [Roadmap](docs/ROADMAP.md) | completed and planned phases |
+| [Changelog](CHANGELOG.md) | version history |
+| [Security policy](SECURITY.md) | private vulnerability reporting |
 
-### Native and release hardening
+## Connection acceptance criteria
 
-- Android NDK/CMake library: `libghostguard.so`.
-- Native stack protection, hidden visibility, RELRO/NOW, and dead-code elimination.
-- R8 minification and resource shrinking for Release builds.
-- Direct JSch random-provider injection without reflective initialization.
-- Explicit R8 preservation for JSch cryptographic providers and diagnostic support classes.
-- Supported native ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+A normal connection must complete:
 
-### Log protection
+1. Profile validation.
+2. Physical non-VPN network detection.
+3. Network and application-routing settings validation.
+4. Remote SSH/Xray outbound preflight.
+5. Android TUN creation.
+6. SSH/Xray startup against the TUN descriptor.
+7. Active outbound Internet verification.
+8. Connected-state publication.
+9. Health and session-statistics monitoring.
 
-Logs are sanitized before storage, display, copying, or export. The sanitizer redacts passwords, tokens, API keys, Bearer/Basic authorization values, credentials embedded in URIs, private-key blocks, and long opaque secrets.
+A failure before TUN creation does not change device default routes. A failure after TUN creation closes the interface unless Kill Switch intentionally retains blocked routing during recovery.
 
-## Connection diagnostics
+## GNX2 encrypted configuration
 
-The diagnostic engine is available under **Settings > Connection engine**. It does not establish Android VPN routes while testing.
+GNX2 exports:
 
-It checks:
+1. serialize and compress profile data;
+2. generate a random 256-bit data key;
+3. encrypt with AES-256-GCM;
+4. derive wrapping/authentication keys with PBKDF2-HMAC-SHA256 and a random salt;
+5. wrap the data key with a separate authenticated operation;
+6. authenticate the versioned container with HMAC-SHA256.
 
-1. Physical non-VPN network availability.
-2. Server DNS resolution.
-3. TCP reachability to the server or configured proxy.
-4. TLS/SNI validation where applicable.
-5. Current IP, DNS, MTU, and reconnect configuration.
-6. Complete temporary SSH or Xray outbound preflight.
-7. Real Internet response through the selected outbound.
-
-Each failed stage provides a stable code and a corrective action. Temporary SSH sessions, SOCKS bridges, and Xray test instances are closed after the diagnostic run.
+There is no embedded master password or fixed export key. Client-side protection increases resistance but cannot make actively used server details impossible to recover on a device fully controlled by an attacker.
 
 ## Android permissions
 
-The app no longer blocks first launch behind a custom permission dashboard. Android's native system UI requests the essential permissions in sequence:
+Essential native prompts:
 
-- Notification permission on Android 13 and newer.
-- VPN authorization through `VpnService.prepare()`.
-- Battery optimization exemption for persistent VPN operation.
+- notification permission on Android 13+;
+- VPN authorization through `VpnService.prepare()`;
+- optional battery-optimization exemption.
 
-Special access is requested contextually instead of being forced during onboarding:
+Contextual special access:
 
-- Display over other apps is used only by the optional floating control.
-- Install unknown apps is requested only when installing a verified APK update.
-- File import and export use Android's Storage Access Framework without legacy storage permissions.
+- overlay only for floating controls;
+- package installation only for verified updates;
+- boot receiver only for configured reconnect behavior.
 
-All permission and special-access screens can also be opened manually from **Settings > Permissions and special access**.
+Import/export uses Android's Storage Access Framework. Broad legacy storage and unrestricted package-list permissions are not requested.
 
 ## Update system
 
-Ghost Nexora VPN checks the latest stable GitHub Release at:
-
-`Gh0stDeveloper/GhostNexoraVPN`
-
 The updater:
 
-- performs automatic checks at most once every 24 hours;
-- allows unrestricted manual checks from Settings;
-- compares explicit remote `versionCode` metadata with `BuildConfig.VERSION_CODE`;
-- falls back to semantic version comparison only when versionCode metadata is absent;
-- never invents a higher remote version;
-- remembers a dismissed release identity so the same update is not shown on every launch;
-- ignores debug, unsigned, and unaligned APK assets;
-- downloads through a temporary partial file and rejects incomplete transfers;
-- verifies SHA-256 when release metadata provides it;
-- verifies the APK package name and requires its versionCode to be newer before opening Android's installer.
+- checks the latest stable GitHub Release;
+- rate-limits automatic checks;
+- allows manual checks;
+- compares version code and version name;
+- remembers dismissed release identity;
+- ignores debug/unsigned/unaligned assets;
+- uses a temporary partial download;
+- validates package name and newer version;
+- verifies SHA-256 when release metadata supplies it.
 
-The CI release body includes `versionName`, `versionCode`, the Xray library tag, commit SHA, and APK SHA-256 so the application can make a deterministic update decision.
+Production release metadata now includes the APK SHA-256 and signing-certificate SHA-256. Enforcing an expected signer digest inside the updater remains a release-hardening roadmap item until the production signing identity is fixed.
 
 ## Architecture
 
 ```text
 app/src/main/java/com/ghostnexora/vpn/
-├── data/
-│   ├── local/          Room and DataStore
-│   ├── model/          Profiles, network preferences, state and logs
-│   └── repository/     ProfileRepository
-├── diagnostics/        Non-destructive staged connection diagnostics
-├── security/           Keystore encryption, GNX2, log sanitizer, SSH known hosts
-├── tunnel/             SSH engine, Xray engine, routing and error catalog
-├── service/            VPN and optional floating foreground services
-├── update/             GitHub release discovery, validation, download and install
-├── ui/                 Compose screens, components and theme
-├── navigation/         Drawer and navigation graph
-└── util/               Protocol parser, permissions and import/export helpers
+├── data/          Room, DataStore, profiles and routing preferences
+├── diagnostics/   staged non-destructive diagnostics
+├── security/      Keystore, GNX2, sanitizer and SSH known hosts
+├── tunnel/        SSH, payloads, Xray, configuration and errors
+├── service/       Android VPN and floating foreground services
+├── update/        release discovery, verification and installation
+├── ui/            Compose screens and compatibility/routing tools
+├── navigation/    drawer and route graph
+└── util/          import parsers, fingerprints and helpers
 ```
 
-The application uses MVVM, Hilt, StateFlow, Room, DataStore, Jetpack Compose, Material 3, JSch, AndroidLibXrayLite, and Android NDK/CMake.
-
-## Building
+## Build
 
 Requirements:
 
-- JDK 17.
-- Android SDK with API 35.
-- Android NDK `27.0.12077973`.
-- CMake `3.22.1`.
-- Gradle wrapper 8.9.
-- Android Gradle Plugin 8.7.3.
-
-AndroidLibXrayLite is downloaded by CI. For a local build, place `libv2ray.aar` in `app/libs/` or run the provided fetch script.
+- JDK 17
+- Android SDK 35
+- NDK `27.0.12077973`
+- CMake `3.22.1`
+- Gradle wrapper 8.9
+- Android Gradle Plugin 8.7.3
 
 ```bash
 chmod +x gradlew
@@ -191,35 +214,28 @@ chmod +x gradlew
 ./gradlew assembleRelease
 ```
 
-A production Release requires the signing environment variables used by the workflow:
+AndroidLibXrayLite is pinned and downloaded by CI. Local builds must place the expected AAR in `app/libs/`.
 
-```text
-KEYSTORE_FILE
-KEYSTORE_PASSWORD
-KEY_ALIAS
-KEY_PASSWORD
-```
+## CI validation
 
-## Continuous integration
+The workflow checks:
 
-GitHub Actions performs the following checks:
-
-- unit tests for network preferences, Xray configuration, updater logic, encryption, and error classification;
-- Android Lint with errors treated as build failures;
-- Debug APK and JNI compilation;
-- Release compilation with R8 and resource shrinking;
-- rejection of tracked Kotlin/Android deprecation warnings;
-- DEX inspection for JSch providers, the direct random bridge, diagnostics, and error catalog;
-- artifact upload for diagnostics, Debug, and R8 validation builds;
-- signed Release publication on `main` when the APK hash changes.
-
-The workflow uses Node.js 24-compatible official actions and publishes deterministic version metadata for the in-app updater.
+- manifest security policy;
+- high-confidence token patterns;
+- unit tests;
+- dependency inventory;
+- Android Lint;
+- Debug/JNI build;
+- required native ABIs;
+- Release/R8 and resource shrinking;
+- tracked deprecation warnings;
+- required JSch, diagnostics, payload, parser, and split-routing classes in Release DEX;
+- artifact upload;
+- signed release metadata on `main`.
 
 ## Runtime validation status
 
-Compilation, unit tests, Android Lint, JNI packaging, R8 processing, encrypted configuration tests, updater version tests, network-setting tests, and diagnostic-class packaging are automated. Real protocol interoperability still depends on matching the remote server's credentials, transport, TLS/REALITY, SNI, Host, path, and authentication configuration.
-
-A core reporting `running` is not treated as proof of connectivity. Ghost Nexora VPN verifies actual outbound Internet access before reporting the VPN as connected.
+Automated checks prove build and configuration properties, not universal server interoperability. The Compatibility screen and `docs/TEST-MATRIX.md` are authoritative about what still requires a real Android device and remote server.
 
 ## Developer and contact
 
