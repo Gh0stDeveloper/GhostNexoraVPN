@@ -59,15 +59,20 @@ Hysteria2 remains experimental until loss, handover, sleep, IPv4/IPv6, and carri
 
 ## Connection acceptance
 
-A mode is reported connected only after:
+A mode reaches the UI `Connected` state after:
 
 1. profile validation;
 2. physical network validation;
 3. private VPN-process startup;
-4. fail-closed TUN establishment;
-5. one core/SSH startup;
-6. active outbound HTTP verification;
-7. connected-state publication and health-monitor startup.
+4. strict application self-bypass and split-routing configuration;
+5. fail-closed TUN establishment;
+6. one SSH/Xray runtime start;
+7. a successful Xray native-loop startup signal;
+8. immediate connected-state publication and background health-monitor startup.
+
+The initial HTTP/TLS/SOCKS outbound verification starts after step 8 on an I/O coroutine. It does not delay the UI. A failed first probe is logged and retried; repeated health failures invoke protected reconnection or Kill Switch handling.
+
+`Connected` therefore means **transport/core/TUN active**, not that a remote endpoint has already answered the optional verification probe. Device verification still requires sustained upload/download evidence.
 
 DNS configuration and TUN routes are deterministic, but full per-protocol DNS-query inspection remains part of the extended physical test matrix.
 
