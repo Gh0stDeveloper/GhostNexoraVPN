@@ -42,7 +42,6 @@ fun HtmlNoteView(
                     javaScriptEnabled = false
                     javaScriptCanOpenWindowsAutomatically = false
                     domStorageEnabled = false
-                    databaseEnabled = false
                     allowFileAccess = false
                     allowContentAccess = false
                     blockNetworkLoads = true

@@ -22,13 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -369,7 +369,7 @@ private fun ProfileItem(
                 if (profile.displayNoteHtml.isNotBlank()) {
                     IconButton(onClick = onViewNote) {
                         Icon(
-                            Icons.Filled.Notes,
+                            Icons.AutoMirrored.Filled.Notes,
                             contentDescription = "Ver nota del creador",
                             tint = NeonAmber
                         )
