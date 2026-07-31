@@ -25,14 +25,18 @@ class PhysicalNetworkSocketArchitectureTest {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/SshTunnelEngine.kt"
         )
-        val socketIndex = source.indexOf("socketConnector.connect(host, port, 20_000)")
-        val tlsIndex = source.indexOf("TlsTransport.upgrade(")
+        val createSocketSection = source
+            .substringAfter("override fun createSocket")
+            .substringBefore("override fun getInputStream")
+        val transportIndex = createSocketSection.indexOf("socket = connectDirect(targetHost, targetPort)")
+        val tlsIndex = createSocketSection.indexOf("TlsTransport.upgrade(")
 
-        assertTrue("The physical transport connector is missing", socketIndex >= 0)
+        assertTrue(source.contains("socketConnector.connect(host, port, 20_000)"))
+        assertTrue("The configured transport host is not opened", transportIndex >= 0)
         assertTrue("TLS wrapping is missing", tlsIndex >= 0)
-        assertTrue("TCP transport must be established before TLS/SNI", socketIndex < tlsIndex)
-        assertTrue(source.contains("targetHost = targetHost"))
-        assertTrue(source.contains("sniHost = sniHost"))
+        assertTrue("TCP transport must be established before TLS/SNI", transportIndex < tlsIndex)
+        assertTrue(createSocketSection.contains("targetHost = targetHost"))
+        assertTrue(createSocketSection.contains("sniHost = sniHost"))
         assertFalse(
             "The SNI must never silently replace the configured TCP destination",
             source.contains("connectDirect(sniHost") || source.contains("connect(sniHost, targetPort")
