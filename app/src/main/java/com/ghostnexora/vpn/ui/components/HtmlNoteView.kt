@@ -17,9 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.ghostnexora.vpn.security.HtmlNoteSanitizer
 import java.io.ByteArrayInputStream
 
@@ -29,23 +30,26 @@ fun HtmlNoteView(
     html: String,
     modifier: Modifier = Modifier
 ) {
-    val safeHtml = HtmlNoteSanitizer.sanitize(html)
-    val document = noteDocument(safeHtml)
+    val safeHtml = remember(html) { HtmlNoteSanitizer.sanitize(html) }
+    val document = remember(safeHtml) { noteDocument(safeHtml) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
             WebView(context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
+                setNetworkAvailable(false)
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
                 settings.apply {
                     javaScriptEnabled = false
                     javaScriptCanOpenWindowsAutomatically = false
                     domStorageEnabled = false
+                    databaseEnabled = false
                     allowFileAccess = false
                     allowContentAccess = false
                     blockNetworkLoads = true
-                    loadsImagesAutomatically = false
+                    loadsImagesAutomatically = true
+                    defaultTextEncodingName = "UTF-8"
                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     setSupportMultipleWindows(false)
                     safeBrowsingEnabled = true
@@ -129,11 +133,13 @@ private fun noteDocument(body: String): String = """
             content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
       <style>
         :root { color-scheme: dark; }
+        html, body { max-width: 100%; }
         body {
           margin: 0; padding: 12px; background: transparent; color: #E8F2F5;
           font-family: sans-serif; line-height: 1.5; overflow-wrap: anywhere;
         }
         a { color: #00DDEB; }
+        img { display: block; max-width: 100%; height: auto; }
         pre, code { white-space: pre-wrap; background: #11242A; border-radius: 6px; }
         pre { padding: 10px; }
         table { max-width: 100%; border-collapse: collapse; }
