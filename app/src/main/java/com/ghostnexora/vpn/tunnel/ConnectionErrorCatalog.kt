@@ -25,12 +25,12 @@ object ConnectionErrorCatalog {
 
         return when {
             lower.contains("no hay una red") || lower.contains("network is unreachable") -> failure(
-                "NET-001", "NETWORK", "No physical Internet connection", raw,
-                "Enable mobile data or Wi-Fi and retry."
+                "NET-001", "NETWORK", "No hay una conexión física disponible", raw,
+                "Activa los datos móviles o Wi-Fi y vuelve a intentarlo."
             )
             lower.contains("unknownhost") || lower.contains("unable to resolve") || lower.contains("name or service") -> failure(
-                "DNS-001", "DNS", "The server name could not be resolved", raw,
-                "Check the host and the selected DNS servers."
+                "DNS-001", "DNS", "No se pudo resolver el nombre del servidor", raw,
+                "Revisa el host y los servidores DNS seleccionados."
             )
             profile.selectedMode.isSsh && (
                 lower.contains("ruta xray") ||
@@ -38,110 +38,110 @@ object ConnectionErrorCatalog {
                     lower.contains("xray socks outbound")
                 ) -> failure(
                 "SSH-ROUTE-204", "SSH",
-                "${profile.connectionModeLabel} authenticated, but its Xray/SOCKS route failed",
+                "${profile.connectionModeLabel} autenticó, pero falló su ruta Xray/SOCKS",
                 raw,
-                "Keep this profile as ${profile.connectionModeLabel}; export the SSH/SOCKS stages to identify channel-open, uplink, downlink or remote TLS failure."
+                "Conserva el perfil como ${profile.connectionModeLabel}; exporta las etapas SSH/SOCKS para identificar el canal direct-tcpip, subida, bajada o TLS remoto."
             )
-            lower.contains("connection refused") -> failure(
-                "TCP-002", "TCP", "The remote port rejected the connection", raw,
-                "Verify the server address, port and service status."
+            lower.contains("connection refused") || lower.contains("econnrefused") -> failure(
+                "TCP-002", "TCP", "El servidor rechazó la conexión TCP", raw,
+                "La aplicación alcanzó la IP del servidor, pero no había un servicio aceptando conexiones en ese puerto. Verifica que SSH/TLS esté activo y que host:puerto sea correcto. El SNI solo identifica el handshake TLS y no sustituye al servidor remoto."
             )
             lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") -> failure(
-                "NET-003", "NETWORK", "The server did not respond in time", raw,
-                "Check signal quality, server availability and transport parameters."
+                "NET-003", "NETWORK", "El servidor no respondió a tiempo", raw,
+                "Revisa la señal, la disponibilidad del servidor y los parámetros del transporte."
             )
             lower.contains("407") || lower.contains("proxy authentication") -> failure(
-                "PROXY-407", "PROXY", "Proxy authentication is required", raw,
-                "Verify the proxy username and password."
+                "PROXY-407", "PROXY", "El proxy requiere autenticación", raw,
+                "Verifica el usuario y la contraseña del proxy."
             )
             lower.contains("proxy") && (lower.contains("refused") || lower.contains("failed")) -> failure(
-                "PROXY-002", "PROXY", "The proxy connection failed", raw,
-                "Check proxy type, host, port and credentials."
+                "PROXY-002", "PROXY", "Falló la conexión con el proxy", raw,
+                "Revisa tipo, host, puerto y credenciales del proxy."
             )
             lower.contains("certificate") || lower.contains("certificado") ||
                 lower.contains("trust anchor") || lower.contains("hostname") || lower.contains("sni") -> failure(
-                "TLS-004", "TLS", "TLS certificate or SNI validation failed", raw,
+                "TLS-004", "TLS", "Falló la validación TLS o SNI", raw,
                 if (
                     profile.selectedMode.isSsh &&
                     profile.selectedMode.usesTls &&
                     !profile.selectedTlsVerificationMode.verifiesHostname
                 ) {
-                    "Compatibility mode already allows an SNI/SAN mismatch. Check certificate trust, validity and the TLS service."
+                    "El modo compatible ya permite una diferencia SNI/SAN. Revisa la confianza, vigencia y servicio TLS del certificado."
                 } else {
-                    "Use the SNI configured by the server and a certificate valid for that name, or explicitly enable HTTP Custom SNI compatibility for this SSH profile."
+                    "Usa el SNI indicado por el administrador o activa explícitamente la compatibilidad SNI tipo HTTP Custom para este perfil SSH."
                 }
             )
             lower.contains("auth fail") || lower.contains("authentication") || lower.contains("autenticación") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",
                 if (profile.selectedMode.isSsh) "SSH" else "AUTH",
-                "Authentication failed", raw,
+                "Falló la autenticación", raw,
                 if (profile.selectedMode.isSsh) {
-                    "Verify the SSH username and password."
+                    "Verifica el usuario y la contraseña SSH."
                 } else {
-                    "Verify the UUID, password or authentication token required by the selected protocol."
+                    "Verifica el UUID, contraseña o token requerido por el protocolo."
                 }
             )
             lower.contains("hostkey") || lower.contains("host key") -> failure(
-                "SSH-409", "SSH", "The SSH server identity changed", raw,
-                "Confirm the server change and reset its stored fingerprint only when trusted."
+                "SSH-409", "SSH", "Cambió la identidad del servidor SSH", raw,
+                "Confirma el cambio del servidor y restablece su huella solo cuando sea confiable."
             )
             lower.contains("classnotfoundexception") || lower.contains("com.jcraft.jsch") -> failure(
-                "SSH-500", "SSH", "The SSH runtime could not initialize", raw,
-                "Install the latest build and export the diagnostic report if it persists."
+                "SSH-500", "SSH", "No se pudo inicializar el runtime SSH", raw,
+                "Instala la compilación más reciente y exporta el diagnóstico si continúa."
             )
             lower.contains("uuid") -> failure(
-                "XRAY-UUID", "XRAY", "The VLESS/VMess identifier is invalid", raw,
-                "Enter a valid UUID supplied by the server."
+                "XRAY-UUID", "XRAY", "El identificador VLESS/VMess no es válido", raw,
+                "Introduce un UUID válido proporcionado por el servidor."
             )
             lower.contains("app-routing") || lower.contains("split tunneling") || lower.contains("selected application") -> failure(
-                "APP-ROUTE-001", "APP_ROUTING", "The application routing rule is invalid", raw,
-                "Select at least one installed application or change the routing mode."
+                "APP-ROUTE-001", "APP_ROUTING", "La regla de aplicaciones VPN no es válida", raw,
+                "Selecciona al menos una aplicación instalada o cambia el modo de enrutamiento."
             )
             lower.contains("package") && lower.contains("not found") -> failure(
-                "APP-ROUTE-404", "APP_ROUTING", "A selected application is no longer installed", raw,
-                "Refresh the application list and remove unavailable packages."
+                "APP-ROUTE-404", "APP_ROUTING", "Una aplicación seleccionada ya no está instalada", raw,
+                "Actualiza la lista y elimina los paquetes no disponibles."
             )
             profile.selectedMode.isSsh && lower.contains("closed pipe") -> failure(
                 "SSH-BRIDGE-502", "SSH",
-                "${profile.connectionModeLabel} authenticated, but its forwarding channel closed",
+                "${profile.connectionModeLabel} autenticó, pero se cerró el canal de reenvío",
                 raw,
-                "The selected SSH profile reached authentication. Install the latest build; if it persists, verify that the SSH account permits direct-tcpip forwarding and export the SSH/SOCKS log."
+                "El perfil alcanzó la autenticación SSH. Verifica que la cuenta permita direct-tcpip y exporta el registro SSH/SOCKS."
             )
             lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
                 lower.contains("generate_204") || lower.contains("outbound") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-ROUTE-204" else "ROUTE-204",
                 if (profile.selectedMode.isSsh) "SSH" else "ROUTING",
                 if (profile.selectedMode.isSsh) {
-                    "${profile.connectionModeLabel} authenticated, but SSH forwarding has no Internet"
+                    "${profile.connectionModeLabel} autenticó, pero el reenvío SSH no tiene Internet"
                 } else {
-                    "The tunnel started but the outbound has no Internet"
+                    "El túnel inició, pero el outbound no tiene Internet"
                 },
                 raw,
                 if (profile.selectedMode.isSsh) {
-                    "Keep this profile as ${profile.connectionModeLabel}; verify SSH TCP forwarding and Internet egress on that SSH server."
+                    "Conserva el perfil como ${profile.connectionModeLabel}; verifica TCP forwarding y salida a Internet en el servidor SSH."
                 } else {
-                    "Check only the server, credentials and transport fields required by ${profile.connectionModeLabel}."
+                    "Revisa solo el servidor, las credenciales y los campos de transporte requeridos por ${profile.connectionModeLabel}."
                 }
             )
             lower.contains("libv2ray") || lower.contains("xray core") || lower.contains("go_seq") -> failure(
-                "XRAY-500", "XRAY", "Xray Core could not start", raw,
-                "Review the profile transport fields and export the complete diagnostic report."
+                "XRAY-500", "XRAY", "No se pudo iniciar Xray Core", raw,
+                "Revisa los campos de transporte y exporta el diagnóstico completo."
             )
             lower.contains("tun") || lower.contains("descriptor") -> failure(
-                "TUN-500", "TUN", "Android could not establish the VPN interface", raw,
-                "Disconnect other VPN applications, reauthorize VPN access and retry."
+                "TUN-500", "TUN", "Android no pudo establecer la interfaz VPN", raw,
+                "Desconecta otras VPN, vuelve a autorizar el acceso VPN y reintenta."
             )
             profile.selectedMode == ConnectionMode.V2RAY -> failure(
-                "XRAY-000", "XRAY", "V2Ray/Xray connection failed", raw,
-                "Run Connection diagnostics to identify DNS, TCP, TLS or outbound failure."
+                "XRAY-000", "XRAY", "Falló la conexión V2Ray/Xray", raw,
+                "Ejecuta el diagnóstico para identificar la etapa DNS, TCP, TLS u outbound."
             )
             else -> failure(
-                "VPN-000", "VPN", "The connection could not be completed", raw.ifBlank { error.javaClass.simpleName },
-                "Run Connection diagnostics and export the report."
+                "VPN-000", "VPN", "No se pudo completar la conexión", raw.ifBlank { error.javaClass.simpleName },
+                "Ejecuta el diagnóstico y exporta el informe."
             )
         }
     }
 
     private fun failure(code: String, stage: String, title: String, detail: String, solution: String) =
-        VpnFailure(code, stage, title, detail.ifBlank { "No additional detail" }, solution)
+        VpnFailure(code, stage, title, detail.ifBlank { "Sin detalle adicional" }, solution)
 }
