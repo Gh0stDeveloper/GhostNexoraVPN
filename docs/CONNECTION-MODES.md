@@ -63,11 +63,11 @@ A mode is reported connected only after:
 
 1. profile validation;
 2. physical network validation;
-3. remote outbound preflight;
-4. TUN establishment;
-5. core/SSH startup;
+3. private VPN-process startup;
+4. fail-closed TUN establishment;
+5. one core/SSH startup;
 6. active outbound HTTP verification;
-7. health-monitor startup.
+7. connected-state publication and health-monitor startup.
 
 DNS configuration and TUN routes are deterministic, but full per-protocol DNS-query inspection remains part of the extended physical test matrix.
 

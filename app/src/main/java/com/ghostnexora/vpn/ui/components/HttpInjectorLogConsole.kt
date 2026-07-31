@@ -59,7 +59,8 @@ fun HttpInjectorLogConsole(
     var selectedLogId by remember { mutableStateOf<Long?>(null) }
     var followTail by remember { mutableStateOf(true) }
     val orderedLogs = remember(logs, filter) {
-        logs.sortedBy { it.timestamp }.filter(filter::matches)
+        logs.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id })
+            .filter(filter::matches)
     }
     val isAtBottom by remember {
         derivedStateOf {

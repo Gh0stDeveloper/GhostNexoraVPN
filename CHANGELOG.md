@@ -2,6 +2,28 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.38
+
+### Added
+
+- Added a complete real-time connection timeline for physical network, TCP, proxy, TLS/SNI, payload, SSH, SOCKS, Xray, TUN, DNS, routing, and active Internet verification stages.
+- Added explicit same-application runtime state and traffic updates between the private VPN process and the dashboard.
+- Added bounded automatic recovery when Android recreates the native VPN process.
+
+### Fixed
+
+- Removed the duplicate SSH/Xray preflight from `DashboardViewModel`; the UI process no longer initializes or tears down the native core immediately before the service starts it again.
+- Moved `GhostVpnService` and its floating control into the private `:vpn` process so a fatal native abort cannot close the application interface.
+- Initialized AndroidLibXrayLite once per VPN process and copied `geoip.dat`/`geosite.dat` atomically into the exact directory passed to the native runtime.
+- Kept Room logs and DataStore recovery state coherent across the UI and VPN processes.
+- Preserved connection-stage order when multiple log events share the same millisecond timestamp.
+- Restored the platform `VpnService` binder callback so Android can revoke and close the tunnel through the supported system interface.
+
+### Changed
+
+- A normal connection now establishes a fail-closed TUN inside the isolated service, starts one SSH/Xray runtime, and publishes `Connected` only after the active outbound delivers real Internet.
+- Connection-stage messages remain sanitized before storage, display, copy, or export.
+
 ## 1.0.37
 
 ### Added

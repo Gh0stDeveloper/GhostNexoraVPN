@@ -60,8 +60,8 @@ Private-key support must encrypt imported key material and passphrases at rest a
 
 ## Routing safety
 
-- Remote preflight runs before Android default routes are installed.
-- Active outbound verification runs after core startup.
+- Dashboard connection ownership stays in the private, non-exported `:vpn` process; the separate non-destructive diagnostic action may create a temporary preflight runtime.
+- The startup TUN is fail-closed until active outbound verification succeeds.
 - TUN traffic has no silent direct fallback.
 - Kill Switch behavior is explicit.
 - Application-only allowlists fail closed when empty or unavailable.

@@ -149,7 +149,12 @@ fun DashboardScreen(
                     LogPage(
                         logs = state.recentLogs,
                         onCopy = {
-                            clipboard.setText(AnnotatedString(state.recentLogs.sortedBy { it.timestamp }.joinToString("\n") { it.httpInjectorLine() }))
+                            val ordered = state.recentLogs.sortedWith(
+                                compareBy<LogEntry> { it.timestamp }.thenBy { it.id }
+                            )
+                            clipboard.setText(
+                                AnnotatedString(ordered.joinToString("\n") { it.httpInjectorLine() })
+                            )
                             scope.launch { snackbar.showSnackbar("Registro saneado copiado") }
                         }
                     )

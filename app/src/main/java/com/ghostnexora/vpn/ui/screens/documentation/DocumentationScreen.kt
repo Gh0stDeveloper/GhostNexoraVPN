@@ -63,7 +63,7 @@ fun DocumentationScreen() {
 
             InfoBlock(
                 "Conexión aceptada",
-                "El flujo valida perfil, red física, DNS/TCP/TLS y salida remota antes del TUN. Después inicia SSH/Xray, verifica Internet de nuevo y recién entonces muestra Conectado.",
+                "El motor vive en un proceso VPN privado. Activa el TUN en modo fail-closed, inicia una sola sesión SSH/Xray, verifica Internet por la salida activa y recién entonces muestra Conectado. El registro enseña cada etapa en tiempo real.",
                 NeonGreen
             )
 

@@ -2,24 +2,26 @@
 
 ## Design goals
 
-Ghost Nexora VPN separates profile storage, transport creation, Android routing, diagnostics, and UI state so a transport cannot mark the VPN connected by itself. The authoritative connected state belongs to `GhostVpnService` after remote and active outbound verification.
+Ghost Nexora VPN separates profile storage, transport creation, Android routing, diagnostics, and UI state so a transport cannot mark the VPN connected by itself. The authoritative connected state belongs to `GhostVpnService` after active outbound verification.
 
 ## Runtime layers
 
 ```text
-Compose UI
+Compose UI — main process
   ├─ Dashboard / Profiles / Import / Settings / Diagnostics
   └─ ViewModels + StateFlow
           │
 ProfileRepository
-  ├─ Room profiles and logs
-  ├─ DataStore runtime preferences
+  ├─ Room profiles and logs with multi-instance invalidation
+  ├─ DataStore runtime preferences with a multi-process coordinator
   └─ Android Keystore secret protection
           │
-GhostVpnService
+Explicit same-application state/traffic IPC
+          │
+GhostVpnService — private :vpn process
   ├─ physical-network tracking
-  ├─ preflight acceptance gate
-  ├─ VpnService.Builder routes and app rules
+  ├─ fail-closed VpnService.Builder routes and app rules
+  ├─ native-core ownership and bounded process recovery
   ├─ health monitoring and reconnection
   └─ session statistics
           │
@@ -36,12 +38,12 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 1. Validate the selected profile.
 2. Confirm a non-VPN physical network.
 3. Load IP, DNS, MTU, reconnect, and application-routing preferences.
-4. Run outbound preflight without creating Android default routes.
+4. Persist the desired connected state for bounded process recovery.
 5. Configure application allow/exclude rules.
-6. Establish the Android TUN.
-7. Start SSH/Xray against the TUN descriptor.
+6. Establish the Android TUN in fail-closed mode.
+7. Start one SSH/Xray runtime against the TUN descriptor.
 8. Verify active outbound Internet.
-9. Publish `Connected` and start health/statistics jobs.
+9. Publish `Connected` to the UI process and start health/statistics jobs.
 10. On failure, reconnect or close/retain the TUN according to Kill Switch policy.
 
 ## Data model
@@ -67,7 +69,8 @@ Every successful parse produces ordinary `VpnProfile` instances, technical summa
 
 ## Security invariants
 
-- No Android TUN before remote preflight succeeds.
+- A normal Dashboard connection never initializes SSH/Xray in the application UI process.
+- No traffic can escape directly while the startup TUN is awaiting validation.
 - No connected state before active outbound verification succeeds.
 - No global TLS trust bypass.
 - No silent direct fallback for TUN traffic.
@@ -81,7 +84,7 @@ New protocols should implement:
 
 - profile validation;
 - deterministic configuration generation;
-- non-destructive preflight;
+- non-destructive diagnostics;
 - active health verification;
 - structured error classification;
 - sanitized stage logging;

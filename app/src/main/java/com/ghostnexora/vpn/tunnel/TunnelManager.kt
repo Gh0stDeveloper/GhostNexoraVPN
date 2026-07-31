@@ -135,6 +135,7 @@ class TunnelManager(
 
     @Synchronized
     fun stop(runtime: TunnelRuntime?) {
+        if (runtime == null && !xrayEngine.isRunning) return
         onCoreStatus("[TUN] Deteniendo core y liberando transporte")
         runCatching { xrayEngine.stop() }
         runCatching { runtime?.sshHandle?.close() }

@@ -7,8 +7,8 @@ This roadmap separates implemented work from planned work. An implemented item i
 ### Phase 1 — Runtime stability
 
 - non-destructive connection diagnostics;
-- outbound verification before TUN;
-- active outbound verification after startup;
+- isolated fail-closed TUN startup;
+- active outbound verification before connected-state publication;
 - IPv4-only, IPv4-preferred, and dual-stack modes;
 - synchronized Android/Xray MTU;
 - protected DNS modes;
@@ -107,7 +107,7 @@ Replace remaining generic Xray option text with typed fields for:
 
 ## Post-merge device qualification backlog
 
-For the 1.0.37 device qualification cycle:
+For the 1.0.38 device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the JSch error.
 2. Run diagnostics for the same SSH + SSL profile.

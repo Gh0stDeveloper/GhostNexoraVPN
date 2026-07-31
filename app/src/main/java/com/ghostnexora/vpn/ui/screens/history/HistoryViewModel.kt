@@ -35,7 +35,9 @@ class HistoryViewModel @Inject constructor(
         } else {
             allLogs.filter { it.profileId == profileId }
         }
-        filtered.sortedByDescending { it.timestamp }
+        filtered.sortedWith(
+            compareByDescending<LogEntry> { it.timestamp }.thenByDescending { it.id }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val selectedProfileName: StateFlow<String> = combine(

@@ -75,6 +75,8 @@ jobs:
           test -s app/libs/libv2ray.aar
           test -s app/src/main/cpp/CMakeLists.txt
           test -s app/src/main/cpp/native_guard.cpp
+          unzip -l app/libs/libv2ray.aar | grep -Fq 'assets/geoip.dat'
+          unzip -l app/libs/libv2ray.aar | grep -Fq 'assets/geosite.dat'
 
       - name: Prepare Gradle
         run: |
@@ -112,7 +114,42 @@ jobs:
               raise SystemExit("GhostVpnService is not protected by BIND_VPN_SERVICE")
           if vpn.get(android + "exported") != "false":
               raise SystemExit("GhostVpnService must not be exported")
+          if vpn.get(android + "process") != ":vpn":
+              raise SystemExit("GhostVpnService must run in the private :vpn process")
+          floating = next((service for service in services if service.get(android + "name") == ".service.FloatingWindowService"), None)
+          if floating is None or floating.get(android + "process") != ":vpn":
+              raise SystemExit("FloatingWindowService must share the private :vpn process")
           print("Manifest policy verified")
+          PY
+
+      - name: Verify isolated VPN runtime policy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dashboard = Path(
+              "app/src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardViewModel.kt"
+          ).read_text()
+          datastore = Path(
+              "app/src/main/java/com/ghostnexora/vpn/data/local/DataStoreManager.kt"
+          ).read_text()
+          database = Path(
+              "app/src/main/java/com/ghostnexora/vpn/data/local/AppDatabase.kt"
+          ).read_text()
+          service = Path(
+              "app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt"
+          ).read_text()
+
+          if "TunnelManager" in dashboard or "verifyOutbound" in dashboard:
+              raise SystemExit("The UI process must not initialize the native VPN core")
+          if "createMultiProcessCoordinator" not in datastore:
+              raise SystemExit("Runtime preferences are not coordinated across processes")
+          if "enableMultiInstanceInvalidation" not in database:
+              raise SystemExit("Room logs will not refresh across the VPN process boundary")
+          if "super.onBind(intent)" not in service:
+              raise SystemExit("GhostVpnService must preserve Android's platform VPN binder")
+          print("VPN process isolation policy verified")
           PY
 
       - name: Scan tracked source for high-confidence secrets

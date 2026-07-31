@@ -56,6 +56,7 @@
             android:exported="false"
             android:foregroundServiceType="specialUse"
             android:permission="android.permission.BIND_VPN_SERVICE"
+            android:process=":vpn"
             android:stopWithTask="false">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
@@ -70,6 +71,7 @@
             android:name=".service.FloatingWindowService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
+            android:process=":vpn"
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

@@ -48,6 +48,10 @@ abstract class AppDatabase : RoomDatabase() {
                 DB_NAME
             )
                 .addMigrations(MIGRATION_2_3)
+                // The UI reads logs in the main process while GhostVpnService
+                // writes them from :vpn. This keeps Flow observers live across
+                // that process boundary.
+                .enableMultiInstanceInvalidation()
                 .fallbackToDestructiveMigration()
                 .build()
 

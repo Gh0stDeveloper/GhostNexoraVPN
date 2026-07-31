@@ -10,9 +10,9 @@
 
 Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified routing, strict security defaults, encrypted profile management, actionable diagnostics, and transparent compatibility status.
 
-A process running is not considered a successful VPN. The app verifies the remote outbound before creating Android default routes and verifies Internet access again after the active tunnel starts.
+A process running is not considered a successful VPN. The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and reports success only after the active outbound delivers Internet.
 
-Current development version: **1.0.37 (37)**.
+Current development version: **1.0.38 (38)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -21,9 +21,10 @@ Current development version: **1.0.37 (37)**.
 ### Stability and routing
 
 - Android `VpnService` TUN routing.
+- Private `:vpn` process isolation for the native core, separate from the application interface.
 - Physical network tracking for cellular, Wi-Fi, and Ethernet.
-- Remote outbound preflight before TUN activation.
-- Active outbound verification after startup.
+- Fail-closed TUN startup with active outbound verification before `Connected`.
+- Bounded native-process recovery without closing the application interface.
 - IPv4-only, IPv4-preferred, and dual-stack modes.
 - MTU presets from 1280 to 1500 shared by Android and Xray.
 - Automatic protected, Cloudflare, Google, and custom DNS.
@@ -36,7 +37,7 @@ Current development version: **1.0.37 (37)**.
 ### Diagnostics and logs
 
 - Non-destructive staged diagnostics for physical network, DNS, TCP, TLS/SNI, settings, transport preflight, and real Internet response.
-- Single sanitized timeline-style log console.
+- Complete real-time sanitized timeline for network, TLS, SSH, SOCKS, Xray, TUN, DNS, routing, and outbound verification.
 - Debug, Info, Warning, Error, and Success levels.
 - Search, filtering, copy, clear, and complete UTF-8 diagnostic export.
 - Device/version/ABI metadata and structured error codes in reports.
@@ -129,14 +130,14 @@ A normal connection must complete:
 1. Profile validation.
 2. Physical non-VPN network detection.
 3. Network and application-routing settings validation.
-4. Remote SSH/Xray outbound preflight.
-5. Android TUN creation.
-6. SSH/Xray startup against the TUN descriptor.
+4. Private VPN-process startup and persisted recovery intent.
+5. Fail-closed Android TUN creation.
+6. Single SSH/Xray startup against the TUN descriptor.
 7. Active outbound Internet verification.
-8. Connected-state publication.
+8. Connected-state publication to the UI process.
 9. Health and session-statistics monitoring.
 
-A failure before TUN creation does not change device default routes. A failure after TUN creation closes the interface unless Kill Switch intentionally retains blocked routing during recovery.
+A failure before TUN creation does not change device default routes. A startup failure after TUN creation closes the interface; during an established-session recovery, Kill Switch may intentionally retain blocked routing.
 
 ## GNX2 encrypted configuration
 
