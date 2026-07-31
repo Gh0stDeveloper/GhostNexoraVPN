@@ -12,16 +12,23 @@ class PhysicalNetworkSocketArchitectureTest {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/PhysicalNetworkSocketConnector.kt"
         )
-        val protectIndex = source.indexOf("OutboundSocketProtection.protect(socket)")
-        val bindIndex = source.indexOf("network.bindSocket(socket)")
+        val firstSocketCreation = source.indexOf("val socket = configuredAndProtectedSocket()")
+        val firstPhysicalBind = source.indexOf("network.bindSocket(socket)")
+        val protectionHelper = source
+            .substringAfter("private fun configuredAndProtectedSocket()")
+            .substringBefore("private fun configuredSocket()")
 
         assertTrue(source.contains("NetworkCapabilities.NET_CAPABILITY_NOT_VPN"))
         assertTrue(source.contains("manager.registerNetworkCallback"))
         assertTrue(source.contains("network.getAllByName(host)"))
-        assertTrue(protectIndex >= 0)
-        assertTrue(bindIndex >= 0)
-        assertTrue("VpnService.protect must run before Network.bindSocket", protectIndex < bindIndex)
-        assertTrue(source.contains("[VPN-LOOP-001]"))
+        assertTrue(firstSocketCreation >= 0)
+        assertTrue(firstPhysicalBind >= 0)
+        assertTrue(
+            "A protected socket must be created before Network.bindSocket",
+            firstSocketCreation < firstPhysicalBind
+        )
+        assertTrue(protectionHelper.contains("OutboundSocketProtection.protect(socket)"))
+        assertTrue(protectionHelper.contains("[VPN-LOOP-001]"))
         assertTrue(source.contains("for ((addressIndex, address) in addresses.withIndex())"))
         assertTrue(source.contains("sortedBy { if (it is Inet4Address) 0 else 1 }"))
         assertTrue(source.contains("[TCP-ALL-FAILED]"))
