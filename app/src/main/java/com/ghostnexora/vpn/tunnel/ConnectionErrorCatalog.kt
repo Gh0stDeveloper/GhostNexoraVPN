@@ -28,6 +28,12 @@ object ConnectionErrorCatalog {
                 "NET-001", "NETWORK", "No hay una conexión física disponible", raw,
                 "Activa los datos móviles o Wi-Fi y vuelve a intentarlo."
             )
+            lower.contains("vpn-loop-001") || lower.contains("protect(socket)") -> failure(
+                "VPN-LOOP-001", "NETWORK",
+                "Android no pudo excluir el socket de salida del TUN",
+                raw,
+                "Reinicia la conexión VPN. Si continúa, exporta el diagnóstico; la aplicación detuvo el transporte para evitar un bucle de tráfico."
+            )
             lower.contains("unknownhost") || lower.contains("unable to resolve") || lower.contains("name or service") -> failure(
                 "DNS-001", "DNS", "No se pudo resolver el nombre del servidor", raw,
                 "Revisa el host y los servidores DNS seleccionados."

@@ -34,6 +34,22 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
+    fun mapsRejectedSocketProtectionBeforeGenericTunFailure() {
+        val failure = ConnectionErrorCatalog.classify(
+            IOException(
+                "[VPN-LOOP-001] Android rechazó VpnService.protect(Socket); " +
+                    "el transporte se detuvo para evitar un bucle hacia el TUN"
+            ),
+            sshProfile
+        )
+
+        assertEquals("VPN-LOOP-001", failure.code)
+        assertEquals("NETWORK", failure.stage)
+        assertTrue(failure.title.contains("socket", ignoreCase = true))
+        assertTrue(failure.solution.contains("bucle", ignoreCase = true))
+    }
+
+    @Test
     fun mapsTlsHostnameFailure() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException("Hostname verification failed for SNI"),
