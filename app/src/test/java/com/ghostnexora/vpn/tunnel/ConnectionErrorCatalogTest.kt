@@ -6,6 +6,7 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 class ConnectionErrorCatalogTest {
     private val sshProfile = VpnProfile(
@@ -16,6 +17,10 @@ class ConnectionErrorCatalogTest {
         password = "secret",
         connectionMode = ConnectionMode.SSL_SNI.id,
         sni = "www.twitter.com"
+    )
+
+    private val injectorProfile = sshProfile.copy(
+        tlsVerificationMode = TlsVerificationMode.CUSTOM_SNI.id
     )
 
     @Test
@@ -42,7 +47,7 @@ class ConnectionErrorCatalogTest {
     fun customSniFailurePointsToCertificateTrustInsteadOfHostname() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException("certificate trust anchor failed"),
-            sshProfile.copy(tlsVerificationMode = TlsVerificationMode.CUSTOM_SNI.id)
+            injectorProfile
         )
 
         assertEquals("TLS-004", failure.code)
@@ -51,7 +56,7 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
-    fun connectionRefusedExplainsThatSniIsNotAnAlternateEndpoint() {
+    fun connectionRefusedInStrictModeKeepsConfiguredHostGuidance() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException(
                 "Session.connect: java.net.ConnectException: failed to connect to " +
@@ -63,9 +68,37 @@ class ConnectionErrorCatalogTest {
         assertEquals("TCP-002", failure.code)
         assertEquals("TCP", failure.stage)
         assertTrue(failure.title.contains("rechazó", ignoreCase = true))
-        assertTrue(failure.solution.contains("alcanzó la IP", ignoreCase = true))
-        assertTrue(failure.solution.contains("SNI"))
-        assertTrue(failure.solution.contains("no sustituye", ignoreCase = true))
+        assertTrue(failure.solution.contains("host", ignoreCase = true))
+        assertTrue(failure.solution.contains("puerto", ignoreCase = true))
+    }
+
+    @Test
+    fun exhaustedInjectorEndpointIsTcpFailureInsteadOfTlsFailure() {
+        val failure = ConnectionErrorCatalog.classify(
+            IOException(
+                "Session.connect: [TCP-ALL-FAILED] No fue posible conectar con ninguna IP " +
+                    "de analytics.twitter.com:443 tras 2 intento(s).",
+                IOException("failed to connect after 8000ms: ECONNREFUSED")
+            ),
+            injectorProfile
+        )
+
+        assertEquals("TCP-003", failure.code)
+        assertEquals("TCP", failure.stage)
+        assertTrue(failure.solution.contains("SNI", ignoreCase = true))
+        assertTrue(failure.solution.contains("HTTP Injector", ignoreCase = true))
+    }
+
+    @Test
+    fun directInjectorRefusalExplainsThatSniIsTheTlsEndpoint() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException("analytics.twitter.com:443 ECONNREFUSED Connection refused"),
+            injectorProfile
+        )
+
+        assertEquals("TCP-002", failure.code)
+        assertEquals("TCP", failure.stage)
+        assertTrue(failure.solution.contains("SNI como extremo TCP/TLS", ignoreCase = true))
     }
 
     @Test
