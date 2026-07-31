@@ -1,18 +1,23 @@
 # Phase 1 — Runtime Stability and Diagnostics
 
-This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33.
+This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33 and the startup-concurrency correction introduced after 1.0.41.
 
-> Runtime note for 1.0.40: non-destructive diagnostics still use the preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process. SSH readiness is verified through a loopback-only Xray SOCKS inbound and a real remote TLS handshake; a client uplink EOF no longer closes the response half of the direct-tcpip channel.
+> Runtime note: non-destructive diagnostics still use the preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process. SSH readiness is available through a loopback-only Xray SOCKS inbound, but real remote probes run only after the service publishes `Connected` and never hold the startup or teardown path.
 
 ## Goals
 
-Phase 1 focuses on connection correctness before expanding protocol features. The application must not report a successful VPN merely because a process started or Android created a TUN interface. A connection is considered usable only after the selected SSH/Xray outbound delivers real Internet access.
+Phase 1 focuses on connection correctness before expanding protocol features. Android TUN creation and native core startup are separate from long-running Internet health verification:
+
+- the application must not report `Connected` before SSH/Xray and the Android TUN are active;
+- the application must not freeze the UI or service state machine while waiting for a remote probe;
+- captured traffic must remain fail-closed while verification is pending or failing;
+- active outbound evidence is required for device qualification, even though it is not a synchronous UI gate.
 
 ## Implemented features
 
 ### Automatic connection diagnostics
 
-Settings now includes **Run connection diagnostics**. The diagnostic engine is non-destructive: it does not install Android VPN routes and does not interrupt the device's normal Internet connection.
+Settings includes **Run connection diagnostics**. The diagnostic engine is non-destructive: it does not install Android VPN routes and does not interrupt the device's normal Internet connection.
 
 The engine executes these stages:
 
@@ -34,6 +39,26 @@ Each result includes:
 - stable error code;
 - corrective action.
 
+### Non-blocking normal startup
+
+The normal Dashboard connection path does not reuse the diagnostic preflight as a synchronous gate. Its sequence is:
+
+1. establish strict application-routing rules and the fail-closed TUN;
+2. authenticate SSH and start the local bridge when required;
+3. start Xray against the TUN descriptor;
+4. publish `Connected` immediately after the native core is running;
+5. launch active outbound verification on `Dispatchers.IO`;
+6. record latency or warning results without blocking the UI;
+7. let the periodic health monitor retry and trigger protected reconnection only after repeated failures.
+
+The first verification has a bounded service-level wait. A probe does not retain the `TunnelManager` or `XrayCoreEngine` monitor while performing remote I/O, so disconnect and core shutdown remain available.
+
+### Application self-bypass
+
+In full-device and exclude-selected modes, `VpnService.Builder.addDisallowedApplication(packageName)` is mandatory. Its failure aborts TUN startup instead of being swallowed. This keeps the application UID, JSch sockets, and native-core management traffic on the physical network and prevents recursive TUN routing.
+
+Only-selected mode cannot combine Android allowed and disallowed lists. The VPN package is therefore excluded by omission from the allowlist.
+
 ### Configurable IP mode
 
 The global IP mode can be changed under **Settings > Connection engine**.
@@ -48,7 +73,7 @@ IPv4-only mode is recommended when a server, mobile provider or transport cannot
 
 ### Configurable MTU
 
-Android and Xray now always use the same TUN MTU. Presets:
+Android and Xray always use the same TUN MTU. Presets:
 
 - 1280
 - 1360
@@ -73,14 +98,15 @@ The Xray configuration retains static bootstrap mappings for Cloudflare and Goog
 
 ### Hardened reconnection
 
-Automatic reconnection now uses:
+Automatic reconnection uses:
 
 - configurable maximum attempts;
 - exponential delays with deterministic jitter;
 - physical-network availability checks;
-- a fresh active-outbound verification after rebuilding the transport;
-- post-start outbound verification;
-- two consecutive failed health checks before declaring an Internet outage;
+- fresh SSH/Xray runtime creation;
+- immediate core-ready state publication after a successful restart;
+- asynchronous post-start outbound verification;
+- two consecutive failed periodic health checks before declaring an Internet outage;
 - separate behavior for Kill Switch enabled and disabled.
 
 When the retry limit is reached:
@@ -90,9 +116,7 @@ When the retry limit is reached:
 
 ### Structured error codes
 
-Connection failures are no longer shown only as Java exceptions. Errors are classified into stable support codes.
-
-Examples:
+Connection failures are classified into stable support codes.
 
 | Code | Stage | Meaning |
 |---|---|---|
@@ -105,7 +129,7 @@ Examples:
 | `SSH-409` | SSH | SSH host identity changed |
 | `SSH-500` | SSH | SSH runtime initialization failed |
 | `XRAY-UUID` | Xray | Invalid VLESS or VMess UUID |
-| `ROUTE-204` | Routing | Core started but outbound has no Internet |
+| `ROUTE-204` | Routing | Core active but outbound verification failed |
 | `TUN-500` | TUN | Android could not create the VPN interface |
 | `RECONNECT-408` | Reconnect | Reconnection attempt limit reached |
 
@@ -113,7 +137,7 @@ Every classified error includes a suggested corrective action.
 
 ### Complete log export
 
-The Logs screen now supports Android's native **Create document** flow. The exported UTF-8 report contains:
+The Logs screen supports Android's native **Create document** flow. The exported UTF-8 report contains:
 
 - application version and version code;
 - device manufacturer and model;
@@ -128,7 +152,7 @@ Passwords, authorization headers, tokens and sensitive payload data continue to 
 
 ### CI coverage
 
-The Android workflow now runs:
+The Android workflow runs:
 
 1. Unit tests.
 2. Android Lint.
@@ -145,27 +169,26 @@ R8 validation requires these runtime classes to survive minification:
 - `ConnectionDiagnosticsEngine`;
 - `ConnectionErrorCatalog`.
 
-New tests cover network preference validation and stable error classification. Existing tests continue to cover JSch initialization, Xray configuration and update handling.
-
 ## Connection acceptance criteria
 
 A normal connection follows this sequence:
 
 1. Validate profile fields.
 2. Confirm a physical non-VPN network.
-3. Load IP, DNS, MTU and reconnect preferences.
+3. Load IP, DNS, MTU, app-routing and reconnect preferences.
 4. Persist the desired connected state for bounded process recovery.
-5. Create fail-closed Android TUN routes.
-6. Start one SSH/Xray runtime against the TUN descriptor.
-7. Verify active outbound Internet.
-8. Publish the connected state to the UI process.
-9. Start health monitoring.
+5. Apply mandatory self-bypass or the strict only-selected allowlist.
+6. Create fail-closed Android TUN routes.
+7. Start one SSH/Xray runtime against the TUN descriptor.
+8. Confirm the native Xray loop is running.
+9. Publish `Connected` to the UI process.
+10. Run outbound verification asynchronously and start health monitoring.
 
-A failure before step 5 does not change the device's routes. A failure after step 5 closes the TUN unless Kill Switch protection is intentionally keeping traffic blocked during recovery.
+A failure before step 6 does not change the device's routes. A transport startup failure after step 6 closes the TUN unless Kill Switch protection is intentionally retaining blocked routing during recovery. A background probe failure does not silently restore direct traffic.
 
 ## Runtime validation still required
 
-CI cannot prove interoperability with every private server. The following must be tested on physical Android devices and real servers:
+CI cannot prove interoperability with every private server. Physical Android testing must cover:
 
 - SSH direct and password authentication;
 - SSH + SSL with a valid SNI certificate;
@@ -177,6 +200,9 @@ CI cannot prove interoperability with every private server. The following must b
 - Wi-Fi to mobile-data handover;
 - sleep and process recreation;
 - IPv4-only and dual-stack mobile networks;
-- each MTU preset on affected carriers.
+- each MTU preset on affected carriers;
+- unreachable verification endpoints without a frozen UI;
+- manual disconnect while `Prueba real` is running;
+- all application-routing modes with proof that the VPN package never enters its own TUN.
 
 The diagnostic report is the required artifact when a real-server test fails.
