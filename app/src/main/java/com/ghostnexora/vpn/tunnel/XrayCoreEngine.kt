@@ -17,9 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Adaptador aislado alrededor de AndroidLibXrayLite.
  *
  * Iniciar el proceso Xray no demuestra que el servidor remoto acepte el
- * perfil. Por eso esta clase puede validar el outbound antes de crear el TUN y
- * volver a comprobarlo mediante la instancia activa antes de publicar el
- * estado Connected.
+ * perfil. La instancia activa se publica primero y la comprobación del
+ * outbound se ejecuta después en segundo plano, sin retener el monitor del
+ * motor durante operaciones de red potencialmente lentas.
  */
 class XrayCoreEngine(
     context: Context,
@@ -77,12 +77,20 @@ class XrayCoreEngine(
         }
     }
 
-    /** Verifica que la instancia activa realmente puede alcanzar Internet. */
-    @Synchronized
+    /**
+     * Verifica que la instancia activa realmente puede alcanzar Internet.
+     *
+     * El snapshot del controlador se toma bajo un bloqueo corto. La prueba de
+     * red se ejecuta fuera del monitor para que stop() pueda cerrar el core si
+     * el proveedor nativo o una ruta remota dejan de responder.
+     */
     fun verifyActiveOutbound(): OutboundCheck {
-        val activeController = controller?.takeIf { it.isRunning }
-            ?: error("Xray Core no está activo para validar la salida")
-        val healthCheckPort = activeHealthCheckPort
+        val snapshot = synchronized(this) {
+            val activeController = controller?.takeIf { it.isRunning }
+                ?: error("Xray Core no está activo para validar la salida")
+            activeController to activeHealthCheckPort
+        }
+        val (activeController, healthCheckPort) = snapshot
         if (healthCheckPort != null) {
             return verifySshSocksOutbound(healthCheckPort)
         }
