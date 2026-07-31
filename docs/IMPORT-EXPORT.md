@@ -29,6 +29,23 @@ A locked GNX3 profile is resealed with Android Keystore immediately after its
 container and identity are validated. The pending import and preview contain
 only its masked view.
 
+After a successful import, the first newly stored profile becomes the active
+profile. Its creator note is therefore visible immediately on the Home page
+when the user returns from the importer.
+
+## Import password behavior
+
+GNX3 supports two mutually exclusive protection modes:
+
+- **Automatic application encryption:** the official application derives the
+  compatibility material internally, so the recipient does not type a
+  password.
+- **Creator password:** the recipient must enter the exact password before the
+  profile can be previewed or stored.
+
+A wrong password or modified file returns no partial plaintext. Password values
+are held only for the operation and cleared from the UI state afterward.
+
 ## Preview
 
 The preview can show:
@@ -52,24 +69,45 @@ creator's sanitized HTML note remains visible.
 
 ## Merge
 
-Merge imports only profiles whose canonical fingerprint is not already present. It also removes duplicates repeated within the incoming content.
+Merge imports only profiles whose canonical fingerprint is not already present.
+It also removes duplicates repeated within the incoming content.
 
 ## Replace
 
-Replace deletes existing profiles, then stores one copy of every unique imported configuration. It requires explicit user action.
+Replace deletes existing profiles, then stores one copy of every unique imported
+configuration. It requires explicit user action.
 
 ## Duplicate fingerprint
 
-The local fingerprint includes mode, endpoint, credentials, security, payload/Xray options, and proxy settings. It excludes profile name and ID so renamed copies are recognized.
+The local fingerprint includes mode, endpoint, credentials, security,
+payload/Xray options, and proxy settings. It excludes profile name and ID so
+renamed copies are recognized.
 
 ## GNX3 individual export
 
 Every editable profile has an individual export action. Before writing or
-sharing the file, the creator can:
+sharing the file, the creator chooses one option from each group.
 
-- lock or leave the profile editable;
-- choose a creator password or app-managed compatibility mode;
-- add an HTML/CSS note and preview the sanitized result.
+### Permissions after import
+
+- **Editable configuration:** the recipient may view and modify the host, SSH
+  credentials, SNI, proxy, payload, and connection method.
+- **Locked configuration:** those fields remain hidden from ordinary UI and
+  storage views. Editing, duplication, technical inspection, and re-export are
+  disabled. Only the isolated VPN service can open the locally sealed profile
+  when a connection is requested.
+
+### File protection
+
+- **Automatic application encryption:** no password is distributed. The file
+  can be opened by compatible official APKs signed by the developer.
+- **Custom password:** the creator sets and confirms a password of at least ten
+  characters. Import requires that password.
+
+Both modes use the GNX3 authenticated container. GNX3 generates a fresh random
+salt, data key, wrapping nonce, and payload nonce/IV for every export. The IV is
+stored with the ciphertext because it is not secret, but it is never reused and
+is not a fixed constant inside the APK.
 
 Locked profiles cannot be edited, duplicated, diagnosed outside the VPN
 service, or re-exported after import. This is an application policy protected
@@ -82,6 +120,16 @@ across APKs signed by the same developer, but any compatibility secret shipped
 in a client can ultimately be reconstructed by an attacker controlling that
 client.
 
+## Creator notes on Home
+
+The export dialog accepts plain text or sanitized HTML/CSS. After import, the
+complete note appears below the active profile on the Home page. The note
+remains visible even when the configuration parameters are locked.
+
+The viewer uses a network-blocked WebView with JavaScript, storage, file access,
+content access, mixed content, frames, forms, and embedded objects disabled.
+Allowed contact links open externally only after a user tap.
+
 ## HTML/CSS creator notes
 
 Notes permit presentation markup, headings, lists, tables, inline styles,
@@ -89,13 +137,15 @@ Notes permit presentation markup, headings, lists, tables, inline styles,
 
 The importer removes scripts, frames, objects, forms, event handlers, active
 URL schemes, remote CSS, resource URLs, and overlay-oriented CSS. The viewer
-also disables JavaScript, DOM/database storage, file/content access, images,
-network loads, mixed content, frames, forms, and embedded objects. A contact
-link opens in an external application only after a user tap.
+also disables JavaScript, DOM/database storage, file/content access, network
+loads, mixed content, frames, forms, and embedded objects.
 
 ## GNX2 backup export
 
-Exports require a password of at least ten characters. The password is held only for the operation and cleared from the UI state afterward. The export can be written through Android's Storage Access Framework or to the app-managed Downloads workflow where supported.
+Exports require a password of at least ten characters. The password is held
+only for the operation and cleared from the UI state afterward. The export can
+be written through Android's Storage Access Framework or to the app-managed
+Downloads workflow where supported.
 
 Locked profiles are intentionally excluded from GNX2 backups because their
 creator prohibited re-export and the ordinary repository never exposes their
@@ -114,7 +164,9 @@ parameters.
 
 ## Compatibility warning
 
-Successful import means the configuration was parsed into the application's model. It does not prove the remote server exists or that every external-client extension is supported.
+Successful import means the configuration was parsed into the application's
+model. It does not prove the remote server exists or that every external-client
+extension is supported.
 
 ## Planned enhancements
 

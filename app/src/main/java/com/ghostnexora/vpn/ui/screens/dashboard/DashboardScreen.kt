@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -64,6 +64,7 @@ import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
+import com.ghostnexora.vpn.ui.components.HtmlNoteView
 import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
@@ -117,23 +118,13 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = Dimens.ScreenPadding, vertical = Dimens.SpaceSM),
-            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+                .padding(horizontal = Dimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
         ) {
-            TabRow(selectedTabIndex = pager.currentPage, containerColor = Color.Transparent) {
-                Tab(
-                    selected = pager.currentPage == 0,
-                    onClick = { scope.launch { pager.animateScrollToPage(0) } },
-                    text = { Text("Inicio") },
-                    icon = { Icon(Icons.Filled.Security, null) }
-                )
-                Tab(
-                    selected = pager.currentPage == 1,
-                    onClick = { scope.launch { pager.animateScrollToPage(1) } },
-                    text = { Text("Registro") },
-                    icon = { Icon(Icons.AutoMirrored.Filled.Article, null) }
-                )
-            }
+            CompactDashboardTabs(
+                selectedPage = pager.currentPage,
+                onSelect = { page -> scope.launch { pager.animateScrollToPage(page) } }
+            )
 
             HorizontalPager(
                 state = pager,
@@ -165,6 +156,42 @@ fun DashboardScreen(
 }
 
 @Composable
+private fun CompactDashboardTabs(selectedPage: Int, onSelect: (Int) -> Unit) {
+    TabRow(
+        selectedTabIndex = selectedPage,
+        modifier = Modifier.fillMaxWidth().height(44.dp),
+        containerColor = Color.Transparent
+    ) {
+        Tab(
+            selected = selectedPage == 0,
+            onClick = { onSelect(0) },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Filled.Security, null, modifier = Modifier.size(17.dp))
+                    Text("Inicio", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        )
+        Tab(
+            selected = selectedPage == 1,
+            onClick = { onSelect(1) },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Article, null, modifier = Modifier.size(17.dp))
+                    Text("Log", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        )
+    }
+}
+
+@Composable
 private fun OverviewPage(
     state: DashboardUiState,
     onAction: () -> Unit,
@@ -173,9 +200,8 @@ private fun OverviewPage(
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceLG)
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
     ) {
-        Spacer(Modifier.height(Dimens.SpaceSM))
         Text(
             text = state.connectionState.label().uppercase(Locale.getDefault()),
             style = MaterialTheme.typography.labelLarge,
@@ -200,7 +226,10 @@ private fun OverviewPage(
         if (state.connectionState is VpnConnectionState.Reconnecting) {
             val reconnecting = state.connectionState
             GhostCard(backgroundColor = NeonAmber.copy(alpha = 0.08f), borderColor = NeonAmber) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+                ) {
                     Icon(Icons.Filled.Sync, null, tint = NeonAmber)
                     Column {
                         Text("Kill Switch activo", color = NeonAmber, fontWeight = FontWeight.SemiBold)
@@ -217,7 +246,8 @@ private fun OverviewPage(
         LiveStatsCard(state.traffic, state.sessionElapsed)
         SecurityStatusCard(state)
         ActiveProfileCard(state.activeProfile, onProfiles)
-        Spacer(Modifier.height(Dimens.SpaceXL))
+        CreatorNoteSection(state.activeProfile)
+        Spacer(Modifier.height(Dimens.SpaceLG))
     }
 }
 
@@ -226,22 +256,25 @@ private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
     val color = stateColor(state)
     Box(
         modifier = Modifier
-            .size(152.dp)
+            .size(136.dp)
             .clip(CircleShape)
             .background(color.copy(alpha = 0.12f))
             .clickable(onClick = onAction),
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier.size(116.dp).clip(CircleShape).background(color.copy(alpha = 0.12f)),
+            modifier = Modifier.size(104.dp).clip(CircleShape).background(color.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
                 Icon(
                     if (state is VpnConnectionState.Reconnecting) Icons.Filled.Sync else Icons.Filled.PowerSettingsNew,
                     null,
                     tint = color,
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier.size(38.dp)
                 )
                 Text(state.actionLabel(), color = color, style = MaterialTheme.typography.labelLarge)
             }
@@ -272,10 +305,19 @@ private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long) {
 }
 
 @Composable
-private fun Metric(label: String, value: String, detail: String, alignment: Alignment.Horizontal = Alignment.Start) {
+private fun Metric(
+    label: String,
+    value: String,
+    detail: String,
+    alignment: Alignment.Horizontal = Alignment.Start
+) {
     Column(horizontalAlignment = alignment) {
         Text(label, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
-        Text(value, color = TextPrimary, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace))
+        Text(
+            value,
+            color = TextPrimary,
+            style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
+        )
         Text(detail, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -288,19 +330,33 @@ private fun SecurityStatusCard(state: DashboardUiState) {
         borderColor = if (protected) NeonGreen else BorderSubtle
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+            ) {
                 Icon(Icons.Filled.Lock, null, tint = if (protected) NeonGreen else TextTertiary)
                 Column {
-                    Text(if (protected) "Tráfico protegido" else "Protección inactiva", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (state.isReconnecting) "El túnel permanece capturando tráfico durante la recuperación"
-                        else state.traffic.protocol,
+                        if (protected) "Tráfico protegido" else "Protección inactiva",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (state.isReconnecting) {
+                            "El túnel permanece capturando tráfico durante la recuperación"
+                        } else {
+                            state.traffic.protocol
+                        },
                         color = TextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
-            Text("IPv4 + IPv6 · DNS dentro del túnel · TLS por perfil", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+            Text(
+                "IPv4 + IPv6 · DNS dentro del túnel · TLS por perfil",
+                color = TextTertiary,
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
@@ -312,13 +368,24 @@ private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
             Icon(Icons.Filled.SignalCellularAlt, null, tint = NeonCyan)
             Spacer(Modifier.size(Dimens.SpaceMD))
             Column(Modifier.weight(1f)) {
-                Text(profile?.name ?: "Sin perfil activo", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text(
+                    profile?.name ?: "Sin perfil activo",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Text(
                     profile?.let { "${it.serverAddress} · ${it.connectionModeLabel}" }
                         ?: "Selecciona una configuración",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
+                if (profile?.isLocked == true) {
+                    Text(
+                        "Parámetros protegidos por el creador",
+                        color = NeonAmber,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
             IconButton(onClick = onProfiles) {
                 Icon(Icons.Filled.Edit, contentDescription = "Cambiar perfil", tint = NeonCyan)
@@ -328,28 +395,65 @@ private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
 }
 
 @Composable
+private fun CreatorNoteSection(profile: VpnProfile?) {
+    val note = profile?.displayNoteHtml.orEmpty()
+    if (note.isBlank()) return
+
+    GhostCard(
+        backgroundColor = SurfaceVariant,
+        borderColor = NeonAmber.copy(alpha = 0.65f)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Notes, null, tint = NeonAmber)
+                Column {
+                    Text("Nota del creador", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        profile?.name.orEmpty(),
+                        color = TextTertiary,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+            HtmlNoteView(
+                html = note,
+                modifier = Modifier.fillMaxWidth().height(340.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun LogPage(logs: List<LogEntry>, onCopy: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
     ) {
-        GhostCard(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            backgroundColor = SurfaceVariant,
-            borderColor = BorderSubtle,
-            contentPadding = PaddingValues(Dimens.SpaceMD)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("Registro de conexión", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-                        Text("Sin credenciales ni tokens", color = TextTertiary, style = MaterialTheme.typography.bodySmall)
-                    }
-                    IconButton(onClick = onCopy) { Icon(Icons.AutoMirrored.Filled.Article, "Copiar registro", tint = NeonCyan) }
-                }
-                HttpInjectorLogConsole(logs = logs, modifier = Modifier.fillMaxWidth(), maxHeight = 620)
+            Column {
+                Text("Registro de conexión", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Vista completa · sin credenciales ni tokens",
+                    color = TextTertiary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            IconButton(onClick = onCopy) {
+                Icon(Icons.AutoMirrored.Filled.Article, "Copiar registro", tint = NeonCyan)
             }
         }
+        HttpInjectorLogConsole(
+            logs = logs,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            maxHeight = null
+        )
     }
 }
 
