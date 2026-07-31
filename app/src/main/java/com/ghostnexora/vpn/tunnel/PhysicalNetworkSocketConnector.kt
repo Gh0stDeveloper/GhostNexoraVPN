@@ -35,19 +35,16 @@ internal class PhysicalNetworkSocketConnector(
         val failures = mutableListOf<Throwable>()
         val networks = physicalNetworks()
 
-        networks.forEachIndexed { networkIndex, network ->
+        for ((networkIndex, network) in networks.withIndex()) {
             val addresses = resolve(network, host, failures)
-            if (addresses.isEmpty()) return@forEachIndexed
+            if (addresses.isEmpty()) continue
 
             onStatus(
                 "[NETWORK] DNS físico · $host → ${addresses.joinToString { it.hostAddress.orEmpty() }}"
             )
-            addresses.forEachIndexed { addressIndex, address ->
-                val remainingMs = TimeUnit.NANOSECONDS
-                    .toMillis(deadlineNanos - System.nanoTime())
-                    .coerceAtMost(PER_ADDRESS_TIMEOUT_MS.toLong())
-                    .toInt()
-                if (remainingMs <= 0) return@forEachIndexed
+            for ((addressIndex, address) in addresses.withIndex()) {
+                val remainingMs = remainingTimeoutMs(deadlineNanos)
+                if (remainingMs <= 0) break
 
                 val socket = configuredSocket()
                 try {
@@ -81,12 +78,9 @@ internal class PhysicalNetworkSocketConnector(
         // not expose a NOT_VPN Network object. The app UID remains disallowed
         // from the VPN, so this socket still cannot recurse through the TUN.
         val fallbackAddresses = resolve(network = null, host = host, failures = failures)
-        fallbackAddresses.forEachIndexed { index, address ->
-            val remainingMs = TimeUnit.NANOSECONDS
-                .toMillis(deadlineNanos - System.nanoTime())
-                .coerceAtMost(PER_ADDRESS_TIMEOUT_MS.toLong())
-                .toInt()
-            if (remainingMs <= 0) return@forEachIndexed
+        for ((index, address) in fallbackAddresses.withIndex()) {
+            val remainingMs = remainingTimeoutMs(deadlineNanos)
+            if (remainingMs <= 0) break
 
             val socket = configuredSocket()
             try {
@@ -132,7 +126,12 @@ internal class PhysicalNetworkSocketConnector(
         resolved
             .distinctBy { it.hostAddress }
             .sortedBy { if (it is Inet4Address) 0 else 1 }
-    }.onFailure(failures::add).getOrDefault(emptyList())
+    }.onFailure { failures += it }.getOrDefault(emptyList())
+
+    private fun remainingTimeoutMs(deadlineNanos: Long): Int = TimeUnit.NANOSECONDS
+        .toMillis(deadlineNanos - System.nanoTime())
+        .coerceAtMost(PER_ADDRESS_TIMEOUT_MS.toLong())
+        .toInt()
 
     private fun ConnectivityManager.isPhysicalInternetNetwork(network: Network): Boolean {
         val capabilities = getNetworkCapabilities(network) ?: return false
