@@ -18,8 +18,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 43
-        versionName = "1.0.43"
+        versionCode = 44
+        versionName = "1.0.44"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

@@ -143,8 +143,8 @@ internal class PhysicalNetworkSocketConnector(
         val last = failures.lastOrNull()
         val attempted = failures.size.coerceAtLeast(1)
         throw IOException(
-            "No fue posible conectar con ninguna IP de $host:$port tras $attempted intento(s). " +
-                "El SNI TLS se conserva por separado y no se usa como sustituto del host de transporte.",
+            "[TCP-ALL-FAILED] No fue posible conectar con ninguna IP de $host:$port " +
+                "tras $attempted intento(s).",
             last
         )
     }
@@ -203,7 +203,7 @@ internal class PhysicalNetworkSocketConnector(
         .firstOrNull()
         .orEmpty()
         .replace('\n', ' ')
-        .take(140)
+        .take(220)
         .ifBlank { javaClass.simpleName }
 
     private companion object {

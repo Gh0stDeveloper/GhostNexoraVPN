@@ -42,9 +42,29 @@ object ConnectionErrorCatalog {
                 raw,
                 "Conserva el perfil como ${profile.connectionModeLabel}; exporta las etapas SSH/SOCKS para identificar el canal direct-tcpip, subida, bajada o TLS remoto."
             )
+            lower.contains("tcp-all-failed") || lower.contains("no fue posible conectar con ninguna ip") -> failure(
+                "TCP-003", "TCP", "No se pudo abrir el extremo TCP del transporte", raw,
+                if (
+                    profile.selectedMode.isSsh &&
+                    profile.selectedMode.usesTls &&
+                    !profile.selectedTlsVerificationMode.verifiesHostname
+                ) {
+                    "El modo compatible abre TCP/TLS contra el SNI configurado y después inicia SSH. Verifica que ese SNI responda en el puerto indicado y prueba exactamente el mismo dominio usado por HTTP Injector."
+                } else {
+                    "Verifica que el host y puerto del servidor acepten conexiones desde tu red actual."
+                }
+            )
             lower.contains("connection refused") || lower.contains("econnrefused") -> failure(
-                "TCP-002", "TCP", "El servidor rechazó la conexión TCP", raw,
-                "La aplicación alcanzó la IP del servidor, pero no había un servicio aceptando conexiones en ese puerto. Verifica que SSH/TLS esté activo y que host:puerto sea correcto. El SNI solo identifica el handshake TLS y no sustituye al servidor remoto."
+                "TCP-002", "TCP", "El extremo remoto rechazó la conexión TCP", raw,
+                if (
+                    profile.selectedMode.isSsh &&
+                    profile.selectedMode.usesTls &&
+                    !profile.selectedTlsVerificationMode.verifiesHostname
+                ) {
+                    "El modo compatible usa el SNI como extremo TCP/TLS. Revisa que el dominio SNI y el puerto sean exactamente los que funcionan en HTTP Injector."
+                } else {
+                    "La aplicación alcanzó la IP remota, pero no había un servicio aceptando conexiones en ese puerto. Verifica host y puerto."
+                }
             )
             lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") -> failure(
                 "NET-003", "NETWORK", "El servidor no respondió a tiempo", raw,
