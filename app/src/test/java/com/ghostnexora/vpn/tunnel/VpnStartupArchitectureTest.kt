@@ -81,17 +81,19 @@ class VpnStartupArchitectureTest {
         val managerSource = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.kt"
         )
-        val managerProbe = managerSource
-            .substringAfter("fun verifyActive()")
-            .substringBefore("fun drainTraffic")
         assertFalse(
             "TunnelManager.verifyActive must remain independently cancellable",
-            managerProbe.contains("@Synchronized")
+            managerSource.contains("@Synchronized\n    fun verifyActive()")
         )
 
         val coreSource = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/XrayCoreEngine.kt"
         )
+        assertFalse(
+            "XrayCoreEngine.verifyActiveOutbound must not hold its monitor for remote I/O",
+            coreSource.contains("@Synchronized\n    fun verifyActiveOutbound()")
+        )
+
         val coreProbe = coreSource
             .substringAfter("fun verifyActiveOutbound()")
             .substringBefore("fun drainProxyTraffic")
