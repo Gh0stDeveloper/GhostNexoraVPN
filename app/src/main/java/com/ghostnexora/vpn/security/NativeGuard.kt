@@ -55,7 +55,7 @@ object NativeGuard {
      */
     fun gnx3KeyFragment(): ByteArray = if (nativeLoaded) {
         runCatching { nativeGnx3KeyFragment() }
-            .getOrElse(::fallbackGnx3Fragment)
+            .getOrElse { fallbackGnx3Fragment() }
     } else {
         fallbackGnx3Fragment()
     }
