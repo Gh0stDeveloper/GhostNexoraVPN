@@ -94,12 +94,12 @@ object VpnServiceContract {
                 .take(MAX_LABEL_LENGTH)
                 .ifBlank { "--" }
         )
+    }
 
     private const val MAX_PROFILE_NAME_LENGTH = 120
     private const val MAX_MESSAGE_LENGTH = 500
     private const val MAX_ENDPOINT_LENGTH = 256
     private const val MAX_LABEL_LENGTH = 80
-}
 }
 
 enum class VpnStateKind(val id: String) {
