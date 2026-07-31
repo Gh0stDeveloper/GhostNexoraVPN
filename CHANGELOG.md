@@ -2,6 +2,35 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.43
+
+### Fixed
+
+- SSH, SSH + SSL/SNI, payload and proxy transports now resolve the configured transport host through Android physical networks marked `NOT_VPN`.
+- Every outgoing SSH/proxy socket is bound to the selected physical network before connecting, adding a second routing guarantee beyond the mandatory application self-bypass.
+- The transport now tries every resolved A/AAAA address within a bounded global timeout instead of failing permanently on Android's first selected IP.
+- The configured SSH host remains the TCP destination while the configured SNI remains an independent TLS `ClientHello` name, matching injector-style profiles where both domains differ.
+
+### Changed
+
+- IPv4 addresses are attempted before IPv6 for the current IPv4-preferred behavior, while IPv6 remains available as a fallback.
+- Connection logs now show physical DNS results, per-IP attempts, selected physical transport and the independent TLS SNI stage.
+- Bumped the application to `1.0.43 (43)`.
+
+## 1.0.42
+
+### Fixed
+
+- Replaced Android-ICU-incompatible CSS regular expressions that could throw `PatternSyntaxException` and `ExceptionInInitializerError` when opening creator notes.
+- Added defensive HTML fallback rendering so malformed note content cannot close the application.
+- Improved the TCP refusal explanation without treating a different SNI as an invalid SSH + SSL profile.
+
+### Changed
+
+- Expanded safe creator-note formatting while keeping JavaScript, events, forms, frames, remote resources, files and WebView network access disabled.
+- Added a CI version policy requiring both `versionCode` and `versionName` to increase for every pull request.
+- Bumped the application to `1.0.42 (42)`.
+
 ## 1.0.41
 
 ### Added
