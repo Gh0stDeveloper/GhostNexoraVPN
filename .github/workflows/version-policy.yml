@@ -1,0 +1,66 @@
+name: Version Policy
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    name: Require application version increment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify versionCode and versionName increased
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          build_file = "app/build.gradle.kts"
+          current = Path(build_file).read_text(encoding="utf-8")
+          base = subprocess.check_output(
+              ["git", "show", f"{os.environ['BASE_SHA']}:{build_file}"],
+              text=True,
+          )
+
+          def read_version(text: str) -> tuple[int, tuple[int, ...], str]:
+              code_match = re.search(r"versionCode\s*=\s*(\d+)", text)
+              name_match = re.search(r'versionName\s*=\s*"([^"]+)"', text)
+              if not code_match or not name_match:
+                  raise SystemExit("Unable to parse Android application version")
+              name = name_match.group(1)
+              try:
+                  numeric = tuple(int(part) for part in name.split("."))
+              except ValueError as error:
+                  raise SystemExit(f"versionName must be numeric semantic versioning: {name}") from error
+              return int(code_match.group(1)), numeric, name
+
+          base_code, base_name_tuple, base_name = read_version(base)
+          current_code, current_name_tuple, current_name = read_version(current)
+
+          if current_code <= base_code:
+              raise SystemExit(
+                  f"Every update must increase versionCode: {base_code} -> {current_code}"
+              )
+          if current_name_tuple <= base_name_tuple:
+              raise SystemExit(
+                  f"Every update must increase versionName: {base_name} -> {current_name}"
+              )
+
+          print(
+              f"Version policy verified: {base_name} ({base_code}) -> "
+              f"{current_name} ({current_code})"
+          )
+          PY
