@@ -4,11 +4,13 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -26,6 +28,47 @@ internal class PhysicalNetworkSocketConnector(
     private val connectivityManager = context
         ?.applicationContext
         ?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private val knownPhysicalNetworks = ConcurrentHashMap.newKeySet<Network>()
+
+    private val physicalNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            knownPhysicalNetworks += network
+        }
+
+        override fun onCapabilitiesChanged(
+            network: Network,
+            capabilities: NetworkCapabilities
+        ) {
+            val physicalInternet =
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            if (physicalInternet) {
+                knownPhysicalNetworks += network
+            } else {
+                knownPhysicalNetworks -= network
+            }
+        }
+
+        override fun onLost(network: Network) {
+            knownPhysicalNetworks -= network
+        }
+    }
+
+    init {
+        connectivityManager?.let { manager ->
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            runCatching {
+                manager.registerNetworkCallback(request, physicalNetworkCallback)
+            }.onFailure { error ->
+                onStatus(
+                    "[NETWORK] Registro de redes físicas no disponible · ${error.shortMessage()}"
+                )
+            }
+        }
+    }
 
     fun connect(host: String, port: Int, timeoutMs: Int = DEFAULT_CONNECT_TIMEOUT_MS): Socket {
         require(host.isNotBlank()) { "El host de transporte no puede estar vacío" }
@@ -111,7 +154,7 @@ internal class PhysicalNetworkSocketConnector(
         val active = manager.activeNetwork
         return buildList {
             if (active != null && manager.isPhysicalInternetNetwork(active)) add(active)
-            manager.allNetworks.forEach { network ->
+            knownPhysicalNetworks.forEach { network ->
                 if (network != active && manager.isPhysicalInternetNetwork(network)) add(network)
             }
         }
