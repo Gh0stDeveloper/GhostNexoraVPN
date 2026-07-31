@@ -2,6 +2,8 @@
 
 This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33.
 
+> Runtime note for 1.0.38: non-destructive diagnostics still use the preflight described below. Normal connection startup now owns a single native runtime in the private `:vpn` process, establishes a fail-closed TUN, and verifies the active outbound before publishing `Connected`.
+
 ## Goals
 
 Phase 1 focuses on connection correctness before expanding protocol features. The application must not report a successful VPN merely because a process started or Android created a TUN interface. A connection is considered usable only after the selected SSH/Xray outbound delivers real Internet access.
@@ -76,7 +78,7 @@ Automatic reconnection now uses:
 - configurable maximum attempts;
 - exponential delays with deterministic jitter;
 - physical-network availability checks;
-- a fresh outbound preflight before rebuilding the transport;
+- a fresh active-outbound verification after rebuilding the transport;
 - post-start outbound verification;
 - two consecutive failed health checks before declaring an Internet outage;
 - separate behavior for Kill Switch enabled and disabled.
@@ -152,11 +154,11 @@ A normal connection follows this sequence:
 1. Validate profile fields.
 2. Confirm a physical non-VPN network.
 3. Load IP, DNS, MTU and reconnect preferences.
-4. Run remote outbound preflight.
-5. Create Android TUN routes.
-6. Start SSH/Xray against the TUN descriptor.
+4. Persist the desired connected state for bounded process recovery.
+5. Create fail-closed Android TUN routes.
+6. Start one SSH/Xray runtime against the TUN descriptor.
 7. Verify active outbound Internet.
-8. Mark the VPN connected.
+8. Publish the connected state to the UI process.
 9. Start health monitoring.
 
 A failure before step 5 does not change the device's routes. A failure after step 5 closes the TUN unless Kill Switch protection is intentionally keeping traffic blocked during recovery.

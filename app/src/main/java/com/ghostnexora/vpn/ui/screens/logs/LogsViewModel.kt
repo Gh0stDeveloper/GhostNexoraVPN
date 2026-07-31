@@ -52,7 +52,7 @@ class LogsViewModel @Inject constructor(
                 entry.message.contains(query, ignoreCase = true) ||
                 entry.tag.contains(query, ignoreCase = true)
             matchLevel && matchQuery
-        }.sortedBy { it.timestamp }
+        }.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setLevelFilter(level: LogLevel?) { _selectedLevel.value = level }
@@ -104,7 +104,7 @@ class LogsViewModel @Inject constructor(
             appendLine("Entries: ${logs.size}")
             appendLine("Secrets: sanitized before storage and export")
             appendLine("============================================================")
-            logs.sortedBy { it.timestamp }.forEach { entry ->
+            logs.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id }).forEach { entry ->
                 appendLine(entry.httpInjectorLine())
             }
             appendLine("============================================================")

@@ -25,7 +25,7 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Feature | Status |
 |---|---|
 | Android TUN IPv4/IP modes/MTU/DNS generation | CI verified |
-| Outbound preflight and active HTTP verification | CI verified; device behavior pending |
+| Isolated fail-closed startup and active HTTP verification | CI verified; device behavior pending |
 | JSch Android random provider | CI verified |
 | SSH direct/password | Device testing pending |
 | SSH + TLS/SNI strict and HTTP Custom-compatible | CI verified; real-server device testing pending |

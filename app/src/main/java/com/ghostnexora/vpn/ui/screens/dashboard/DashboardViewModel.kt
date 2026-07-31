@@ -1,10 +1,13 @@
 package com.ghostnexora.vpn.ui.screens.dashboard
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.LogEntry
@@ -14,26 +17,21 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.service.GhostVpnService
-import com.ghostnexora.vpn.tunnel.TunnelManager
+import com.ghostnexora.vpn.service.VpnServiceContract
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -44,18 +42,32 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
-    private val preflightManager by lazy { TunnelManager(context.applicationContext) }
     private var timerJob: Job? = null
     private var connectJob: Job? = null
     private var sessionStartTime: Long = 0L
     private var lastConnectRequestElapsed: Long = 0L
+    private var runtimeReceiverRegistered = false
+
+    private val runtimeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(receiverContext: Context?, intent: Intent?) {
+            val event = intent ?: return
+            when (event.action) {
+                VpnServiceContract.ACTION_RUNTIME_STATE ->
+                    VpnServiceContract.stateFrom(event)?.let(::handleServiceState)
+                VpnServiceContract.ACTION_TRAFFIC_STATS ->
+                    VpnServiceContract.trafficFrom(event)?.let { stats ->
+                        _uiState.update { it.copy(traffic = stats) }
+                    }
+            }
+        }
+    }
 
     init {
+        registerRuntimeReceiver()
         observeActiveProfile()
         observeAllProfiles()
-        observeServiceState()
-        observeTrafficStats()
         observeRecentLogs()
+        requestRuntimeSnapshot()
     }
 
     private fun observeActiveProfile() {
@@ -69,42 +81,6 @@ class DashboardViewModel @Inject constructor(
     private fun observeAllProfiles() {
         viewModelScope.launch {
             repository.profileCount.collectLatest { count -> _uiState.update { it.copy(hasProfiles = count > 0) } }
-        }
-    }
-
-    private fun observeServiceState() {
-        viewModelScope.launch {
-            GhostVpnService.connectionState.collectLatest { state ->
-                _uiState.update { current ->
-                    current.copy(
-                        connectionState = state,
-                        sessionElapsed = when (state) {
-                            is VpnConnectionState.Connected -> System.currentTimeMillis() - state.connectedSince
-                            is VpnConnectionState.Reconnecting -> current.sessionElapsed
-                            else -> 0L
-                        }
-                    )
-                }
-                when (state) {
-                    is VpnConnectionState.Connected -> {
-                        sessionStartTime = state.connectedSince
-                        startSessionTimer()
-                    }
-                    is VpnConnectionState.Reconnecting -> if (sessionStartTime > 0) startSessionTimer()
-                    is VpnConnectionState.Disconnected,
-                    is VpnConnectionState.Disconnecting,
-                    is VpnConnectionState.Error -> stopSessionTimer()
-                    is VpnConnectionState.Connecting -> Unit
-                }
-            }
-        }
-    }
-
-    private fun observeTrafficStats() {
-        viewModelScope.launch {
-            GhostVpnService.trafficStats.collectLatest { stats ->
-                _uiState.update { it.copy(traffic = stats) }
-            }
         }
     }
 
@@ -164,36 +140,25 @@ class DashboardViewModel @Inject constructor(
             updateState(VpnConnectionState.Connecting(profile.name))
             repository.log(
                 LogLevel.INFO,
-                "Validando salida real del servidor antes de activar el TUN",
+                "Solicitud de conexión enviada al motor VPN protegido",
                 profile.id,
-                "NETWORK"
+                "VPN"
             )
 
             try {
-                val result = withContext(Dispatchers.IO) {
-                    val preferences = repository.networkPreferences.first()
-                    preflightManager.verify(profile, preferences)
-                }
-                repository.log(
-                    LogLevel.SUCCESS,
-                    "Servidor validado · acceso a Internet disponible · ${result.latencyMs} ms",
-                    profile.id,
-                    "NETWORK"
-                )
-
                 val intent = Intent(context, GhostVpnService::class.java).apply {
                     action = GhostVpnService.ACTION_CONNECT
                     putExtra(GhostVpnService.EXTRA_PROFILE_ID, profile.id)
-                    putExtra(GhostVpnService.EXTRA_PREFLIGHT_AT, SystemClock.elapsedRealtime())
                 }
-                context.startForegroundService(intent)
-                repository.markLastUsed(profile.id)
+                ContextCompat.startForegroundService(context, intent)
             } catch (cancelled: CancellationException) {
                 updateState(VpnConnectionState.Disconnected)
                 throw cancelled
             } catch (error: Throwable) {
-                val message = preflightError(error, profile)
-                repository.log(LogLevel.ERROR, message, profile.id, "NETWORK")
+                val detail = error.message.orEmpty().replace('\n', ' ').take(180)
+                val message = "Android no pudo iniciar el servicio VPN" +
+                    detail.takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()
+                repository.log(LogLevel.ERROR, message, profile.id, "VPN")
                 _uiState.update {
                     it.copy(
                         connectionState = VpnConnectionState.Error(message, profile.name),
@@ -221,25 +186,10 @@ class DashboardViewModel @Inject constructor(
             connectJob?.cancel()
             connectJob = null
             updateState(VpnConnectionState.Disconnected)
-            _uiState.update { it.copy(snackbarMessage = "Validación cancelada; la conexión móvil sigue activa") }
+            _uiState.update { it.copy(snackbarMessage = "Conexión cancelada; la red normal sigue activa") }
         } else {
             disconnect()
         }
-    }
-
-    private fun preflightError(error: Throwable, profile: VpnProfile): String {
-        val detail = generateSequence(error) { it.cause }
-            .mapNotNull { cause ->
-                cause.message
-                    ?.replace('\n', ' ')
-                    ?.trim()
-                    ?.takeIf(String::isNotBlank)
-            }
-            .distinct()
-            .joinToString(" → ")
-            .take(180)
-        val suffix = detail.takeIf(String::isNotBlank)?.let { " Detalle: $it" }.orEmpty()
-        return "El servidor no entregó acceso a Internet. Revisa host, puerto, credenciales/UUID, SNI, Host, path y transporte.$suffix [${profile.connectionModeLabel}]"
     }
 
     private fun startSessionTimer() {
@@ -274,7 +224,60 @@ class DashboardViewModel @Inject constructor(
     override fun onCleared() {
         connectJob?.cancel()
         stopSessionTimer()
+        if (runtimeReceiverRegistered) {
+            runCatching { context.unregisterReceiver(runtimeReceiver) }
+            runtimeReceiverRegistered = false
+        }
         super.onCleared()
+    }
+
+    private fun registerRuntimeReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(VpnServiceContract.ACTION_RUNTIME_STATE)
+            addAction(VpnServiceContract.ACTION_TRAFFIC_STATS)
+        }
+        ContextCompat.registerReceiver(
+            context,
+            runtimeReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        runtimeReceiverRegistered = true
+    }
+
+    private fun requestRuntimeSnapshot() {
+        runCatching {
+            context.startService(
+                Intent(context, GhostVpnService::class.java).apply {
+                    action = VpnServiceContract.ACTION_QUERY_RUNTIME
+                }
+            )
+        }
+    }
+
+    private fun handleServiceState(state: VpnConnectionState) {
+        _uiState.update { current ->
+            current.copy(
+                connectionState = state,
+                sessionElapsed = when (state) {
+                    is VpnConnectionState.Connected ->
+                        (System.currentTimeMillis() - state.connectedSince).coerceAtLeast(0L)
+                    is VpnConnectionState.Reconnecting -> current.sessionElapsed
+                    else -> 0L
+                }
+            )
+        }
+        when (state) {
+            is VpnConnectionState.Connected -> {
+                sessionStartTime = state.connectedSince
+                startSessionTimer()
+            }
+            is VpnConnectionState.Reconnecting -> if (sessionStartTime > 0L) startSessionTimer()
+            VpnConnectionState.Disconnected,
+            VpnConnectionState.Disconnecting,
+            is VpnConnectionState.Error -> stopSessionTimer()
+            is VpnConnectionState.Connecting -> Unit
+        }
     }
 
     private companion object {

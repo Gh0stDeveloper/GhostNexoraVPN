@@ -125,6 +125,7 @@ class ProfileRepository @Inject constructor(
     val showFloatingHint: Flow<Boolean> = dataStore.showFloatingHint
     val logsMaxEntries: Flow<Int> = dataStore.logsMaxEntries
     val isFirstLaunch: Flow<Boolean> = dataStore.isFirstLaunch
+    val vpnDesiredConnected: Flow<Boolean> = dataStore.vpnDesiredConnected
     val networkPreferences: Flow<NetworkPreferences> = dataStore.networkPreferences
     val appRoutingPreferences: Flow<AppRoutingPreferences> = dataStore.appRoutingPreferences
 
@@ -145,6 +146,9 @@ class ProfileRepository @Inject constructor(
     suspend fun setReconnectMaxAttempts(value: Int) = dataStore.setReconnectMaxAttempts(value)
     suspend fun setAppRoutingMode(value: AppRoutingMode) = dataStore.setAppRoutingMode(value)
     suspend fun setAppRoutingPackages(value: Set<String>) = dataStore.setAppRoutingPackages(value)
+    suspend fun setVpnDesiredConnected(value: Boolean) = dataStore.setVpnDesiredConnected(value)
+    suspend fun resetVpnRecovery() = dataStore.resetVpnRecovery()
+    suspend fun claimVpnRecoveryAttempt(): Int? = dataStore.claimVpnRecoveryAttempt()
 
     suspend fun clearAllData() {
         profileDao.deleteAllProfiles()

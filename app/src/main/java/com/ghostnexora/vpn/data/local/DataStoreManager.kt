@@ -2,8 +2,12 @@ package com.ghostnexora.vpn.data.local
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.createMultiProcessCoordinator
+import androidx.datastore.core.okio.OkioStorage
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.PreferencesSerializer
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -11,29 +15,61 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
 import com.ghostnexora.vpn.data.model.AppRoutingMode
 import com.ghostnexora.vpn.data.model.AppRoutingPreferences
 import com.ghostnexora.vpn.data.model.DnsMode
 import com.ghostnexora.vpn.data.model.IpMode
 import com.ghostnexora.vpn.data.model.NetworkPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
-
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "ghost_nexora_prefs")
 
 @Singleton
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val dataStore = context.dataStore
+    /**
+     * The VPN engine runs in its own private process. Both processes use an
+     * Okio preferences store backed by AndroidX's multi-process coordinator;
+     * mixing a normal preferencesDataStore delegate with this file can return
+     * stale values or corrupt concurrent edits.
+     */
+    private val dataStoreScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create(
+        storage = OkioStorage(
+            fileSystem = FileSystem.SYSTEM,
+            serializer = PreferencesSerializer,
+            coordinatorProducer = { path, _ ->
+                createMultiProcessCoordinator(
+                    dataStoreScope.coroutineContext,
+                    File(path.toString())
+                )
+            },
+            producePath = {
+                context.preferencesDataStoreFile(PREFERENCES_NAME)
+                    .absoluteFile
+                    .toOkioPath()
+            }
+        ),
+        scope = dataStoreScope
+    )
 
     companion object Keys {
+        private const val PREFERENCES_NAME = "ghost_nexora_prefs"
+        private const val RECOVERY_WINDOW_MS = 2 * 60 * 1_000L
+        private const val MAX_RECOVERY_ATTEMPTS = 3
+
         val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
         val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
         val KILL_SWITCH = booleanPreferencesKey("kill_switch")
@@ -56,6 +92,9 @@ class DataStoreManager @Inject constructor(
         val RECONNECT_MAX_ATTEMPTS = intPreferencesKey("reconnect_max_attempts")
         val APP_ROUTING_MODE = stringPreferencesKey("app_routing_mode")
         val APP_ROUTING_PACKAGES = stringSetPreferencesKey("app_routing_packages")
+        val VPN_DESIRED_CONNECTED = booleanPreferencesKey("vpn_desired_connected")
+        val VPN_RECOVERY_ATTEMPTS = intPreferencesKey("vpn_recovery_attempts")
+        val VPN_RECOVERY_WINDOW_STARTED_AT = longPreferencesKey("vpn_recovery_window_started_at")
     }
 
     val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
@@ -68,6 +107,8 @@ class DataStoreManager @Inject constructor(
     val showFloatingHint: Flow<Boolean> = dataStore.data.safeCatch().map { it[SHOW_FLOATING_HINT] ?: true }
     val logsMaxEntries: Flow<Int> = dataStore.data.safeCatch().map { it[LOGS_MAX_ENTRIES] ?: 500 }
     val isFirstLaunch: Flow<Boolean> = dataStore.data.safeCatch().map { it[FIRST_LAUNCH] ?: true }
+    val vpnDesiredConnected: Flow<Boolean> =
+        dataStore.data.safeCatch().map { it[VPN_DESIRED_CONNECTED] ?: false }
     val lastUpdateCheckAt: Flow<Long> = dataStore.data.safeCatch().map { it[LAST_UPDATE_CHECK_AT] ?: 0L }
     val dismissedUpdateIdentity: Flow<String> = dataStore.data.safeCatch().map { it[DISMISSED_UPDATE_IDENTITY].orEmpty() }
     val networkPreferences: Flow<NetworkPreferences> = dataStore.data.safeCatch().map { values ->
@@ -117,6 +158,41 @@ class DataStoreManager @Inject constructor(
     suspend fun setAppRoutingPackages(value: Set<String>) = edit {
         it[APP_ROUTING_PACKAGES] = AppRoutingPreferences(packages = value).normalizedPackages
     }
+    suspend fun setVpnDesiredConnected(value: Boolean) = edit {
+        it[VPN_DESIRED_CONNECTED] = value
+    }
+
+    suspend fun resetVpnRecovery() = edit {
+        it.remove(VPN_RECOVERY_ATTEMPTS)
+        it.remove(VPN_RECOVERY_WINDOW_STARTED_AT)
+    }
+
+    /**
+     * Claims one bounded automatic process-recovery attempt.
+     *
+     * A fatal abort in libgojni cannot be caught by Kotlin. Keeping this
+     * counter in the multi-process store lets Android restart the VPN process
+     * without creating an endless crash loop.
+     *
+     * @return the 1-based attempt number, or null when the recovery budget is exhausted.
+     */
+    suspend fun claimVpnRecoveryAttempt(now: Long = System.currentTimeMillis()): Int? {
+        var claimedAttempt: Int? = null
+        edit { values ->
+            val windowStartedAt = values[VPN_RECOVERY_WINDOW_STARTED_AT] ?: 0L
+            val inCurrentWindow = windowStartedAt > 0L && now - windowStartedAt in 0L..RECOVERY_WINDOW_MS
+            val attempts = if (inCurrentWindow) values[VPN_RECOVERY_ATTEMPTS] ?: 0 else 0
+
+            if (attempts < MAX_RECOVERY_ATTEMPTS) {
+                val nextAttempt = attempts + 1
+                values[VPN_RECOVERY_ATTEMPTS] = nextAttempt
+                if (!inCurrentWindow) values[VPN_RECOVERY_WINDOW_STARTED_AT] = now
+                claimedAttempt = nextAttempt
+            }
+        }
+        return claimedAttempt
+    }
+
     suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
     suspend fun clearAll() {

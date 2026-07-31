@@ -5,12 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.util.ProcessUtils
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -22,10 +22,12 @@ class GhostNexoraApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        prepareEmbeddedGeoData()
         createNotificationChannels()
-        appScope.launch {
-            runCatching { repository.migrateLegacySecrets() }
+
+        if (ProcessUtils.isMainProcess(this)) {
+            appScope.launch {
+                runCatching { repository.migrateLegacySecrets() }
+            }
         }
     }
 
@@ -56,18 +58,6 @@ class GhostNexoraApp : Application() {
         }
 
         notificationManager.createNotificationChannels(listOf(vpnChannel, floatingChannel))
-    }
-
-    private fun prepareEmbeddedGeoData() {
-        listOf("geoip.dat", "geosite.dat").forEach { fileName ->
-            val destination = File(filesDir, fileName)
-            if (destination.exists()) return@forEach
-            runCatching {
-                assets.open(fileName).use { input ->
-                    destination.outputStream().use(input::copyTo)
-                }
-            }
-        }
     }
 
     companion object {

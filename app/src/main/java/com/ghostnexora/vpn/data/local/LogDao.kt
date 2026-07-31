@@ -14,14 +14,14 @@ interface LogDao {
     // ── Queries ───────────────────────────────────────────────────────────
 
     /** Todos los logs, más recientes primero */
-    @Query("SELECT * FROM log_entries ORDER BY timestamp DESC")
+    @Query("SELECT * FROM log_entries ORDER BY timestamp DESC, id DESC")
     fun getAllLogs(): Flow<List<LogEntry>>
 
     /** Logs de un perfil específico */
     @Query("""
         SELECT * FROM log_entries 
         WHERE profile_id = :profileId 
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC, id DESC
     """)
     fun getLogsForProfile(profileId: String): Flow<List<LogEntry>>
 
@@ -29,19 +29,19 @@ interface LogDao {
     @Query("""
         SELECT * FROM log_entries 
         WHERE level = :level 
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC, id DESC
     """)
     fun getLogsByLevel(level: LogLevel): Flow<List<LogEntry>>
 
     /** Últimas N entradas para vista rápida en Dashboard */
-    @Query("SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT :limit")
+    @Query("SELECT * FROM log_entries ORDER BY timestamp DESC, id DESC LIMIT :limit")
     fun getRecentLogs(limit: Int = 50): Flow<List<LogEntry>>
 
     /** Solo errores recientes */
     @Query("""
         SELECT * FROM log_entries 
         WHERE level = 'ERROR' 
-        ORDER BY timestamp DESC 
+        ORDER BY timestamp DESC, id DESC
         LIMIT :limit
     """)
     fun getRecentErrors(limit: Int = 10): Flow<List<LogEntry>>
@@ -68,7 +68,7 @@ interface LogDao {
         DELETE FROM log_entries 
         WHERE id NOT IN (
             SELECT id FROM log_entries 
-            ORDER BY timestamp DESC 
+            ORDER BY timestamp DESC, id DESC
             LIMIT :keepCount
         )
     """)

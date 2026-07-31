@@ -18,8 +18,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.0.37"
+        versionCode = 38
+        versionName = "1.0.38"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -136,6 +136,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("com.squareup.okio:okio:3.4.0")
     implementation("com.google.code.gson:gson:2.11.0")
 
     implementation("com.github.mwiede:jsch:0.2.25")

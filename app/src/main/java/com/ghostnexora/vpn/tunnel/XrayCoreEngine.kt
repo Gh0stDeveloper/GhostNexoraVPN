@@ -6,6 +6,10 @@ import go.Seq
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
+import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -22,7 +26,6 @@ class XrayCoreEngine(
     private val onStatus: (String) -> Unit = {}
 ) {
     private val appContext = context.applicationContext
-    private val initialized = AtomicBoolean(false)
     private var controller: CoreController? = null
 
     val isRunning: Boolean
@@ -35,6 +38,7 @@ class XrayCoreEngine(
     @Synchronized
     fun verifyOutbound(config: String): OutboundCheck {
         initializeCore()
+        onStatus("[CORE] Verificación nativa sin TUN iniciada")
         return measureAcrossEndpoints { url ->
             Libv2ray.measureOutboundDelay(config, url)
         }
@@ -46,15 +50,17 @@ class XrayCoreEngine(
         if (isRunning) error("Xray Core ya está ejecutándose")
 
         initializeCore()
+        onStatus("[CORE] Creando controlador AndroidLibXrayLite")
         val newController = Libv2ray.newCoreController(CoreCallback())
         controller = newController
 
         try {
+            onStatus("[TUN] Entregando la interfaz Android al core nativo")
             newController.startLoop(config, tunFd)
             if (!newController.isRunning) {
                 error("Xray Core no pudo iniciar el loop TUN")
             }
-            onStatus("Xray Core activo")
+            onStatus("[CORE] Xray Core activo")
         } catch (error: Throwable) {
             controller = null
             runCatching { newController.stopLoop() }
@@ -70,6 +76,7 @@ class XrayCoreEngine(
     fun verifyActiveOutbound(): OutboundCheck {
         val activeController = controller?.takeIf { it.isRunning }
             ?: error("Xray Core no está activo para validar la salida")
+        onStatus("[NETWORK] Comprobando Internet a través del outbound activo")
         return measureAcrossEndpoints { url ->
             activeController.measureDelay(url)
         }
@@ -107,15 +114,21 @@ class XrayCoreEngine(
     private fun measureAcrossEndpoints(measure: (String) -> Long): OutboundCheck {
         var lastError: Throwable? = null
 
-        for (endpoint in CONNECTIVITY_TEST_URLS) {
+        for ((index, endpoint) in CONNECTIVITY_TEST_URLS.withIndex()) {
             try {
+                onStatus("[NETWORK] Prueba de salida ${index + 1}/${CONNECTIVITY_TEST_URLS.size}")
                 val latency = measure(endpoint)
                 if (latency >= 0L) {
+                    onStatus("[NETWORK] Salida verificada · $latency ms")
                     return OutboundCheck(latencyMs = latency, endpoint = endpoint)
                 }
                 lastError = IllegalStateException("La prueba devolvió latencia inválida: $latency")
             } catch (error: Throwable) {
                 lastError = error
+                onStatus(
+                    "[NETWORK] WARN · prueba ${index + 1} falló · " +
+                        error.message.orEmpty().replace('\n', ' ').take(160)
+                )
             }
         }
 
@@ -131,14 +144,59 @@ class XrayCoreEngine(
     }
 
     private fun initializeCore() {
-        if (!initialized.compareAndSet(false, true)) return
-        try {
-            Seq.setContext(appContext)
-            val assetsDir = appContext.filesDir.resolve("xray-assets").apply { mkdirs() }
-            Libv2ray.initCoreEnv(assetsDir.absolutePath, deviceKey())
-        } catch (error: Throwable) {
-            initialized.set(false)
-            throw error
+        if (initialized.get()) return
+        synchronized(initializationLock) {
+            if (initialized.get()) return
+            try {
+                onStatus("[CORE] Inicializando entorno nativo una sola vez")
+                Seq.setContext(appContext)
+                val assetsDir = appContext.filesDir.resolve("xray-assets").apply { mkdirs() }
+                prepareEmbeddedGeoData(assetsDir)
+                val missingAssets = REQUIRED_ASSETS.filter { name ->
+                    assetsDir.resolve(name).let { !it.isFile || it.length() <= 0L }
+                }
+                check(missingAssets.isEmpty()) {
+                    "Faltan recursos Xray: ${missingAssets.joinToString()}"
+                }
+                onStatus("[CORE] Recursos geoip/geosite verificados")
+                Libv2ray.initCoreEnv(assetsDir.absolutePath, deviceKey())
+                initialized.set(true)
+                onStatus("[CORE] Entorno nativo inicializado")
+            } catch (error: Throwable) {
+                initialized.set(false)
+                throw error
+            }
+        }
+    }
+
+    private fun prepareEmbeddedGeoData(assetDirectory: File) {
+        REQUIRED_ASSETS.forEach { fileName ->
+            val destination = assetDirectory.resolve(fileName)
+            if (destination.isFile && destination.length() > 0L) return@forEach
+
+            val staged = File.createTempFile("$fileName-", ".tmp", assetDirectory)
+            try {
+                appContext.assets.open(fileName).use { input ->
+                    staged.outputStream().use(input::copyTo)
+                }
+                check(staged.length() > 0L) { "Embedded $fileName is empty" }
+                try {
+                    Files.move(
+                        staged.toPath(),
+                        destination.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                } catch (_: AtomicMoveNotSupportedException) {
+                    Files.move(
+                        staged.toPath(),
+                        destination.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                }
+            } finally {
+                staged.delete()
+            }
         }
     }
 
@@ -154,22 +212,27 @@ class XrayCoreEngine(
 
     private inner class CoreCallback : CoreCallbackHandler {
         override fun startup(): Long {
-            onStatus("Core iniciado")
+            onStatus("[CORE] Señal nativa de inicio recibida")
             return 0
         }
 
         override fun shutdown(): Long {
-            onStatus("Core detenido")
+            onStatus("[CORE] Señal nativa de cierre recibida")
             return 0
         }
 
         override fun onEmitStatus(code: Long, message: String?): Long {
-            message?.takeIf { it.isNotBlank() }?.let { onStatus("[$code] $it") }
+            message?.takeIf { it.isNotBlank() }?.let {
+                onStatus("[CORE] Evento nativo $code · $it")
+            }
             return 0
         }
     }
 
     private companion object {
+        val initialized = AtomicBoolean(false)
+        val initializationLock = Any()
+        val REQUIRED_ASSETS = listOf("geoip.dat", "geosite.dat")
         val CONNECTIVITY_TEST_URLS = listOf(
             "https://cp.cloudflare.com/generate_204",
             "https://www.gstatic.com/generate_204"

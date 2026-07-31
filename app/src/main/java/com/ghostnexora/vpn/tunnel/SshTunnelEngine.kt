@@ -74,7 +74,9 @@ class SshTunnelEngine(
         session.setSocketFactory(TunnelSocketFactory(profile, onStatus))
 
         try {
+            onStatus("[SSH] Abriendo sesión y negociando algoritmos")
             session.connect(25_000)
+            onStatus("[SSH] Autenticación completada · sesión cifrada activa")
         } catch (e: JSchException) {
             if (e.message?.contains("auth fail", ignoreCase = true) == true) {
                 throw IllegalStateException(
@@ -186,10 +188,16 @@ private class TunnelSocketFactory(
 
     override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
 
-    private fun connectDirect(host: String, port: Int): Socket = Socket().apply {
-        tcpNoDelay = true
-        keepAlive = true
-        connect(InetSocketAddress(host, port), 20_000)
+    private fun connectDirect(host: String, port: Int): Socket {
+        onStatus("[NETWORK] Abriendo socket TCP · $host:$port")
+        val startedAt = System.nanoTime()
+        return Socket().apply {
+            tcpNoDelay = true
+            keepAlive = true
+            connect(InetSocketAddress(host, port), 20_000)
+            val latencyMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+            onStatus("[NETWORK] Socket TCP conectado · $latencyMs ms")
+        }
     }
 
     /**

@@ -10,11 +10,9 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.VpnService
-import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.GhostNexoraApp
@@ -30,6 +28,8 @@ import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog
 import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory
+import com.ghostnexora.vpn.tunnel.TunnelLogEvent
+import com.ghostnexora.vpn.tunnel.TunnelLogEventParser
 import com.ghostnexora.vpn.tunnel.TunnelManager
 import com.ghostnexora.vpn.tunnel.TunnelRuntime
 import com.ghostnexora.vpn.ui.MainActivity
@@ -40,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,6 +67,7 @@ class GhostVpnService : VpnService() {
     private var reconnectJob: Job? = null
     private var healthJob: Job? = null
     private var statsJob: Job? = null
+    private var tunnelLogWriterJob: Job? = null
     private var intentionalDisconnect = false
     private var sessionConnectedSince = 0L
     private var reconnectCount = 0
@@ -88,9 +90,13 @@ class GhostVpnService : VpnService() {
 
     private val tunnelManager by lazy {
         TunnelManager(applicationContext) { status ->
-            serviceScope.launch { logSafe(LogLevel.DEBUG, status, activeProfile?.id, tag = "CORE") }
+            TunnelLogEventParser.parse(status)?.let { event ->
+                tunnelLogChannel.trySend(PendingTunnelLog(activeProfile?.id, event))
+            }
         }
     }
+
+    private val tunnelLogChannel = Channel<PendingTunnelLog>(Channel.UNLIMITED)
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -139,15 +145,11 @@ class GhostVpnService : VpnService() {
         }
     }
 
-    private val binder = GhostVpnBinder()
-
     companion object {
         const val ACTION_CONNECT = "com.ghostnexora.vpn.CONNECT"
         const val ACTION_DISCONNECT = "com.ghostnexora.vpn.DISCONNECT"
         const val EXTRA_PROFILE_ID = "extra_profile_id"
-        const val EXTRA_PREFLIGHT_AT = "extra_preflight_at"
 
-        private const val PREFLIGHT_VALIDITY_MS = 90_000L
         private val RECONNECT_DELAYS = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
 
         private val _connectionState = MutableStateFlow<VpnConnectionState>(VpnConnectionState.Disconnected)
@@ -163,32 +165,52 @@ class GhostVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        tunnelLogWriterJob = serviceScope.launch {
+            for (pending in tunnelLogChannel) {
+                logSafe(
+                    pending.event.level,
+                    pending.event.message,
+                    pending.profileId,
+                    pending.event.tag
+                )
+            }
+        }
         val initialNetwork = findUsablePhysicalNetwork()
         if (initialNetwork != null) registerUnderlyingNetwork(initialNetwork)
         registerPhysicalNetworkCallback()
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 startPreparingForeground("Preparando conexión")
                 val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
-                val preflightAt = intent.getLongExtra(EXTRA_PREFLIGHT_AT, 0L)
                 if (profileId.isNullOrBlank()) {
                     serviceScope.launch {
+                        repository.setVpnDesiredConnected(false)
                         logSafe(LogLevel.ERROR, "No se especificó un perfil", tag = "VPN")
-                        updateState(VpnConnectionState.Error("Sin perfil especificado"))
+                        publishState(VpnConnectionState.Error("Sin perfil especificado"))
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                     }
                 } else {
-                    serviceScope.launch { handleConnect(profileId, preflightAt) }
+                    serviceScope.launch {
+                        repository.setVpnDesiredConnected(true)
+                        repository.resetVpnRecovery()
+                        handleConnect(profileId)
+                    }
                 }
             }
 
-            ACTION_DISCONNECT -> serviceScope.launch { handleDisconnect() }
+            ACTION_DISCONNECT -> serviceScope.launch {
+                repository.setVpnDesiredConnected(false)
+                handleDisconnect()
+            }
+            VpnServiceContract.ACTION_QUERY_RUNTIME -> serviceScope.launch {
+                handleRuntimeQuery(startId)
+            }
             else -> {
                 startPreparingForeground("Restaurando sesión")
                 serviceScope.launch { handleSystemRestart() }
@@ -212,14 +234,17 @@ class GhostVpnService : VpnService() {
         cleanupTunnel(closeTun = true)
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
         runCatching { setUnderlyingNetworks(null) }
+        tunnelLogChannel.close()
+        tunnelLogWriterJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
 
-    private suspend fun handleConnect(profileId: String, preflightAt: Long = 0L) = connectionMutex.withLock {
+    private suspend fun handleConnect(profileId: String) = connectionMutex.withLock {
         val profile = repository.getProfileById(profileId)
         if (profile == null) {
-            updateState(VpnConnectionState.Error("Perfil no encontrado"))
+            repository.setVpnDesiredConnected(false)
+            publishState(VpnConnectionState.Error("Perfil no encontrado"))
             logSafe(LogLevel.ERROR, "Perfil no encontrado", tag = "VPN")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -234,7 +259,7 @@ class GhostVpnService : VpnService() {
         activeProfile = profile
         reconnectCount = 0
         sessionConnectedSince = System.currentTimeMillis()
-        updateState(VpnConnectionState.Connecting(profile.name))
+        publishState(VpnConnectionState.Connecting(profile.name))
         startForeground(
             GhostNexoraApp.NOTIF_ID_VPN,
             buildNotification(VpnConnectionState.Connecting(profile.name))
@@ -263,26 +288,12 @@ class GhostVpnService : VpnService() {
             )
             logSafe(LogLevel.INFO, "Iniciando ${profile.connectionModeLabel}", profile.id, "VPN")
             logConnectionSnapshot(profile)
-
-            val preflightAge = SystemClock.elapsedRealtime() - preflightAt
-            val hasFreshPreflight = preflightAt > 0L && preflightAge in 0L..PREFLIGHT_VALIDITY_MS
-            if (hasFreshPreflight) {
-                logSafe(LogLevel.INFO, "Validación previa vigente; preparando TUN", profile.id, "NETWORK")
-            } else {
-                logSafe(
-                    LogLevel.INFO,
-                    "Comprobando acceso a Internet del servidor antes de crear el TUN",
-                    profile.id,
-                    "NETWORK"
-                )
-                val preflight = tunnelManager.verify(profile, preferences)
-                logSafe(
-                    LogLevel.SUCCESS,
-                    "Servidor validado antes del TUN · ${preflight.latencyMs} ms",
-                    profile.id,
-                    "NETWORK"
-                )
-            }
+            logSafe(
+                LogLevel.INFO,
+                "Activando TUN en modo fail-closed; el core validará la salida antes de publicar Conectado",
+                profile.id,
+                "NETWORK"
+            )
 
             val tun = buildTunInterface(profile, preferences, appRouting) ?: error("Android no pudo establecer la interfaz VPN")
             tunInterface = tun
@@ -294,7 +305,7 @@ class GhostVpnService : VpnService() {
             repository.markLastUsed(profile.id)
 
             val connected = connectedState(profile)
-            updateState(connected)
+            publishState(connected)
             updateNotification(connected)
             logSafe(
                 LogLevel.SUCCESS,
@@ -302,6 +313,7 @@ class GhostVpnService : VpnService() {
                 profile.id,
                 "VPN"
             )
+            repository.resetVpnRecovery()
             resetTrafficBaseline(profile)
             startStatsTicker(profile)
             startHealthMonitor(profile)
@@ -310,7 +322,8 @@ class GhostVpnService : VpnService() {
             val message = friendlyConnectionError(error, profile)
             cleanupTunnel(closeTun = true)
             activeProfile = null
-            updateState(VpnConnectionState.Error(message, profile.name))
+            repository.setVpnDesiredConnected(false)
+            publishState(VpnConnectionState.Error(message, profile.name))
             updateNotification(VpnConnectionState.Error(message, profile.name))
             logSafe(LogLevel.ERROR, message, profile.id, "VPN")
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -320,12 +333,14 @@ class GhostVpnService : VpnService() {
 
     private suspend fun handleDisconnect() = connectionMutex.withLock {
         intentionalDisconnect = true
+        repository.setVpnDesiredConnected(false)
+        repository.resetVpnRecovery()
         reconnectJob?.cancel()
         healthJob?.cancel()
         statsJob?.cancel()
         val profileId = activeProfile?.id
 
-        updateState(VpnConnectionState.Disconnecting)
+        publishState(VpnConnectionState.Disconnecting)
         updateNotification(VpnConnectionState.Disconnecting)
         logSafe(LogLevel.INFO, "Cerrando túnel y sesión de transporte", profileId, "VPN")
 
@@ -333,8 +348,8 @@ class GhostVpnService : VpnService() {
         stopService(Intent(this, FloatingWindowService::class.java))
         activeProfile = null
         sessionConnectedSince = 0L
-        _trafficStats.value = VpnTrafficStats()
-        updateState(VpnConnectionState.Disconnected)
+        publishTraffic(VpnTrafficStats())
+        publishState(VpnConnectionState.Disconnected)
         logSafe(LogLevel.SUCCESS, "VPN desconectada", profileId, "VPN")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -342,13 +357,42 @@ class GhostVpnService : VpnService() {
 
     private suspend fun handleSystemRestart() {
         val profileId = repository.activeProfileId.first()
-        val shouldReconnect = repository.autoReconnect.first()
+        val shouldReconnect =
+            repository.autoReconnect.first() && repository.vpnDesiredConnected.first()
         if (shouldReconnect && profileId.isNotBlank()) {
-            logSafe(LogLevel.INFO, "Restaurando VPN después de reinicio del servicio", tag = "VPN")
-            handleConnect(profileId, preflightAt = 0L)
+            val recoveryAttempt = repository.claimVpnRecoveryAttempt()
+            if (recoveryAttempt == null) {
+                val message = "El motor VPN se reinició demasiadas veces; reconexión automática detenida"
+                repository.setVpnDesiredConnected(false)
+                publishState(VpnConnectionState.Error(message))
+                logSafe(LogLevel.ERROR, "$message [CORE-RECOVERY-003]", tag = "CORE")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+            logSafe(
+                LogLevel.WARNING,
+                "Restaurando VPN después del reinicio del proceso nativo · intento $recoveryAttempt/3",
+                tag = "CORE"
+            )
+            handleConnect(profileId)
         } else {
+            publishState(VpnConnectionState.Disconnected)
+            publishTraffic(VpnTrafficStats())
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
+        }
+    }
+
+    private suspend fun handleRuntimeQuery(startId: Int) {
+        broadcastCurrentRuntime()
+        if (activeProfile != null || connectionState.value !is VpnConnectionState.Disconnected) return
+
+        if (repository.vpnDesiredConnected.first()) {
+            startPreparingForeground("Recuperando motor VPN")
+            handleSystemRestart()
+        } else {
+            stopSelfResult(startId)
         }
     }
 
@@ -379,12 +423,12 @@ class GhostVpnService : VpnService() {
         if (!autoReconnect) {
             if (killSwitch) {
                 val message = "Conexión perdida. Kill Switch mantiene el tráfico bloqueado."
-                updateState(VpnConnectionState.Error(message, profile.name))
+                publishState(VpnConnectionState.Error(message, profile.name))
                 updateNotification(VpnConnectionState.Error(message, profile.name))
                 logSafe(LogLevel.WARNING, "$reason · $message", profile.id, "NETWORK")
             } else {
                 cleanupTunnel(closeTun = true)
-                updateState(VpnConnectionState.Error("Conexión perdida", profile.name))
+                publishState(VpnConnectionState.Error("Conexión perdida", profile.name))
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -400,7 +444,7 @@ class GhostVpnService : VpnService() {
             val baseDelay = RECONNECT_DELAYS[attempt.coerceAtMost(RECONNECT_DELAYS.lastIndex)]
             val waitMs = baseDelay + ((attempt * 173L) % 650L)
             val state = VpnConnectionState.Reconnecting(profile.name, attempt + 1, waitMs)
-            updateState(state)
+            publishState(state)
             updateNotification(state)
 
             if (!physicalNetworkAvailable) {
@@ -413,7 +457,6 @@ class GhostVpnService : VpnService() {
             if (intentionalDisconnect || tunInterface == null) return
 
             val result = runCatching {
-                tunnelManager.verify(profile, preferences)
                 connectionMutex.withLock {
                     tunnelManager.stop(tunnelRuntime)
                     tunnelRuntime = null
@@ -425,7 +468,7 @@ class GhostVpnService : VpnService() {
             if (result.isSuccess && tunnelManager.isAlive(tunnelRuntime)) {
                 reconnectCount += 1
                 val connected = connectedState(profile)
-                updateState(connected)
+                publishState(connected)
                 updateNotification(connected)
                 logSafe(
                     LogLevel.SUCCESS,
@@ -433,7 +476,7 @@ class GhostVpnService : VpnService() {
                     profile.id,
                     "NETWORK"
                 )
-                _trafficStats.value = _trafficStats.value.copy(reconnectCount = reconnectCount)
+                publishTraffic(_trafficStats.value.copy(reconnectCount = reconnectCount))
                 startHealthMonitor(profile)
                 return
             }
@@ -446,12 +489,12 @@ class GhostVpnService : VpnService() {
 
         val exhausted = "Reconnect attempts exhausted ($maxAttempts) [RECONNECT-408]"
         if (killSwitch) {
-            updateState(VpnConnectionState.Error(exhausted, profile.name))
+            publishState(VpnConnectionState.Error(exhausted, profile.name))
             updateNotification(VpnConnectionState.Error(exhausted, profile.name))
             logSafe(LogLevel.ERROR, "$exhausted · Kill Switch keeps traffic blocked", profile.id, "NETWORK")
         } else {
             cleanupTunnel(closeTun = true)
-            updateState(VpnConnectionState.Error(exhausted, profile.name))
+            publishState(VpnConnectionState.Error(exhausted, profile.name))
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -499,14 +542,14 @@ class GhostVpnService : VpnService() {
         tunnelManager.drainTraffic()
         sessionReceivedBytes = 0L
         sessionSentBytes = 0L
-        _trafficStats.value = VpnTrafficStats(
+        publishTraffic(VpnTrafficStats(
             receivedBytes = 0,
             sentBytes = 0,
             reconnectCount = reconnectCount,
             latencyMs = tunnelRuntime?.verifiedLatencyMs ?: 0L,
             networkType = physicalNetworkType,
             protocol = profile.connectionModeLabel
-        )
+        ))
     }
 
     private fun startStatsTicker(profile: VpnProfile) {
@@ -524,7 +567,7 @@ class GhostVpnService : VpnService() {
                 } else {
                     _trafficStats.value.latencyMs
                 }
-                _trafficStats.value = VpnTrafficStats(
+                publishTraffic(VpnTrafficStats(
                     receivedBytes = sessionReceivedBytes,
                     sentBytes = sessionSentBytes,
                     downloadBytesPerSecond = if (tunnelManager.isAlive(tunnelRuntime)) {
@@ -541,7 +584,7 @@ class GhostVpnService : VpnService() {
                     latencyMs = latency,
                     networkType = physicalNetworkType,
                     protocol = profile.connectionModeLabel
-                )
+                ))
             }
         }
     }
@@ -830,8 +873,25 @@ class GhostVpnService : VpnService() {
 
     private fun startPreparingForeground(label: String) {
         val state = VpnConnectionState.Connecting(label)
-        updateState(state)
+        publishState(state)
         startForeground(GhostNexoraApp.NOTIF_ID_VPN, buildNotification(state))
+    }
+
+    private fun publishState(state: VpnConnectionState) {
+        updateState(state)
+        runCatching { sendBroadcast(VpnServiceContract.stateIntent(this, state)) }
+    }
+
+    private fun publishTraffic(stats: VpnTrafficStats) {
+        _trafficStats.value = stats
+        runCatching { sendBroadcast(VpnServiceContract.trafficIntent(this, stats)) }
+    }
+
+    private fun broadcastCurrentRuntime() {
+        runCatching {
+            sendBroadcast(VpnServiceContract.stateIntent(this, connectionState.value))
+            sendBroadcast(VpnServiceContract.trafficIntent(this, trafficStats.value))
+        }
     }
 
     private suspend fun logSafe(
@@ -841,7 +901,8 @@ class GhostVpnService : VpnService() {
         tag: String = "VPN"
     ) = repository.log(level, message, profileId, tag)
 
-    inner class GhostVpnBinder : Binder() {
-        fun getService(): GhostVpnService = this@GhostVpnService
-    }
+    private data class PendingTunnelLog(
+        val profileId: String?,
+        val event: TunnelLogEvent
+    )
 }

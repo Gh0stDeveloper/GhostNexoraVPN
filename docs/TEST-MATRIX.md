@@ -25,7 +25,7 @@ CI success alone is labeled **CI verified**.
 | Direct SSH | password, custom port | authenticated, SOCKS, Internet | Pending |
 | SSH + SSL | TLS 1.2, valid SNI | strict certificate success | Pending |
 | SSH + SSL | TLS 1.3, valid SNI | strict certificate success | Pending |
-| SSH + SSL | invalid SNI | `TLS-004` before TUN | Pending |
+| SSH + SSL | invalid SNI | `TLS-004`; startup TUN closes without publishing Connected | Pending |
 | SSH + SSL | custom SNI + trusted chain + different SAN | compatible handshake, SSH continues | Pending |
 | SSH + SSL | custom SNI + untrusted chain | `TLS-004`; no trust-all fallback | Pending |
 | SSH + Payload | HTTP 200 | SSH continues | Pending |
