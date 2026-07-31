@@ -8,15 +8,20 @@ import java.io.File
 /** Guards the Injector-compatible distinction between SSH/TCP identity and TLS SNI. */
 class PhysicalNetworkSocketArchitectureTest {
     @Test
-    fun connectorResolvesAndBindsEveryAttemptToANonVpnNetwork() {
+    fun connectorProtectsThenBindsEveryAttemptToANonVpnNetwork() {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/PhysicalNetworkSocketConnector.kt"
         )
+        val protectIndex = source.indexOf("OutboundSocketProtection.protect(socket)")
+        val bindIndex = source.indexOf("network.bindSocket(socket)")
 
         assertTrue(source.contains("NetworkCapabilities.NET_CAPABILITY_NOT_VPN"))
         assertTrue(source.contains("manager.registerNetworkCallback"))
         assertTrue(source.contains("network.getAllByName(host)"))
-        assertTrue(source.contains("network.bindSocket(socket)"))
+        assertTrue(protectIndex >= 0)
+        assertTrue(bindIndex >= 0)
+        assertTrue("VpnService.protect must run before Network.bindSocket", protectIndex < bindIndex)
+        assertTrue(source.contains("[VPN-LOOP-001]"))
         assertTrue(source.contains("for ((addressIndex, address) in addresses.withIndex())"))
         assertTrue(source.contains("sortedBy { if (it is Inet4Address) 0 else 1 }"))
         assertTrue(source.contains("[TCP-ALL-FAILED]"))
@@ -24,6 +29,18 @@ class PhysicalNetworkSocketArchitectureTest {
             "Deprecated global network enumeration must not return",
             source.contains("manager.allNetworks")
         )
+    }
+
+    @Test
+    fun vpnServiceOwnsTheSocketProtectionLifecycle() {
+        val source = sourceFile(
+            "src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt"
+        )
+
+        assertTrue(source.contains("OutboundSocketProtection.install { socket -> protect(socket) }"))
+        assertTrue(source.contains("cleanupTunnel(closeTun = true)\n        OutboundSocketProtection.clear()"))
+        assertTrue(source.contains("check(protect(socket))"))
+        assertTrue(source.contains("underlyingNetwork?.bindSocket(socket)"))
     }
 
     @Test
