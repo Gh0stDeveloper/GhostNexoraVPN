@@ -25,9 +25,9 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Feature | Status |
 |---|---|
 | Android TUN IPv4/IP modes/MTU/DNS generation | CI verified |
-| Fail-closed TUN startup with mandatory application self-bypass | CI verification pending on this branch; device behavior pending |
-| Immediate core-ready `Connected` state and asynchronous outbound verification | CI verification pending on this branch; device behavior pending |
-| Non-blocking disconnect while a health probe is active | Source implemented; CI and device regression pending |
+| Fail-closed TUN startup with mandatory application self-bypass | CI verified by Build Android #501; device behavior pending |
+| Immediate core-ready `Connected` state and asynchronous outbound verification | CI verified by Build Android #501; device behavior pending |
+| Non-blocking disconnect while a health probe is active | CI/source verified; physical regression pending |
 | JSch Android random provider | CI verified |
 | SSH direct/password | Device testing pending |
 | SSH + TLS/SNI strict and HTTP Custom-compatible | CI verified; real-server device testing pending |
