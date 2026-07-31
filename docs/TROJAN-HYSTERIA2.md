@@ -56,10 +56,16 @@ Hysteria2 is more sensitive to:
 
 Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400. The diagnostic result must record carrier/network type, IP mode, MTU, DNS mode, latency, and failure stage.
 
+## Runtime state and verification
+
+For Trojan and Hysteria2, the Dashboard publishes `Connected` when the Android TUN and Xray native loop are active. The first outbound HTTP check runs afterward on a background I/O coroutine. A failed check does not block the UI and does not enable a direct fallback; the health monitor retries and applies the configured reconnection/Kill Switch policy after repeated failures.
+
+The UI state is not interoperability certification. Device verification still requires a successful outbound check, real upload/download traffic, leak testing, and sustained operation under the relevant network conditions.
+
 ## Status
 
-- Trojan configuration/import/routing: CI verified, physical interoperability pending.
-- Hysteria2 configuration/import/routing: CI verified.
+- Trojan configuration/import/routing and non-blocking startup: CI verified; physical interoperability pending.
+- Hysteria2 configuration/import/routing and non-blocking startup: CI verified.
 - Hysteria2 stability across carriers, loss, handover, and sleep: experimental until documented.
 
 ## Required tests
@@ -71,7 +77,9 @@ Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400
 - WebSocket/TLS;
 - gRPC/TLS;
 - server authentication rejection;
-- IPv4-only and dual stack.
+- IPv4-only and dual stack;
+- delayed/unreachable health endpoint without UI freeze;
+- disconnect while the background check is active.
 
 ### Hysteria2
 
@@ -82,6 +90,7 @@ Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400
 - Wi-Fi to mobile handover;
 - screen-off/background session;
 - MTU 1280, 1360, and 1400;
-- IPv6-capable and IPv4-only servers.
+- IPv6-capable and IPv4-only servers;
+- health-check failure while the fail-closed TUN remains active.
 
-A successful core start is insufficient. The connection must pass active outbound verification and sustain traffic during the observation window.
+A successful core start is sufficient for the transient UI `Connected` state, but insufficient for a device-verified support claim.

@@ -13,6 +13,11 @@ import java.net.ServerSocket
  * SSH modes follow the same high-level pipeline used by mature injector-style
  * clients: transport socket -> optional proxy -> optional TLS/SNI -> optional
  * HTTP payload -> SSH authentication -> local SOCKS -> Xray TUN.
+ *
+ * Starting the runtime and proving Internet reachability are intentionally
+ * separate operations. [start] returns as soon as the SSH/Xray/TUN chain is
+ * alive; [verifyActive] is executed by the service on a background coroutine.
+ * This prevents an outbound probe from blocking Connected-state publication.
  */
 class TunnelManager(
     context: Context,
@@ -57,6 +62,13 @@ class TunnelManager(
         }
     }
 
+    /**
+     * Starts the transport and native core only.
+     *
+     * No Internet, ping, TLS or SOCKS probe runs in this call. The caller can
+     * therefore publish Connected immediately after the native core reports a
+     * successful start and schedule [verifyActive] independently.
+     */
     @Synchronized
     fun start(
         profile: VpnProfile,
@@ -81,13 +93,13 @@ class TunnelManager(
                     preferences = preferences,
                     healthCheckPort = healthCheckPort
                 )
-                startAndVerify(
-                    profile,
-                    config,
-                    tunFd,
-                    sshHandle,
-                    preferences,
-                    healthCheckPort
+                startCore(
+                    profile = profile,
+                    config = config,
+                    tunFd = tunFd,
+                    sshHandle = sshHandle,
+                    preferences = preferences,
+                    healthCheckPort = healthCheckPort
                 )
             } catch (error: Throwable) {
                 xrayEngine.stop()
@@ -98,7 +110,14 @@ class TunnelManager(
         } else {
             val config = StableXrayConfigFactory.build(profile, preferences = preferences)
             try {
-                startAndVerify(profile, config, tunFd, null, preferences, null)
+                startCore(
+                    profile = profile,
+                    config = config,
+                    tunFd = tunFd,
+                    sshHandle = null,
+                    preferences = preferences,
+                    healthCheckPort = null
+                )
             } catch (error: Throwable) {
                 xrayEngine.stop()
                 onCoreStatus("[ERROR] Xray/TUN detenido · ${error.message.orEmpty().take(180)}")
@@ -107,7 +126,7 @@ class TunnelManager(
         }
     }
 
-    private fun startAndVerify(
+    private fun startCore(
         profile: VpnProfile,
         config: String,
         tunFd: Int,
@@ -120,9 +139,8 @@ class TunnelManager(
         onCoreStatus("[ROUTING] Regla explícita TUN → proxy · TCP/UDP")
         xrayEngine.start(config, tunFd, healthCheckPort)
         onCoreStatus("[TUN] Xray Core conectado a la interfaz Android")
-        val outbound = xrayEngine.verifyActiveOutbound()
-        onCoreStatus("[NETWORK] Internet validado por el outbound · ${outbound.latencyMs} ms")
-        return TunnelRuntime(profile.selectedMode, sshHandle, outbound.latencyMs)
+        onCoreStatus("[NETWORK] Core activo · verificación de salida programada en segundo plano")
+        return TunnelRuntime(profile.selectedMode, sshHandle)
     }
 
     private fun prepareSshRuntime(profile: VpnProfile) {
@@ -154,8 +172,12 @@ class TunnelManager(
         InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
     ).use { it.localPort }
 
-    /** Checks the already-running core without changing Android routes. */
-    @Synchronized
+    /**
+     * Checks the already-running core without changing Android routes.
+     *
+     * This method deliberately does not synchronize on [TunnelManager]. A
+     * slow network probe must never prevent [stop] from tearing down the core.
+     */
     fun verifyActive(): OutboundCheck = xrayEngine.verifyActiveOutbound()
 
     fun drainTraffic(): XrayTrafficDelta = xrayEngine.drainProxyTraffic()

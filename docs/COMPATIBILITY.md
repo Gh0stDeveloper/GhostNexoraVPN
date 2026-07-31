@@ -25,7 +25,9 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Feature | Status |
 |---|---|
 | Android TUN IPv4/IP modes/MTU/DNS generation | CI verified |
-| Isolated fail-closed startup and active HTTP verification | CI verified; device behavior pending |
+| Fail-closed TUN startup with mandatory application self-bypass | CI verified by Build Android #501; device behavior pending |
+| Immediate core-ready `Connected` state and asynchronous outbound verification | CI verified by Build Android #501; device behavior pending |
+| Non-blocking disconnect while a health probe is active | CI/source verified; physical regression pending |
 | JSch Android random provider | CI verified |
 | SSH direct/password | Device testing pending |
 | SSH + TLS/SNI strict and HTTP Custom-compatible | CI verified; real-server device testing pending |
@@ -46,6 +48,12 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Certificate pinning UI | Not implemented |
 | Biometric app lock | Not implemented |
 
+## Connection-state interpretation
+
+The Dashboard `Connected` state means the selected transport, Xray native loop, and Android TUN are active. The initial Internet/TLS/SOCKS probe runs afterward in the background. This avoids a UI deadlock and does not weaken captured-traffic routing: the TUN has no silent direct fallback while verification is pending or failing.
+
+A feature is not promoted to device verified merely because the UI says `Connected`. The evidence record must include successful real traffic, health verification, leak checks, and teardown/recovery behavior.
+
 ## Promotion criteria
 
 A combination moves from device testing pending to device verified only when `TEST-MATRIX.md` evidence is supplied. A feature moves from experimental to supported after:
@@ -55,6 +63,8 @@ A combination moves from device testing pending to device verified only when `TE
 - failure-path tests;
 - handover/background tests when relevant;
 - no unresolved critical leak or connectivity issue;
+- no startup freeze when health endpoints are delayed or unreachable;
+- no self-routing of the VPN package or JSch transport;
 - documentation and troubleshooting updates.
 
 ## Product comparison
@@ -69,6 +79,7 @@ The project may target feature parity or stronger diagnostics/security than HTTP
 - latency/throughput;
 - configuration compatibility;
 - security defaults;
+- startup responsiveness and cancellation;
 - usability/accessibility.
 
 The in-app Compatibility screen summarizes this policy for users.

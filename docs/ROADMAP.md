@@ -8,7 +8,10 @@ This roadmap separates implemented work from planned work. An implemented item i
 
 - non-destructive connection diagnostics;
 - isolated fail-closed TUN startup;
-- active outbound verification before connected-state publication;
+- mandatory application self-bypass to prevent recursive JSch/Xray routing;
+- immediate `Connected` publication after successful SSH/Xray/TUN startup;
+- asynchronous active outbound verification with bounded startup monitoring;
+- probe execution outside teardown locks;
 - IPv4-only, IPv4-preferred, and dual-stack modes;
 - synchronized Android/Xray MTU;
 - protected DNS modes;
@@ -101,6 +104,7 @@ Replace remaining generic Xray option text with typed fields for:
 
 ## Phase 4 — Product completion
 
+- explicit UI health badge distinguishing core-ready from outbound-verified;
 - lightweight session speed chart;
 - public IP before/after;
 - DNS leak test;
@@ -116,21 +120,22 @@ Replace remaining generic Xray option text with typed fields for:
 
 ## Post-merge device qualification backlog
 
-For the 1.0.41 device qualification cycle:
+For the next device qualification cycle:
 
-1. Install the newest validation APK on the device that reproduced the JSch error.
-2. Run diagnostics for the same SSH + SSL profile.
-3. Test segmented payloads against controlled 200/101/403/407 fixtures.
-4. Repeat with the V2Ray profile that previously removed Internet access.
-5. Test IPv4 only at MTU 1400, then 1360 if pages stall.
-6. Test all three application-routing modes.
-7. Test mobile-data/Wi-Fi handover.
-8. Confirm Kill Switch enabled and disabled behavior.
-9. Verify import preview and duplicate-safe merge.
-10. Import locked GNX3 files with and without a creator password and verify
-    masked UI/logs plus successful VPN use.
-11. Test safe creator-note formatting and external contact links.
-12. Record every successful exact combination in `TEST-MATRIX.md`.
+1. Install the newest validation APK on the device that reproduced the SSH + SSL freeze.
+2. Confirm the UI reaches `Connected` immediately after the Xray startup event.
+3. Confirm `Prueba real 1/2 · TLS remoto por SSH` continues in the background.
+4. Disconnect manually while that probe is active and confirm teardown completes.
+5. Block the verification endpoints and confirm the UI remains responsive, the TUN stays fail-closed, and warnings/retries are logged.
+6. Verify the application UID and JSch socket use the physical network in all-app and exclude-selected modes.
+7. Verify only-selected mode excludes the VPN package by omission.
+8. Run diagnostics for the same SSH + SSL profile.
+9. Test segmented payloads against controlled 200/101/403/407 fixtures.
+10. Repeat with the V2Ray profile that previously removed Internet access.
+11. Test IPv4 only at MTU 1400, then 1360 if pages stall.
+12. Test mobile-data/Wi-Fi handover and Kill Switch enabled/disabled behavior.
+13. Import locked GNX3 files and verify masked UI/logs plus successful VPN use.
+14. Record every successful exact combination in `TEST-MATRIX.md`.
 
 ## Release policy
 
@@ -142,6 +147,8 @@ A transport is labeled **device verified** only when:
 - a real server accepts authentication;
 - DNS and TCP/HTTP traffic work through the tunnel;
 - upload and download are observed;
+- background outbound verification completes or equivalent traffic evidence is recorded;
 - reconnection works after an interruption;
 - no unintended direct traffic leak is observed;
+- no self-routing loop or startup deadlock is observed;
 - the evidence record identifies device, network, server, and application commit.

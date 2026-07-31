@@ -60,6 +60,8 @@ Use a valid UUID. Check that VMess/VLESS was imported into the correct protocol 
 
 ## Core started but no Internet — `ROUTE-204`
 
+The Dashboard can show `Connected` as soon as the SSH/Xray transport and Android TUN are active. Internet verification runs afterward in the background. A warning from that check means the tunnel is alive but the configured outbound has not yet proved usable.
+
 Check:
 
 1. protocol;
@@ -75,6 +77,34 @@ Check:
 
 Start with IPv4 only, MTU 1400, and Automatic protected DNS.
 
+## Stuck on Loading after `Prueba real 1/2`
+
+Builds containing the startup-deadlock fix must not remain in `Cargando` while the log shows:
+
+```text
+Prueba real 1/2 · TLS remoto por SSH
+```
+
+Expected behavior:
+
+1. Xray reports its native loop active.
+2. The UI changes immediately to `Connected`.
+3. The TLS/SOCKS Internet probe continues on a background I/O coroutine.
+4. A timeout or failure is logged as a warning and the health monitor retries.
+5. Pressing Disconnect closes the core, SSH bridge, and TUN even while the probe is active.
+
+When an updated build still freezes:
+
+- confirm the APK contains the commit with asynchronous startup verification;
+- record whether the UI received the Xray startup event;
+- record the app-routing mode;
+- verify the VPN package is excluded from the TUN;
+- export logs from TUN creation through the first probe;
+- test with the verification endpoints blocked to reproduce deterministically;
+- include Android device/API, carrier, IP mode, MTU, and exact app version.
+
+Do not solve this by adding a trust-all TLS manager or a direct Xray fallback. Those changes would hide the routing defect and weaken security.
+
 ## Application routing — `APP-ROUTE-001`
 
 Only-selected mode has no valid selection. Select at least one installed application or switch to all/exclude mode.
@@ -83,6 +113,23 @@ Only-selected mode has no valid selection. Select at least one installed applica
 
 A selected package was uninstalled or is unavailable. Refresh the application list and remove stale packages.
 
+## Self-routing or recursive VPN loop
+
+Symptoms can include:
+
+- SSH authenticates and Xray starts, but the first real probe never completes;
+- repeated connections to a loopback SOCKS port;
+- no traffic despite an active TUN;
+- Disconnect waits behind a network check.
+
+Expected routing rules:
+
+- **All applications:** `addDisallowedApplication(packageName)` is applied before `establish()`.
+- **Exclude selected:** the VPN package and every selected package are disallowed.
+- **Only selected:** the VPN package is not included in the allowed list because Android does not permit mixing allowed and disallowed lists.
+
+A failure applying a required package rule must abort TUN startup. It must not be ignored with `runCatching` or converted into unrestricted full-device routing.
+
 ## TUN failure — `TUN-500`
 
 - Disconnect another VPN.
@@ -90,6 +137,7 @@ A selected package was uninstalled or is unavailable. Refresh the application li
 - Reboot the device.
 - Check OEM battery/security tools.
 - Verify the only-selected list is valid.
+- Confirm the installed package can be resolved for self-bypass.
 
 ## Connection succeeds but pages stall
 
@@ -97,6 +145,7 @@ A selected package was uninstalled or is unavailable. Refresh the application li
 - Test IPv4-only.
 - Change DNS mode.
 - Check whether only some applications are routed.
+- Wait for the background outbound-verification result and distinguish a failed probe from real browser traffic.
 - Export logs after reproducing the stall.
 
 ## Wi-Fi/mobile handover fails
@@ -105,6 +154,7 @@ A selected package was uninstalled or is unavailable. Refresh the application li
 - Disable battery restrictions.
 - Record whether the physical network returned before retry exhaustion.
 - Test with Kill Switch both enabled and disabled to distinguish intentional blocking.
+- Confirm reconnection publishes `Connected` after the new core starts and does not wait synchronously for its health probe.
 
 ## Cannot install test APK
 
@@ -119,4 +169,6 @@ A previous APK may use a different signing key. Uninstalling can remove local pr
 - exact structured error code;
 - sanitized diagnostic export;
 - whether the same profile works in another client;
-- whether the failure occurs on Wi-Fi, mobile data, or both.
+- whether the failure occurs on Wi-Fi, mobile data, or both;
+- whether `Connected` appeared before the first background verification result;
+- whether Disconnect worked while the probe was active.
