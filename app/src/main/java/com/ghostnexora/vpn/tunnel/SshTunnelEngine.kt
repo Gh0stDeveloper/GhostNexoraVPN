@@ -2,7 +2,6 @@ package com.ghostnexora.vpn.tunnel
 
 import android.content.Context
 import com.ghostnexora.vpn.data.model.ProxyConfig
-import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.util.PayloadAction
 import com.ghostnexora.vpn.util.PayloadContext
@@ -143,50 +142,45 @@ private class TunnelSocketFactory(
         val mode = profile.selectedMode
         val verificationMode = profile.selectedTlsVerificationMode
         val sniHost = profile.sni.trim().ifBlank { targetHost }
-        val tlsEndpointHost = if (
-            mode.usesTls && verificationMode == TlsVerificationMode.CUSTOM_SNI
-        ) {
-            sniHost
-        } else {
-            targetHost
+        val proxy = profile.proxy.takeIf {
+            mode.requiresProxy && it.host.isNotBlank() && it.port in 1..65535
         }
-        val proxy = profile.proxy.takeIf { mode.requiresProxy && it.host.isNotBlank() && it.port in 1..65535 }
 
         var socket: Socket
         var payloadAlreadySent = false
 
-        if (mode.usesTls && tlsEndpointHost != targetHost) {
+        if (mode.usesTls && sniHost != targetHost) {
             onStatus(
-                "[TLS] Modo Injector · extremo TCP/TLS $tlsEndpointHost:$targetPort · " +
-                    "destino SSH lógico $targetHost:$targetPort"
+                "[TLS] Modo Injector · extremo TCP/SSH $targetHost:$targetPort · " +
+                    "SNI TLS $sniHost"
             )
         }
 
         if (proxy != null) {
             socket = connectDirect(proxy.host.trim(), proxy.port)
             when (proxy.type.trim().lowercase()) {
-                "socks", "socks5" -> performSocks5Handshake(socket, tlsEndpointHost, targetPort)
+                "socks", "socks5" -> performSocks5Handshake(socket, targetHost, targetPort)
                 else -> {
                     if (mode.requiresPayload) {
                         wrappedInputs[socket] = performPayloadHandshake(socket, targetHost, targetPort)
                         payloadAlreadySent = true
                     } else {
-                        performHttpConnectHandshake(socket, tlsEndpointHost, targetPort)
+                        performHttpConnectHandshake(socket, targetHost, targetPort)
                     }
                 }
             }
         } else {
-            socket = connectDirect(tlsEndpointHost, targetPort)
+            socket = connectDirect(targetHost, targetPort)
         }
 
         if (mode.usesTls) {
             onStatus(
-                "[TLS] Handshake sobre $tlsEndpointHost:$targetPort · SNI $sniHost · " +
+                "[TLS] Handshake sobre $targetHost:$targetPort · SNI $sniHost · " +
                     "SSH lógico $targetHost:$targetPort"
             )
             val tlsSocket = TlsTransport.upgrade(
                 connectedSocket = socket,
-                targetHost = tlsEndpointHost,
+                targetHost = targetHost,
                 targetPort = targetPort,
                 sniHost = sniHost,
                 verificationMode = verificationMode
