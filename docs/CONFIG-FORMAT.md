@@ -11,14 +11,37 @@ A stored profile contains:
 - TLS enabled flag, SNI, and per-profile SSH TLS verification policy;
 - payload or Xray option string;
 - proxy type, host, and port;
-- tags and notes;
+- tags, legacy plain notes, and safe HTML creator notes;
+- lock/package/protection metadata;
 - enabled/favorite/last-used metadata.
 
 Sensitive values are encrypted before Room persistence.
 
+## GNX3
+
+GNX3 is the recommended individual sharing format. It is a binary authenticated
+container with a `GNX3:` Base64URL text-envelope representation for clipboard
+or QR transfer.
+
+Properties:
+
+- exactly one profile per package;
+- optional safe HTML/CSS creator note;
+- authenticated locked/editable policy;
+- creator-password or app-managed compatibility protection;
+- random data key, salt, wrapping nonce, and payload nonce;
+- AES-256-GCM content encryption and separate authenticated key wrapping;
+- HMAC-SHA256 over the versioned body;
+- PBKDF2-HMAC-SHA256 for creator passwords;
+- integrity failure on any unsupported or altered header/content.
+
+A locked import is not expanded into the ordinary Room columns. It is resealed
+as one Android Keystore-backed local envelope, and the UI retains only masked
+metadata plus the creator note.
+
 ## GNX2
 
-GNX2 is the recommended portable format. It is a versioned encrypted container rather than plain JSON. See `SECURITY.md` for cryptographic details.
+GNX2 is the password-protected multi-profile backup format. It is a versioned encrypted container rather than plain JSON. See `SECURITY.md` for cryptographic details.
 
 Properties:
 
@@ -38,7 +61,7 @@ Simplified document structure:
 ```json
 {
   "appName": "Ghost Nexora VPN",
-  "version": "1.0.40",
+  "version": "1.0.41",
   "exportedAt": "2026-07-28T00:00:00Z",
   "profiles": [
     {
@@ -141,4 +164,7 @@ Display name and profile ID are intentionally excluded. The fingerprint is used 
 
 ## Future protected metadata
 
-Expiration, device binding, creator identity, minimum app version, edit restrictions, and signatures are roadmap fields. Documentation must not imply they are enforced until container parsing, policy, UI, and tests exist.
+Expiration, device binding, verifiable creator identity, minimum app version,
+and creator signatures are roadmap fields. GNX3 currently authenticates its
+lock policy and enforces edit/view/re-export restrictions inside the official
+application, but does not establish an external creator identity.

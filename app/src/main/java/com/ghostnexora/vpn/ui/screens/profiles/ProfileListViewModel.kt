@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.security.Gnx3ProtectionMode
+import com.ghostnexora.vpn.util.IndividualExportOptions
+import com.ghostnexora.vpn.util.JsonManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +23,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ProfileListViewModel @Inject constructor(
-    private val repository: ProfileRepository
+    private val repository: ProfileRepository,
+    private val jsonManager: JsonManager
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -79,6 +83,12 @@ class ProfileListViewModel @Inject constructor(
     }
 
     fun duplicateProfile(profile: VpnProfile) {
+        if (profile.isLocked) {
+            _uiState.update {
+                it.copy(snackbarMessage = "La configuración bloqueada no se puede duplicar")
+            }
+            return
+        }
         viewModelScope.launch {
             val copy = profile.copy(
                 id = UUID.randomUUID().toString(),
@@ -118,6 +128,142 @@ class ProfileListViewModel @Inject constructor(
         _uiState.update { it.copy(snackbarMessage = null) }
     }
 
+    fun openIndividualExport(profile: VpnProfile) {
+        if (profile.isLocked) {
+            _uiState.update {
+                it.copy(snackbarMessage = "El creador bloqueó la edición y reexportación")
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                exportProfile = profile,
+                exportLocked = true,
+                exportUsePassword = false,
+                exportPassword = "",
+                exportPasswordConfirmation = "",
+                exportNoteHtml = profile.displayNoteHtml,
+                exportError = null
+            )
+        }
+    }
+
+    fun dismissIndividualExport() {
+        _uiState.update {
+            it.copy(
+                exportProfile = null,
+                exportPassword = "",
+                exportPasswordConfirmation = "",
+                exportError = null
+            )
+        }
+    }
+
+    fun setExportLocked(value: Boolean) {
+        _uiState.update { it.copy(exportLocked = value, exportError = null) }
+    }
+
+    fun setExportUsePassword(value: Boolean) {
+        _uiState.update {
+            it.copy(
+                exportUsePassword = value,
+                exportPassword = if (value) it.exportPassword else "",
+                exportPasswordConfirmation = if (value) it.exportPasswordConfirmation else "",
+                exportError = null
+            )
+        }
+    }
+
+    fun setExportPassword(value: String) {
+        _uiState.update { it.copy(exportPassword = value.take(256), exportError = null) }
+    }
+
+    fun setExportPasswordConfirmation(value: String) {
+        _uiState.update {
+            it.copy(exportPasswordConfirmation = value.take(256), exportError = null)
+        }
+    }
+
+    fun setExportNoteHtml(value: String) {
+        _uiState.update { it.copy(exportNoteHtml = value.take(64 * 1024), exportError = null) }
+    }
+
+    fun exportIndividual(share: Boolean) {
+        val state = _uiState.value
+        val profile = state.exportProfile ?: return
+        if (state.exportUsePassword) {
+            when {
+                state.exportPassword.length < 10 -> {
+                    _uiState.update {
+                        it.copy(exportError = "La contraseña debe tener al menos 10 caracteres")
+                    }
+                    return
+                }
+                state.exportPassword != state.exportPasswordConfirmation -> {
+                    _uiState.update { it.copy(exportError = "Las contraseñas no coinciden") }
+                    return
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(exportInProgress = true, exportError = null) }
+            val password = state.exportPassword
+                .takeIf { state.exportUsePassword }
+                ?.toCharArray()
+            try {
+                val options = IndividualExportOptions(
+                    locked = state.exportLocked,
+                    noteHtml = state.exportNoteHtml,
+                    protectionMode = if (state.exportUsePassword) {
+                        Gnx3ProtectionMode.PASSWORD
+                    } else {
+                        Gnx3ProtectionMode.APP_MANAGED
+                    },
+                    password = password
+                )
+                if (share) {
+                    val file = jsonManager.exportIndividualToCache(profile, options)
+                    _uiState.update {
+                        it.copy(
+                            exportInProgress = false,
+                            exportProfile = null,
+                            exportPassword = "",
+                            exportPasswordConfirmation = "",
+                            shareFilePath = file.absolutePath
+                        )
+                    }
+                } else {
+                    val uri = jsonManager.exportIndividualToDownloads(profile, options)
+                    check(uri != null) { "No se pudo guardar el archivo GNX3" }
+                    _uiState.update {
+                        it.copy(
+                            exportInProgress = false,
+                            exportProfile = null,
+                            exportPassword = "",
+                            exportPasswordConfirmation = "",
+                            snackbarMessage = "Configuración individual GNX3 guardada"
+                        )
+                    }
+                }
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        exportInProgress = false,
+                        exportError = error.message?.take(160)
+                            ?: "No se pudo crear la configuración GNX3"
+                    )
+                }
+            } finally {
+                password?.fill('\u0000')
+            }
+        }
+    }
+
+    fun consumeSharedFile() {
+        _uiState.update { it.copy(shareFilePath = null) }
+    }
+
     private fun uniqueCopyName(name: String): String {
         val clean = name.trim().ifBlank { "Perfil" }
         return if (clean.endsWith("(copia)", ignoreCase = true)) "$clean 2" else "$clean (copia)"
@@ -126,8 +272,24 @@ class ProfileListViewModel @Inject constructor(
 
 data class ProfileListUiState(
     val profileToDelete: VpnProfile? = null,
-    val snackbarMessage: String? = null
-)
+    val snackbarMessage: String? = null,
+    val exportProfile: VpnProfile? = null,
+    val exportLocked: Boolean = true,
+    val exportUsePassword: Boolean = false,
+    val exportPassword: String = "",
+    val exportPasswordConfirmation: String = "",
+    val exportNoteHtml: String = "",
+    val exportInProgress: Boolean = false,
+    val exportError: String? = null,
+    val shareFilePath: String? = null
+) {
+    val exportPasswordValid: Boolean
+        get() = !exportUsePassword ||
+            (
+                exportPassword.length >= 10 &&
+                    exportPassword == exportPasswordConfirmation
+                )
+}
 
 enum class ProfileFilter(val label: String) {
     ALL("Todos"),

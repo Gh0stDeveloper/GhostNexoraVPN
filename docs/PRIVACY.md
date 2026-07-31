@@ -9,6 +9,7 @@ This document describes the current application architecture. A published store 
 Ghost Nexora VPN stores locally:
 
 - VPN profiles and encrypted credentials;
+- sanitized creator HTML notes and opaque locked-profile envelopes;
 - application settings;
 - selected split-tunneling package names;
 - trusted SSH fingerprints;
@@ -38,6 +39,9 @@ A future privacy mode may suppress destination-domain details from DNS or transp
 - Boot completed: optional reconnect policy.
 
 File import/export uses Android's document APIs; broad legacy storage permissions are not required.
+
+Creator-note resources are not fetched inside the application. Links open only
+after the user selects them and are handed to an external application.
 
 ## Application visibility
 

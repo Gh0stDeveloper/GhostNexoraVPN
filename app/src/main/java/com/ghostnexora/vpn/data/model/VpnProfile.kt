@@ -62,6 +62,25 @@ data class VpnProfile(
     @ColumnInfo(name = "notes")
     val notes: String = "",
 
+    @ColumnInfo(name = "note_html", defaultValue = "''")
+    val noteHtml: String = "",
+
+    @ColumnInfo(name = "is_locked", defaultValue = "0")
+    val isLocked: Boolean = false,
+
+    /**
+     * Sobre local AES-GCM protegido por Android Keystore. Solo se utiliza para
+     * perfiles GNX3 bloqueados y nunca debe entregarse a la interfaz.
+     */
+    @ColumnInfo(name = "sealed_config", defaultValue = "''")
+    val sealedConfig: String = "",
+
+    @ColumnInfo(name = "locked_package_id", defaultValue = "''")
+    val lockedPackageId: String = "",
+
+    @ColumnInfo(name = "protection_version", defaultValue = "0")
+    val protectionVersion: Int = 0,
+
     @ColumnInfo(name = "enabled")
     val enabled: Boolean = true,
 
@@ -83,7 +102,7 @@ data class VpnProfile(
 
     /** Representación legible del servidor */
     val serverAddress: String
-        get() = "$host:$port"
+        get() = if (isLocked) "[OCULTO]" else "$host:$port"
 
     /** Indica si el perfil tiene credenciales configuradas */
     val hasCredentials: Boolean
@@ -99,7 +118,7 @@ data class VpnProfile(
 
     /** Etiqueta amigable para mostrar en UI */
     val connectionModeLabel: String
-        get() = selectedMode.label
+        get() = if (isLocked) "Configuración protegida" else selectedMode.label
 
     /** True si el perfil requiere un host SNI */
     val requiresSni: Boolean
@@ -112,6 +131,19 @@ data class VpnProfile(
     /** True si el perfil requiere payload */
     val requiresPayload: Boolean
         get() = selectedMode.requiresPayload
+
+    /** Nota enriquecida nueva, con compatibilidad para notas de texto antiguas. */
+    val displayNoteHtml: String
+        get() = noteHtml.ifBlank {
+            notes
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "<br>")
+                .takeIf(String::isNotBlank)
+                ?.let { "<p>$it</p>" }
+                .orEmpty()
+        }
 
     companion object {
         /** Crea un perfil vacío listo para edición */

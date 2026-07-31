@@ -17,27 +17,34 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -56,12 +63,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -76,7 +86,10 @@ import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.ProfileTechnicalSummaries
+import com.ghostnexora.vpn.util.JsonManager
+import com.ghostnexora.vpn.util.shareFile
 import com.ghostnexora.vpn.util.toReadableDate
+import java.io.File
 
 @Composable
 fun ProfileListScreen(
@@ -90,8 +103,10 @@ fun ProfileListScreen(
     val activeProfileId by viewModel.activeProfileId.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val filter by viewModel.activeFilter.collectAsState()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var profileToDelete by remember { mutableStateOf<VpnProfile?>(null) }
+    var noteToShow by remember { mutableStateOf<VpnProfile?>(null) }
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
@@ -102,6 +117,40 @@ fun ProfileListScreen(
 
     LaunchedEffect(uiState.profileToDelete) {
         profileToDelete = uiState.profileToDelete
+    }
+
+    LaunchedEffect(uiState.shareFilePath) {
+        uiState.shareFilePath?.let { path ->
+            runCatching {
+                context.shareFile(File(path), JsonManager.MIME_GNX)
+            }.onFailure {
+                snackbarHostState.showSnackbar("No se pudo abrir el menú para compartir")
+            }
+            viewModel.consumeSharedFile()
+        }
+    }
+
+    noteToShow?.let { profile ->
+        HtmlNoteDialog(
+            title = profile.name.ifBlank { "Nota del creador" },
+            html = profile.displayNoteHtml,
+            onDismiss = { noteToShow = null }
+        )
+    }
+
+    uiState.exportProfile?.let { profile ->
+        IndividualExportDialog(
+            profile = profile,
+            state = uiState,
+            onDismiss = viewModel::dismissIndividualExport,
+            onLockedChange = viewModel::setExportLocked,
+            onUsePasswordChange = viewModel::setExportUsePassword,
+            onPasswordChange = viewModel::setExportPassword,
+            onPasswordConfirmationChange = viewModel::setExportPasswordConfirmation,
+            onNoteChange = viewModel::setExportNoteHtml,
+            onSave = { viewModel.exportIndividual(share = false) },
+            onShare = { viewModel.exportIndividual(share = true) }
+        )
     }
 
     profileToDelete?.let { pending ->
@@ -204,6 +253,8 @@ fun ProfileListScreen(
                         onSelect = { viewModel.selectActiveProfile(profile.id) },
                         onFavorite = { viewModel.toggleFavorite(profile) },
                         onDuplicate = { viewModel.duplicateProfile(profile) },
+                        onExport = { viewModel.openIndividualExport(profile) },
+                        onViewNote = { noteToShow = profile },
                         onEdit = { onEditProfile(profile.id) },
                         onDelete = { viewModel.requestDelete(profile) }
                     )
@@ -221,6 +272,8 @@ private fun ProfileItem(
     onSelect: () -> Unit,
     onFavorite: () -> Unit,
     onDuplicate: () -> Unit,
+    onExport: () -> Unit,
+    onViewNote: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -247,7 +300,11 @@ private fun ProfileItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (isActive) Icons.Filled.CheckCircle else Icons.Filled.VpnKey,
+                        when {
+                            profile.isLocked -> Icons.Filled.Lock
+                            isActive -> Icons.Filled.CheckCircle
+                            else -> Icons.Filled.VpnKey
+                        },
                         contentDescription = null,
                         tint = NeonCyan,
                         modifier = Modifier.size(28.dp)
@@ -264,6 +321,13 @@ private fun ProfileItem(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (isActive) Text("ACTIVO", style = MaterialTheme.typography.labelSmall, color = NeonCyan)
+                        if (profile.isLocked) {
+                            Text(
+                                "BLOQUEADO",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NeonAmber
+                            )
+                        }
                     }
                     Text(
                         text = "${summary.server} · ${summary.protocol} · ${summary.transport}",
@@ -302,11 +366,35 @@ private fun ProfileItem(
                         tint = if (profile.isFavorite) NeonAmber else TextTertiary
                     )
                 }
-                IconButton(onClick = onDuplicate) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Duplicar", tint = TextSecondary)
+                if (profile.displayNoteHtml.isNotBlank()) {
+                    IconButton(onClick = onViewNote) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Notes,
+                            contentDescription = "Ver nota del creador",
+                            tint = NeonAmber
+                        )
+                    }
                 }
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Editar", tint = NeonCyan)
+                IconButton(onClick = onExport, enabled = !profile.isLocked) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = "Exportar configuración individual",
+                        tint = if (profile.isLocked) TextTertiary else NeonCyan
+                    )
+                }
+                IconButton(onClick = onDuplicate, enabled = !profile.isLocked) {
+                    Icon(
+                        Icons.Filled.ContentCopy,
+                        contentDescription = "Duplicar",
+                        tint = if (profile.isLocked) TextTertiary else TextSecondary
+                    )
+                }
+                IconButton(onClick = onEdit, enabled = !profile.isLocked) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Editar",
+                        tint = if (profile.isLocked) TextTertiary else NeonCyan
+                    )
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = "Eliminar", tint = Color.Red.copy(alpha = 0.7f))
@@ -314,6 +402,174 @@ private fun ProfileItem(
             }
         }
     }
+}
+
+@Composable
+private fun IndividualExportDialog(
+    profile: VpnProfile,
+    state: ProfileListUiState,
+    onDismiss: () -> Unit,
+    onLockedChange: (Boolean) -> Unit,
+    onUsePasswordChange: (Boolean) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onPasswordConfirmationChange: (String) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onShare: () -> Unit
+) {
+    var showPreview by remember(profile.id) { mutableStateOf(false) }
+    if (showPreview) {
+        HtmlNoteDialog(
+            title = "Vista previa de la nota",
+            html = state.exportNoteHtml,
+            onDismiss = { showPreview = false }
+        )
+    }
+    AlertDialog(
+        onDismissRequest = {
+            if (!state.exportInProgress && !showPreview) onDismiss()
+        },
+        title = {
+            Column {
+                Text("Exportar configuración individual")
+                Text(
+                    profile.name.ifBlank { "Perfil sin nombre" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !state.exportInProgress) {
+                            onLockedChange(!state.exportLocked)
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = state.exportLocked,
+                        onCheckedChange = onLockedChange,
+                        enabled = !state.exportInProgress
+                    )
+                    Column {
+                        Text("Bloquear edición y datos")
+                        Text(
+                            "Oculta host, credenciales, método, SNI, proxy y payload.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextTertiary
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !state.exportInProgress) {
+                            onUsePasswordChange(!state.exportUsePassword)
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = state.exportUsePassword,
+                        onCheckedChange = onUsePasswordChange,
+                        enabled = !state.exportInProgress
+                    )
+                    Column {
+                        Text("Usar contraseña propia")
+                        Text(
+                            if (state.exportUsePassword) {
+                                "Será necesaria para importar el archivo."
+                            } else {
+                                "Compatible con APK oficiales firmadas por el mismo desarrollador."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextTertiary
+                        )
+                    }
+                }
+
+                if (state.exportUsePassword) {
+                    OutlinedTextField(
+                        value = state.exportPassword,
+                        onValueChange = onPasswordChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Contraseña") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        enabled = !state.exportInProgress
+                    )
+                    OutlinedTextField(
+                        value = state.exportPasswordConfirmation,
+                        onValueChange = onPasswordConfirmationChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Confirmar contraseña") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        isError = state.exportPasswordConfirmation.isNotBlank() &&
+                            state.exportPassword != state.exportPasswordConfirmation,
+                        enabled = !state.exportInProgress
+                    )
+                }
+
+                OutlinedTextField(
+                    value = state.exportNoteHtml,
+                    onValueChange = onNoteChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nota HTML/CSS del creador") },
+                    supportingText = {
+                        Text("Admite texto, estilos, tablas y enlaces de contacto seguros.")
+                    },
+                    minLines = 5,
+                    maxLines = 10,
+                    enabled = !state.exportInProgress
+                )
+                TextButton(
+                    onClick = { showPreview = true },
+                    enabled = state.exportNoteHtml.isNotBlank() && !state.exportInProgress
+                ) {
+                    Text("Vista previa HTML", color = NeonCyan)
+                }
+                state.exportError?.let {
+                    Text(it, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                }
+                if (state.exportInProgress) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Text(
+                    "GNX3 usa cifrado autenticado y nonces aleatorios. La protección administrada por la app eleva el costo de extracción, pero una APK cliente no puede ser invulnerable en un dispositivo controlado por el atacante.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NeonAmber
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onShare,
+                enabled = state.exportPasswordValid && !state.exportInProgress
+            ) {
+                Text("Compartir")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = onSave,
+                    enabled = state.exportPasswordValid && !state.exportInProgress
+                ) {
+                    Text("Guardar")
+                }
+                TextButton(onClick = onDismiss, enabled = !state.exportInProgress) {
+                    Text("Cancelar")
+                }
+            }
+        }
+    )
 }
 
 @Composable

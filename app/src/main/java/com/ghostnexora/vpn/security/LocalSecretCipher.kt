@@ -25,19 +25,26 @@ class LocalSecretCipher @Inject constructor() {
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
     }
 
-    fun protect(profile: VpnProfile): VpnProfile = profile.copy(
-        username = encryptField(profile.id, "username", profile.username),
-        password = encryptField(profile.id, "password", profile.password),
-        payload = encryptField(profile.id, "payload", profile.payload)
-    )
+    fun protect(profile: VpnProfile): VpnProfile {
+        if (profile.isLocked) return profile
+        return profile.copy(
+            username = encryptField(profile.id, "username", profile.username),
+            password = encryptField(profile.id, "password", profile.password),
+            payload = encryptField(profile.id, "payload", profile.payload)
+        )
+    }
 
-    fun reveal(profile: VpnProfile): VpnProfile = profile.copy(
-        username = decryptField(profile.id, "username", profile.username),
-        password = decryptField(profile.id, "password", profile.password),
-        payload = decryptField(profile.id, "payload", profile.payload)
-    )
+    fun reveal(profile: VpnProfile): VpnProfile {
+        if (profile.isLocked) return profile
+        return profile.copy(
+            username = decryptField(profile.id, "username", profile.username),
+            password = decryptField(profile.id, "password", profile.password),
+            payload = decryptField(profile.id, "payload", profile.payload)
+        )
+    }
 
     fun isProtected(profile: VpnProfile): Boolean =
+        profile.isLocked ||
         listOf(profile.username, profile.password, profile.payload)
             .filter(String::isNotBlank)
             .all { it.startsWith(PREFIX) }

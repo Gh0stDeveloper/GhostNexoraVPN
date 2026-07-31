@@ -97,6 +97,10 @@ CI success alone is labeled **CI verified**.
 - standard Xray JSON;
 - legacy JSON;
 - GNX2 correct/wrong password;
+- GNX3 password and app-managed correct-key round trips;
+- GNX3 altered header, lock flag, ciphertext, and authentication tag;
+- locked GNX3 masked preview, Room envelope, blocked edit/duplicate/re-export/diagnostic;
+- HTML note allowlist, active elements/events/URLs, remote CSS, and external contact links;
 - duplicate existing profile;
 - duplicate within import;
 - malformed/oversized input;

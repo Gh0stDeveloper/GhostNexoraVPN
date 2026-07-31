@@ -39,6 +39,8 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 | Standard Xray JSON import | CI verified |
 | SSH URI import | CI verified |
 | GNX2 encrypted import/export | CI verified |
+| GNX3 individual import/export and lock policy | CI verified |
+| Safe HTML/CSS creator notes | CI verified |
 | Application split tunneling | CI verified; OEM/device routing pending |
 | Domain/private-network split routing | Not implemented |
 | Certificate pinning UI | Not implemented |

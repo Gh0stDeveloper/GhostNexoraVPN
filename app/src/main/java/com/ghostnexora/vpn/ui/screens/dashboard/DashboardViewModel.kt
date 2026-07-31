@@ -300,5 +300,8 @@ data class DashboardUiState(
     val isConnecting: Boolean get() = connectionState is VpnConnectionState.Connecting || isReconnecting
     val isDisconnected: Boolean get() = connectionState is VpnConnectionState.Disconnected
     val hasError: Boolean get() = connectionState is VpnConnectionState.Error
-    val serverIp: String get() = (connectionState as? VpnConnectionState.Connected)?.serverIp ?: activeProfile?.host ?: "--"
+    val serverIp: String
+        get() = (connectionState as? VpnConnectionState.Connected)?.serverIp
+            ?: activeProfile?.let { if (it.isLocked) "[OCULTO]" else it.host }
+            ?: "--"
 }

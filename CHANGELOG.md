@@ -2,6 +2,30 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.41
+
+### Added
+
+- Added GNX3 individual configuration export directly from each editable profile.
+- Added creator-controlled locking that hides and disables editing, duplication, diagnostics, and re-export of server, SSH, TLS/SNI, proxy, payload, and method parameters.
+- Added optional creator passwords and a passwordless app-managed compatibility mode for GNX3 files.
+- Added creator notes with safe HTML/CSS formatting, tables, and external contact links.
+- Added GNX3 import from file, clipboard, and QR text envelopes with a masked preview for locked profiles.
+
+### Security
+
+- GNX3 uses a random data key, AES-256-GCM payload encryption, a separate authenticated key-wrapping operation, HMAC-SHA256 container authentication, random salts/nonces, and PBKDF2-HMAC-SHA256 for creator passwords.
+- Locked profiles are immediately resealed as a single opaque AES-GCM envelope backed by a non-exportable Android Keystore key; their network fields remain empty in Room and normal UI flows.
+- Locked-profile transport logs redact server, credentials, SNI, payload, proxy, method, and sensitive tunnel stages.
+- HTML notes are allowlist-sanitized and rendered with JavaScript, storage, files, content access, network resources, frames, forms, and mixed content disabled.
+- Added debugger/instrumentation signals before locked-profile decryption, native buffer wiping, broader `FLAG_SECURE` coverage, and Release/R8 survival gates.
+
+### Changed
+
+- Room schema migrated from 3 to 4 without altering existing editable profiles.
+- Bumped the application to `1.0.41 (41)`.
+- Documented the security boundary accurately: password protection is stronger for offline sharing, while no Android client can make actively used plaintext or an app-managed compatibility secret unrecoverable on a fully controlled device.
+
 ## 1.0.40
 
 ### Fixed

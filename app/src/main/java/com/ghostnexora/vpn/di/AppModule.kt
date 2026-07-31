@@ -7,6 +7,7 @@ import com.ghostnexora.vpn.data.local.LogDao
 import com.ghostnexora.vpn.data.local.ProfileDao
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.security.LocalSecretCipher
+import com.ghostnexora.vpn.security.LockedProfileVault
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -43,6 +44,13 @@ object AppModule {
         profileDao: ProfileDao,
         logDao: LogDao,
         dataStore: DataStoreManager,
-        secretCipher: LocalSecretCipher
-    ): ProfileRepository = ProfileRepository(profileDao, logDao, dataStore, secretCipher)
+        secretCipher: LocalSecretCipher,
+        lockedProfileVault: LockedProfileVault
+    ): ProfileRepository = ProfileRepository(
+        profileDao,
+        logDao,
+        dataStore,
+        secretCipher,
+        lockedProfileVault
+    )
 }

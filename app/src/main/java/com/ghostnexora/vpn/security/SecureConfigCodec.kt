@@ -43,6 +43,7 @@ object SecureConfigCodec {
     private const val DERIVED_BYTES = 64
     private const val MAX_ENCRYPTED_BYTES = 32 * 1024 * 1024
     private const val MAX_PLAINTEXT_BYTES = 16 * 1024 * 1024
+    private const val MAX_TEXT_ENVELOPE_CHARS = 44 * 1024 * 1024
     private const val HEADER_BYTES = 4 + 1 + 4 + 1 + 1 + 1 + 2 + 4
     private const val TEXT_PREFIX = "GNX2:"
 
@@ -159,6 +160,9 @@ object SecureConfigCodec {
         TEXT_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(container)
 
     fun decodeTextEnvelope(rawText: String): ByteArray {
+        if (rawText.length > MAX_TEXT_ENVELOPE_CHARS) {
+            throw SecureConfigException("Contenedor GNX2 en texto demasiado grande")
+        }
         val encoded = rawText.trim().removePrefix(TEXT_PREFIX)
         return runCatching { Base64.getUrlDecoder().decode(encoded) }
             .getOrElse { throw SecureConfigException("Contenedor GNX2 en texto inválido", it) }

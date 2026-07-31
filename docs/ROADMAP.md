@@ -44,6 +44,15 @@ Implemented and awaiting final CI/device qualification:
 - all/only-selected/excluded application split tunneling;
 - in-app evidence-based compatibility matrix.
 
+### Phase 3C1 — Individual protected profiles
+
+- GNX3 one-profile import/export;
+- optional creator password or official-app compatibility mode;
+- creator lock policy for view/edit/duplicate/re-export;
+- safe HTML/CSS notes with contact links;
+- opaque Android Keystore-backed storage for locked parameters;
+- redacted locked-profile logs and runtime instrumentation signals.
+
 ## Phase 2B — Protocol-specific editors
 
 Replace remaining generic Xray option text with typed fields for:
@@ -84,7 +93,7 @@ Replace remaining generic Xray option text with typed fields for:
 - last successful latency and timestamp;
 - consecutive failure count;
 - encrypted full backup/restore;
-- GNX expiration, minimum version, creator metadata, integrity signature, and optional device policy;
+- GNX expiration, minimum version, verifiable creator identity/signature, and optional device policy;
 - private-network/CIDR bypass;
 - domain include/exclude rules;
 - per-profile app groups;
@@ -96,7 +105,7 @@ Replace remaining generic Xray option text with typed fields for:
 - public IP before/after;
 - DNS leak test;
 - biometric or PIN application lock;
-- `FLAG_SECURE` on sensitive screens;
+- biometric/PIN app lock and automatic timeout;
 - signer-certificate verification for updates;
 - SBOM, secret scanning, and dependency vulnerability scanning;
 - localization, accessibility, and small-screen audits;
@@ -107,7 +116,7 @@ Replace remaining generic Xray option text with typed fields for:
 
 ## Post-merge device qualification backlog
 
-For the 1.0.40 device qualification cycle:
+For the 1.0.41 device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the JSch error.
 2. Run diagnostics for the same SSH + SSL profile.
@@ -118,7 +127,10 @@ For the 1.0.40 device qualification cycle:
 7. Test mobile-data/Wi-Fi handover.
 8. Confirm Kill Switch enabled and disabled behavior.
 9. Verify import preview and duplicate-safe merge.
-10. Record every successful exact combination in `TEST-MATRIX.md`.
+10. Import locked GNX3 files with and without a creator password and verify
+    masked UI/logs plus successful VPN use.
+11. Test safe creator-note formatting and external contact links.
+12. Record every successful exact combination in `TEST-MATRIX.md`.
 
 ## Release policy
 

@@ -38,8 +38,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +62,7 @@ import com.ghostnexora.vpn.ui.theme.TextOnAccent
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
+import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.launch
 
@@ -72,9 +75,18 @@ fun ImportScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var notePreview by remember { mutableStateOf<Pair<String, String>?>(null) }
     val qrScanner = remember(context) { GmsBarcodeScanning.getClient(context) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::onFilePicked)
+    }
+
+    notePreview?.let { (title, html) ->
+        HtmlNoteDialog(
+            title = title,
+            html = html,
+            onDismiss = { notePreview = null }
+        )
     }
 
     LaunchedEffect(state.importSuccess) {
@@ -132,7 +144,7 @@ fun ImportScreen(
                             Text("Importación protegida y verificable", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         }
                         Text(
-                            "Admite GNX2, vmess://, vless://, trojan://, hysteria2://, hy2://, ssh://, JSON Xray, QR, portapapeles y archivos. Siempre muestra una vista previa antes de guardar.",
+                            "Admite perfiles individuales GNX3, GNX2, vmess://, vless://, trojan://, hysteria2://, hy2://, ssh://, JSON Xray, QR, portapapeles y archivos. Siempre muestra una vista previa antes de guardar.",
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -145,8 +157,8 @@ fun ImportScreen(
                     value = state.password,
                     onValueChange = viewModel::setImportPassword,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Contraseña del archivo .gnx") },
-                    supportingText = { Text("No se almacena. Solo se usa durante el descifrado.") },
+                    label = { Text("Contraseña del archivo (si tiene)") },
+                    supportingText = { Text("GNX3 administrado por la app no requiere escribir contraseña.") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
@@ -202,7 +214,10 @@ fun ImportScreen(
                 )
             }
 
-            if (state.passwordRequired && state.selectedUri != null) {
+            if (
+                state.passwordRequired &&
+                (state.selectedUri != null || state.selectedRawText != null)
+            ) {
                 item {
                     GhostButton(
                         text = "Descifrar de nuevo",
@@ -246,7 +261,13 @@ fun ImportScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
                             Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                             Text("${summary?.protocol ?: profile.connectionModeLabel} · ${summary?.server ?: profile.serverAddress}", color = NeonCyan, style = MaterialTheme.typography.bodySmall)
-                            summary?.let {
+                            if (profile.isLocked) {
+                                Text(
+                                    "El creador bloqueó la visualización, edición, duplicación y reexportación de los parámetros.",
+                                    color = NeonAmber,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else summary?.let {
                                 TechnicalRow("Transporte", it.transport)
                                 TechnicalRow("Seguridad", it.security)
                                 if (it.sni.isNotBlank()) TechnicalRow("SNI", it.sni)
@@ -256,6 +277,17 @@ fun ImportScreen(
                                 if (it.proxy.isNotBlank()) TechnicalRow("Proxy", it.proxy)
                                 it.warnings.forEach { warning ->
                                     Text(warning, color = NeonAmber, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (profile.displayNoteHtml.isNotBlank()) {
+                                TextButton(
+                                    onClick = {
+                                        notePreview = (
+                                            profile.name.ifBlank { "Nota del creador" }
+                                            ) to profile.displayNoteHtml
+                                    }
+                                ) {
+                                    Text("Ver nota HTML del creador", color = NeonCyan)
                                 }
                             }
                         }
@@ -285,7 +317,7 @@ fun ImportScreen(
             item {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    "Formato recomendado: .gnx cifrado. Ninguna protección cliente impide de forma absoluta la extracción por un usuario que controla el dispositivo.",
+                    "Formato recomendado: GNX3 individual o GNX2 de respaldo. Ninguna protección cliente impide de forma absoluta la extracción por un usuario que controla el dispositivo.",
                     color = TextTertiary,
                     style = MaterialTheme.typography.bodySmall
                 )

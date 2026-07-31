@@ -332,11 +332,12 @@ fun SettingsScreen(
             }
 
             SettingsSection("Encrypted configurations") {
-                InfoRow("Export format", "GNX2")
+                InfoRow("Individual format", "GNX3")
+                InfoRow("Backup format", "GNX2")
                 InfoRow("Content encryption", "AES-256-GCM")
                 InfoRow("Password derivation", "PBKDF2-HMAC-SHA256")
                 Text(
-                    "New exports require a password. Plain JSON is accepted only for legacy migration.",
+                    "GNX3 can use a creator password or official-app protection and can lock all profile parameters. Plain JSON is accepted only for legacy migration.",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)

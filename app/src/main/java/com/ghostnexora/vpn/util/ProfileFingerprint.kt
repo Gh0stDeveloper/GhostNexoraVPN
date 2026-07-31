@@ -6,6 +6,9 @@ import java.util.Locale
 
 object ProfileFingerprint {
     fun of(profile: VpnProfile): String {
+        if (profile.isLocked) {
+            return "locked:" + profile.lockedPackageId.ifBlank { profile.id }
+        }
         val canonical = listOf(
             profile.selectedMode.id,
             profile.host.trim().lowercase(Locale.US),

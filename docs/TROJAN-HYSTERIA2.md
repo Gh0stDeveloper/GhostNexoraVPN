@@ -14,7 +14,7 @@ Implemented fields:
 - TCP, WebSocket, gRPC, XHTTP, and HTTPUpgrade stream settings;
 - Host, path, authority, and service name.
 
-The application requires TLS and does not expose a trust-all option. Import is supported from `trojan://`, standard Xray JSON, Ghost Nexora JSON, and GNX2.
+The application requires TLS and does not expose a trust-all option. Import is supported from `trojan://`, standard Xray JSON, Ghost Nexora JSON, GNX3, and GNX2.
 
 ## Hysteria2
 
