@@ -93,7 +93,7 @@ class SshTunnelEngine(
     fun connectWithSocks(profile: VpnProfile): SshTunnelHandle {
         val session = connect(profile)
         return try {
-            val socksServer = SshSocksServer(session).also { it.start() }
+            val socksServer = SshSocksServer(session, onStatus).also { it.start() }
             SshTunnelHandle(session, socksServer)
         } catch (error: Throwable) {
             runCatching { session.disconnect() }
@@ -402,9 +402,11 @@ private class TunnelSocketFactory(
  * modos que tienen transporte UDP nativo; el bridge SSH es deliberadamente TCP.
  */
 class SshSocksServer(
-    private val session: Session
+    private val session: Session,
+    private val onStatus: (String) -> Unit = {}
 ) : Closeable {
     private val running = AtomicBoolean(false)
+    private val firstForwardedChannelReported = AtomicBoolean(false)
     private val executor: ExecutorService = Executors.newCachedThreadPool()
     private val clients = Collections.synchronizedSet(mutableSetOf<Socket>())
     private var serverSocket: ServerSocket? = null
@@ -414,7 +416,18 @@ class SshSocksServer(
 
     fun start() {
         check(running.compareAndSet(false, true)) { "El bridge SOCKS SSH ya está activo" }
-        serverSocket = ServerSocket(0, 64, InetAddress.getLoopbackAddress())
+        /*
+         * StableXrayConfigFactory always dials 127.0.0.1. Binding the bridge to
+         * an implementation-selected loopback address can choose ::1 on some
+         * Android runtimes and leave the IPv4 Xray endpoint unreachable.
+         */
+        try {
+            serverSocket = ServerSocket(0, 64, IPV4_LOOPBACK)
+        } catch (error: Throwable) {
+            running.set(false)
+            executor.shutdownNow()
+            throw error
+        }
         executor.execute {
             while (running.get()) {
                 try {
@@ -430,6 +443,7 @@ class SshSocksServer(
 
     private fun handleClient(client: Socket) {
         var channel: ChannelDirectTCPIP? = null
+        var socksHandshakeCompleted = false
         try {
             client.soTimeout = 15_000
             val input = client.getInputStream()
@@ -480,15 +494,20 @@ class SshSocksServer(
             val remoteInput = channel.inputStream
             val remoteOutput = channel.outputStream
             channel.connect(20_000)
+            check(channel.isConnected) { "El servidor SSH no abrió el canal direct-tcpip" }
 
             sendReply(output, 0x00)
+            socksHandshakeCompleted = true
             client.soTimeout = 0
 
             val activeChannel = channel
             executor.execute {
                 try {
-                    input.copyTo(remoteOutput, DEFAULT_BUFFER_SIZE)
-                    remoteOutput.flush()
+                    copyToSshChannel(input, remoteOutput) {
+                        if (firstForwardedChannelReported.compareAndSet(false, true)) {
+                            onStatus("[SOCKS] Canal direct-tcpip verificado · datos reenviados por SSH")
+                        }
+                    }
                 } catch (_: IOException) {
                 } finally {
                     runCatching { activeChannel.disconnect() }
@@ -501,8 +520,18 @@ class SshSocksServer(
                 output.flush()
             } catch (_: IOException) {
             }
-        } catch (_: Throwable) {
-            runCatching { sendReply(client.getOutputStream(), 0x01) }
+        } catch (error: Throwable) {
+            if (!socksHandshakeCompleted && running.get()) {
+                runCatching { sendReply(client.getOutputStream(), 0x01) }
+                val detail = generateSequence(error) { it.cause }
+                    .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+                    .firstOrNull()
+                    .orEmpty()
+                    .replace('\n', ' ')
+                    .take(160)
+                    .ifBlank { error.javaClass.simpleName }
+                onStatus("[SOCKS] ERROR · canal direct-tcpip no disponible · $detail")
+            }
         } finally {
             runCatching { channel?.disconnect() }
             runCatching { client.close() }
@@ -528,10 +557,49 @@ class SshSocksServer(
         if (!running.compareAndSet(true, false)) return
         runCatching { serverSocket?.close() }
         serverSocket = null
-        clients.toList().forEach { runCatching { it.close() } }
+        val activeClients = synchronized(clients) { clients.toList() }
+        activeClients.forEach { runCatching { it.close() } }
         clients.clear()
         executor.shutdownNow()
     }
+
+    private companion object {
+        val IPV4_LOOPBACK: InetAddress = InetAddress.getByAddress(
+            byteArrayOf(127, 0, 0, 1)
+        )
+    }
+}
+
+/**
+ * JSch's Channel.getOutputStream() buffers a partial SSH packet. A long-lived
+ * SOCKS client does not close its input after sending a request, so waiting for
+ * InputStream.copyTo() to return before flushing deadlocks the request/response
+ * exchange: the remote never receives the request and the client eventually
+ * closes its side of the pipe. Flush every block while the stream is active.
+ */
+internal fun copyToSshChannel(
+    input: InputStream,
+    output: OutputStream,
+    bufferSize: Int = DEFAULT_BUFFER_SIZE,
+    onFirstFlush: () -> Unit = {}
+): Long {
+    require(bufferSize > 0) { "bufferSize must be positive" }
+    val buffer = ByteArray(bufferSize)
+    var copied = 0L
+    var firstFlushPending = true
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        if (count == 0) continue
+        output.write(buffer, 0, count)
+        output.flush()
+        copied += count
+        if (firstFlushPending) {
+            firstFlushPending = false
+            onFirstFlush()
+        }
+    }
+    return copied
 }
 
 private class ProfileUserInfo(

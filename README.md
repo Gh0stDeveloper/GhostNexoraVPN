@@ -12,7 +12,7 @@ Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified rou
 
 A process running is not considered a successful VPN. The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and reports success only after the active outbound delivers Internet.
 
-Current development version: **1.0.38 (38)**.
+Current development version: **1.0.39 (39)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 

@@ -65,7 +65,11 @@ object ConnectionErrorCatalog {
                 if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",
                 if (profile.selectedMode.isSsh) "SSH" else "AUTH",
                 "Authentication failed", raw,
-                "Verify the username, password, UUID or authentication token."
+                if (profile.selectedMode.isSsh) {
+                    "Verify the SSH username and password."
+                } else {
+                    "Verify the UUID, password or authentication token required by the selected protocol."
+                }
             )
             lower.contains("hostkey") || lower.contains("host key") -> failure(
                 "SSH-409", "SSH", "The SSH server identity changed", raw,
@@ -87,10 +91,27 @@ object ConnectionErrorCatalog {
                 "APP-ROUTE-404", "APP_ROUTING", "A selected application is no longer installed", raw,
                 "Refresh the application list and remove unavailable packages."
             )
+            profile.selectedMode.isSsh && lower.contains("closed pipe") -> failure(
+                "SSH-BRIDGE-502", "SSH",
+                "${profile.connectionModeLabel} authenticated, but its forwarding channel closed",
+                raw,
+                "The selected SSH profile reached authentication. Install the latest build; if it persists, verify that the SSH account permits direct-tcpip forwarding and export the SSH/SOCKS log."
+            )
             lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
                 lower.contains("generate_204") || lower.contains("outbound") -> failure(
-                "ROUTE-204", "ROUTING", "The tunnel started but the outbound has no Internet", raw,
-                "Check protocol, UUID/password, TLS, SNI, Host, path, service name and transport."
+                if (profile.selectedMode.isSsh) "SSH-ROUTE-204" else "ROUTE-204",
+                if (profile.selectedMode.isSsh) "SSH" else "ROUTING",
+                if (profile.selectedMode.isSsh) {
+                    "${profile.connectionModeLabel} authenticated, but SSH forwarding has no Internet"
+                } else {
+                    "The tunnel started but the outbound has no Internet"
+                },
+                raw,
+                if (profile.selectedMode.isSsh) {
+                    "Keep this profile as ${profile.connectionModeLabel}; verify SSH TCP forwarding and Internet egress on that SSH server."
+                } else {
+                    "Check only the server, credentials and transport fields required by ${profile.connectionModeLabel}."
+                }
             )
             lower.contains("libv2ray") || lower.contains("xray core") || lower.contains("go_seq") -> failure(
                 "XRAY-500", "XRAY", "Xray Core could not start", raw,
