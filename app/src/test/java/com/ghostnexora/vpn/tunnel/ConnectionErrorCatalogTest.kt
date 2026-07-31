@@ -15,7 +15,7 @@ class ConnectionErrorCatalogTest {
         username = "user",
         password = "secret",
         connectionMode = ConnectionMode.SSL_SNI.id,
-        sni = "example.com"
+        sni = "www.twitter.com"
     )
 
     @Test
@@ -46,7 +46,26 @@ class ConnectionErrorCatalogTest {
         )
 
         assertEquals("TLS-004", failure.code)
-        assertTrue(failure.solution.contains("already allows an SNI/SAN mismatch"))
+        assertTrue(failure.solution.contains("modo compatible", ignoreCase = true))
+        assertTrue(failure.solution.contains("SNI/SAN"))
+    }
+
+    @Test
+    fun connectionRefusedExplainsThatSniIsNotAnAlternateEndpoint() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException(
+                "Session.connect: java.net.ConnectException: failed to connect to " +
+                    "example.com/192.0.2.1 (port 443): ECONNREFUSED (Connection refused)"
+            ),
+            sshProfile
+        )
+
+        assertEquals("TCP-002", failure.code)
+        assertEquals("TCP", failure.stage)
+        assertTrue(failure.title.contains("rechazó", ignoreCase = true))
+        assertTrue(failure.solution.contains("alcanzó la IP", ignoreCase = true))
+        assertTrue(failure.solution.contains("SNI"))
+        assertTrue(failure.solution.contains("no sustituye", ignoreCase = true))
     }
 
     @Test
