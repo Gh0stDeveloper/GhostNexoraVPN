@@ -73,11 +73,11 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
-    fun exhaustedInjectorEndpointIsTcpFailureInsteadOfTlsFailure() {
+    fun exhaustedInjectorEndpointPointsToTheRealSshHost() {
         val failure = ConnectionErrorCatalog.classify(
             IOException(
                 "Session.connect: [TCP-ALL-FAILED] No fue posible conectar con ninguna IP " +
-                    "de analytics.twitter.com:443 tras 2 intento(s).",
+                    "de example.com:443 tras 2 intento(s).",
                 IOException("failed to connect after 8000ms: ECONNREFUSED")
             ),
             injectorProfile
@@ -85,20 +85,36 @@ class ConnectionErrorCatalogTest {
 
         assertEquals("TCP-003", failure.code)
         assertEquals("TCP", failure.stage)
-        assertTrue(failure.solution.contains("SNI", ignoreCase = true))
-        assertTrue(failure.solution.contains("HTTP Injector", ignoreCase = true))
+        assertTrue(failure.solution.contains("host SSH", ignoreCase = true))
+        assertTrue(failure.solution.contains("SNI TLS", ignoreCase = true))
     }
 
     @Test
-    fun directInjectorRefusalExplainsThatSniIsTheTlsEndpoint() {
+    fun directInjectorRefusalExplainsThatTcpUsesTheSshHost() {
         val failure = ConnectionErrorCatalog.classify(
-            IllegalStateException("analytics.twitter.com:443 ECONNREFUSED Connection refused"),
+            IllegalStateException("example.com:443 ECONNREFUSED Connection refused"),
             injectorProfile
         )
 
         assertEquals("TCP-002", failure.code)
         assertEquals("TCP", failure.stage)
-        assertTrue(failure.solution.contains("SNI como extremo TCP/TLS", ignoreCase = true))
+        assertTrue(failure.solution.contains("host SSH", ignoreCase = true))
+        assertTrue(failure.solution.contains("no contra el SNI", ignoreCase = true))
+    }
+
+    @Test
+    fun mapsForeignHostClosureAfterTlsToSshTlsStage() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException("connection is closed by foreign host"),
+            injectorProfile
+        )
+
+        assertEquals("SSH-TLS-502", failure.code)
+        assertEquals("SSH", failure.stage)
+        assertTrue(failure.title.contains("TLS", ignoreCase = true))
+        assertTrue(failure.title.contains("SSH", ignoreCase = true))
+        assertTrue(failure.solution.contains("Host", ignoreCase = true))
+        assertTrue(failure.solution.contains("SNI", ignoreCase = true))
     }
 
     @Test

@@ -49,7 +49,7 @@ object ConnectionErrorCatalog {
                     profile.selectedMode.usesTls &&
                     !profile.selectedTlsVerificationMode.verifiesHostname
                 ) {
-                    "El modo compatible abre TCP/TLS contra el SNI configurado y después inicia SSH. Verifica que ese SNI responda en el puerto indicado y prueba exactamente el mismo dominio usado por HTTP Injector."
+                    "El modo compatible abre TCP contra el host SSH del perfil y usa el dominio configurado únicamente como SNI TLS. Verifica el host SSH, puerto y disponibilidad del servidor."
                 } else {
                     "Verifica que el host y puerto del servidor acepten conexiones desde tu red actual."
                 }
@@ -61,7 +61,7 @@ object ConnectionErrorCatalog {
                     profile.selectedMode.usesTls &&
                     !profile.selectedTlsVerificationMode.verifiesHostname
                 ) {
-                    "El modo compatible usa el SNI como extremo TCP/TLS. Revisa que el dominio SNI y el puerto sean exactamente los que funcionan en HTTP Injector."
+                    "La conexión TCP se realiza contra el host SSH, no contra el SNI. Revisa el servidor SSH y el puerto configurado."
                 } else {
                     "La aplicación alcanzó la IP remota, pero no había un servicio aceptando conexiones en ese puerto. Verifica host y puerto."
                 }
@@ -90,6 +90,16 @@ object ConnectionErrorCatalog {
                 } else {
                     "Usa el SNI indicado por el administrador o activa explícitamente la compatibilidad SNI tipo HTTP Custom para este perfil SSH."
                 }
+            )
+            profile.selectedMode.isSsh && profile.selectedMode.usesTls && (
+                lower.contains("connection is closed by foreign host") ||
+                    lower.contains("closed by foreign host") ||
+                    lower.contains("foreign host closed")
+                ) -> failure(
+                "SSH-TLS-502", "SSH",
+                "TLS se estableció, pero el extremo cerró el intercambio SSH",
+                raw,
+                "Comprueba que Host sea el servidor SSH real y que SNI sea solo el dominio TLS usado por esa configuración. Si el mismo perfil funciona en HTTP Injector, conserva exactamente su host, puerto y SNI."
             )
             lower.contains("auth fail") || lower.contains("authentication") || lower.contains("autenticación") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",

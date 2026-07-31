@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** Guards the Injector-compatible distinction between SSH identity and TLS endpoint. */
+/** Guards the Injector-compatible distinction between SSH/TCP identity and TLS SNI. */
 class PhysicalNetworkSocketArchitectureTest {
     @Test
     fun connectorResolvesAndBindsEveryAttemptToANonVpnNetwork() {
@@ -27,7 +27,7 @@ class PhysicalNetworkSocketArchitectureTest {
     }
 
     @Test
-    fun injectorCompatibilityUsesSniAsTcpTlsEndpointAndKeepsSshIdentity() {
+    fun injectorCompatibilityConnectsTcpToSshHostAndUsesSniOnlyForTls() {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/SshTunnelEngine.kt"
         )
@@ -35,25 +35,26 @@ class PhysicalNetworkSocketArchitectureTest {
             .substringAfter("override fun createSocket")
             .substringBefore("override fun getInputStream")
         val transportIndex = createSocketSection.indexOf(
-            "socket = connectDirect(tlsEndpointHost, targetPort)"
+            "socket = connectDirect(targetHost, targetPort)"
         )
         val tlsIndex = createSocketSection.indexOf("TlsTransport.upgrade(")
 
-        assertTrue(source.contains("TlsVerificationMode.CUSTOM_SNI"))
         assertTrue(source.contains("jsch.getSession(profile.username.trim(), transportHost, transportPort)"))
-        assertTrue(createSocketSection.contains("val tlsEndpointHost = if ("))
-        assertTrue(createSocketSection.contains("verificationMode == TlsVerificationMode.CUSTOM_SNI"))
-        assertTrue(createSocketSection.contains("sniHost"))
-        assertTrue("The selected TLS endpoint is not opened", transportIndex >= 0)
+        assertFalse(
+            "The SNI must never replace the real SSH endpoint",
+            createSocketSection.contains("tlsEndpointHost")
+        )
+        assertTrue("The real SSH endpoint is not opened", transportIndex >= 0)
         assertTrue("TLS wrapping is missing", tlsIndex >= 0)
         assertTrue("TCP transport must be established before TLS", transportIndex < tlsIndex)
-        assertTrue(createSocketSection.contains("targetHost = tlsEndpointHost"))
+        assertTrue(createSocketSection.contains("targetHost = targetHost"))
         assertTrue(createSocketSection.contains("sniHost = sniHost"))
-        assertTrue(createSocketSection.contains("destino SSH lógico"))
+        assertTrue(createSocketSection.contains("extremo TCP/SSH"))
+        assertTrue(createSocketSection.contains("SNI TLS"))
     }
 
     @Test
-    fun strictModeFallsBackToConfiguredSshHostAsTlsEndpoint() {
+    fun proxiesAlsoTunnelToTheRealSshHostBeforeTls() {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/SshTunnelEngine.kt"
         )
@@ -63,12 +64,13 @@ class PhysicalNetworkSocketArchitectureTest {
 
         assertTrue(
             createSocketSection.contains(
-                "mode.usesTls && verificationMode == TlsVerificationMode.CUSTOM_SNI"
+                "performSocks5Handshake(socket, targetHost, targetPort)"
             )
         )
         assertTrue(
-            "Strict TLS must retain the configured SSH host as the physical endpoint",
-            createSocketSection.contains("else {\n            targetHost\n        }")
+            createSocketSection.contains(
+                "performHttpConnectHandshake(socket, targetHost, targetPort)"
+            )
         )
     }
 
