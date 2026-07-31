@@ -7,15 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.FilterChip
@@ -32,9 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
@@ -47,12 +48,17 @@ import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.httpInjectorLine
 
-/** Contenido puro de consola; el dashboard aporta el único contenedor visual. */
+/**
+ * Consola plana inspirada en HTTP Injector.
+ *
+ * No dibuja una tarjeta ni un recuadro alrededor de las líneas. Cuando
+ * [maxHeight] es null ocupa todo el alto disponible de la página de registro.
+ */
 @Composable
 fun HttpInjectorLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
-    maxHeight: Int = 460
+    maxHeight: Dp? = 460.dp
 ) {
     val listState = rememberLazyListState()
     var filter by remember { mutableStateOf(LogFilter.ALL) }
@@ -76,7 +82,10 @@ fun HttpInjectorLogConsole(
         if (followTail && orderedLogs.isNotEmpty()) listState.scrollToItem(orderedLogs.lastIndex)
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
@@ -100,7 +109,11 @@ fun HttpInjectorLogConsole(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (orderedLogs.isEmpty()) "Sin eventos" else "${orderedLogs.size} eventos · ${if (followTail) "siguiendo" else "pausado"}",
+                text = if (orderedLogs.isEmpty()) {
+                    "Sin eventos"
+                } else {
+                    "${orderedLogs.size} eventos · ${if (followTail) "siguiendo" else "pausado"}"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = TextTertiary
             )
@@ -111,7 +124,11 @@ fun HttpInjectorLogConsole(
                 },
                 enabled = orderedLogs.isNotEmpty()
             ) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Ir al final", tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary)
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    "Ir al final",
+                    tint = if (orderedLogs.isNotEmpty()) NeonCyan else TextTertiary
+                )
             }
         }
 
@@ -123,10 +140,15 @@ fun HttpInjectorLogConsole(
                 modifier = Modifier.padding(vertical = Dimens.SpaceLG)
             )
         } else {
+            val listModifier = if (maxHeight == null) {
+                Modifier.fillMaxSize().weight(1f)
+            } else {
+                Modifier.fillMaxWidth().heightIn(min = 180.dp, max = maxHeight)
+            }
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = maxHeight.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = listModifier,
+                verticalArrangement = Arrangement.spacedBy(1.dp),
                 contentPadding = PaddingValues(bottom = Dimens.SpaceSM)
             ) {
                 items(orderedLogs, key = { it.id }) { entry ->
@@ -161,9 +183,8 @@ private fun HttpLogLine(entry: LogEntry, isSelected: Boolean, onClick: () -> Uni
         overflow = TextOverflow.Clip,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 5.dp, horizontal = 6.dp)
+            .padding(vertical = 3.dp, horizontal = 2.dp)
     )
 }
 
