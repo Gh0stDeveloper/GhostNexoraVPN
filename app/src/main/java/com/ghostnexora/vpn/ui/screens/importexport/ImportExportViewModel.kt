@@ -42,15 +42,15 @@ class ImportExportViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setImportPassword(value: String) {
-        _importState.update { it.copy(password = value, error = null) }
+        _importState.update { it.copy(password = value.take(256), error = null) }
     }
 
     fun setExportPassword(value: String) {
-        _exportState.update { it.copy(password = value, error = null) }
+        _exportState.update { it.copy(password = value.take(256), error = null) }
     }
 
     fun setExportPasswordConfirmation(value: String) {
-        _exportState.update { it.copy(passwordConfirmation = value, error = null) }
+        _exportState.update { it.copy(passwordConfirmation = value.take(256), error = null) }
     }
 
     fun onFilePicked(uri: Uri) {
@@ -106,14 +106,27 @@ class ImportExportViewModel @Inject constructor(
             val existing = if (merge) repository.allProfiles.first() else emptyList()
             val (unique, skipped) = ProfileFingerprint.uniqueAgainst(profiles, existing)
             if (!merge) repository.deleteAllProfiles()
-            if (unique.isNotEmpty()) repository.saveProfiles(unique)
+            if (unique.isNotEmpty()) {
+                repository.saveProfiles(unique)
+                // The newly imported configuration becomes the active profile so
+                // its creator note is immediately available on the home screen.
+                repository.setActiveProfileId(unique.first().id)
+            }
+            pendingImportProfiles = emptyList()
             _importState.update {
                 it.copy(
                     isLoading = false,
                     importSuccess = true,
                     importedCount = unique.size,
                     skippedDuplicateCount = skipped,
-                    password = ""
+                    password = "",
+                    passwordRequired = false,
+                    previewProfiles = emptyList(),
+                    technicalSummaries = emptyList(),
+                    validation = null,
+                    duplicateCount = 0,
+                    selectedUri = null,
+                    selectedRawText = null
                 )
             }
         }
