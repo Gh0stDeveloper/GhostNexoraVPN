@@ -99,17 +99,21 @@ Planned explicit certificate/public-key pinning should be opt-in per profile and
 - JSch random generation is injected directly using `SecureRandom`.
 - Local SOCKS listens on loopback only.
 - Passwords are never logged.
+- The application package is excluded from its own full-device TUN so JSch transport sockets use the physical network rather than recursively re-entering Xray.
 
 Private-key support must encrypt imported key material and passphrases at rest and erase temporary buffers where feasible.
 
 ## Routing safety
 
 - Dashboard connection ownership stays in the private, non-exported `:vpn` process; the separate non-destructive diagnostic action may create a temporary preflight runtime.
-- The startup TUN is fail-closed until active outbound verification succeeds.
-- TUN traffic has no silent direct fallback.
+- In all-app and exclude-selected modes, `VpnService.Builder.addDisallowedApplication(packageName)` is mandatory and exceptions are not ignored.
+- In only-selected mode, Android forbids combining allowed and disallowed lists; the VPN package is excluded by omission from the allowlist.
+- The TUN remains fail-closed while background outbound verification is pending or failing: captured traffic has no direct fallback.
+- `Connected` is published only after SSH/Xray/TUN startup succeeds, but it does not wait for a remote connectivity probe.
+- Initial and periodic probes execute outside the service startup path.
+- Remote I/O does not hold the `TunnelManager` or `XrayCoreEngine` monitor, allowing disconnect and core shutdown to proceed during a slow probe.
 - Kill Switch behavior is explicit.
 - Application-only allowlists fail closed when empty or unavailable.
-- The VPN process is excluded where needed to prevent routing loops.
 
 ## Updates
 
@@ -162,6 +166,9 @@ Root or hook detection must not be described as infallible and should not automa
 - No relaxed TLS defaults or global trust-all manager.
 - No unbounded input or delays.
 - No direct fallback route.
+- No self-routing loop for the VPN package or its private process.
+- No synchronous remote probe before Connected-state publication.
+- No network probe holding a teardown lock.
 - No exported Android component without need.
 - No new reflection-dependent runtime class without R8 verification.
 - Unit, Lint, Debug, Release/R8, native ABI, and manifest checks pass.
