@@ -50,11 +50,34 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
-    fun mapsOutboundFailure() {
+    fun mapsSshOutboundFailureWithoutSuggestingOtherProtocols() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException("outbound could not deliver generate_204"),
             sshProfile
         )
-        assertEquals("ROUTE-204", failure.code)
+        assertEquals("SSH-ROUTE-204", failure.code)
+        assertEquals("SSH", failure.stage)
+        assertTrue(failure.title.contains("SSH + SSL"))
+        assertTrue(!failure.solution.contains("V2Ray", ignoreCase = true))
+        assertTrue(!failure.solution.contains("Trojan", ignoreCase = true))
+        assertTrue(!failure.solution.contains("UUID", ignoreCase = true))
+        assertTrue(!failure.solution.contains("path", ignoreCase = true))
+        assertTrue(!failure.solution.contains("service name", ignoreCase = true))
+    }
+
+    @Test
+    fun mapsClosedPipeToSshBridgeInsteadOfGenericXrayFields() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException(
+                "El servidor o la configuración no entregan acceso a Internet: io: read/write on closed pipe"
+            ),
+            sshProfile
+        )
+
+        assertEquals("SSH-BRIDGE-502", failure.code)
+        assertEquals("SSH", failure.stage)
+        assertTrue(!failure.solution.contains("UUID", ignoreCase = true))
+        assertTrue(!failure.solution.contains("path", ignoreCase = true))
+        assertTrue(!failure.solution.contains("service name", ignoreCase = true))
     }
 }

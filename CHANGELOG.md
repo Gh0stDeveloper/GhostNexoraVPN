@@ -2,6 +2,19 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.39
+
+### Fixed
+
+- Fixed the local SSH SOCKS bridge deadlock that produced `io: read/write on closed pipe` after TLS/SNI and SSH authentication had already succeeded. Every JSch channel block is now flushed while the connection is active instead of only after the SOCKS client closes.
+- Bound the local bridge explicitly to IPv4 `127.0.0.1`, matching the Xray SOCKS endpoint on Android runtimes that otherwise select IPv6 loopback.
+- Classified post-authentication failures as SSH/SOCKS forwarding failures for SSH profiles. SSH + SSL diagnostics no longer suggest unrelated V2Ray/Trojan UUID, path, or service-name fields.
+- Added bridge regression coverage that requires every copied chunk to be flushed before end-of-input.
+
+### Changed
+
+- The first successfully forwarded block now emits a sanitized `SOCKS` stage event, while direct-tcpip channel-open failures retain their concrete SSH cause in the connection log.
+
 ## 1.0.38
 
 ### Added

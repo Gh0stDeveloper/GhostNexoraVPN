@@ -18,9 +18,16 @@ class TunnelLogEventParserTest {
         val core = requireNotNull(
             TunnelLogEventParser.parse("[XRAY] Configuración TUN preparada")
         )
+        val socks = requireNotNull(
+            TunnelLogEventParser.parse(
+                "[SOCKS] Canal direct-tcpip verificado · datos reenviados por SSH"
+            )
+        )
 
         assertEquals(LogLevel.SUCCESS, ssh.level)
         assertEquals("SSH", ssh.tag)
+        assertEquals(LogLevel.SUCCESS, socks.level)
+        assertEquals("SSH", socks.tag)
         assertEquals(LogLevel.INFO, network.level)
         assertEquals("NETWORK", network.tag)
         assertEquals("CORE", core.tag)
