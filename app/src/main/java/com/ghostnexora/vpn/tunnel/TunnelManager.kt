@@ -4,6 +4,8 @@ import android.content.Context
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
+import java.net.InetAddress
+import java.net.ServerSocket
 
 /**
  * Coordinates SSH/Xray transports and emits stage-oriented operational logs.
@@ -72,8 +74,21 @@ class TunnelManager(
             try {
                 onCoreStatus("[SSH] Sesión autenticada y cifrada")
                 onCoreStatus("[SOCKS] Bridge SSH activo · 127.0.0.1:${sshHandle.socksPort}")
-                val config = StableXrayConfigFactory.build(profile, sshHandle.socksPort, preferences)
-                startAndVerify(profile, config, tunFd, sshHandle, preferences)
+                val healthCheckPort = reserveLoopbackPort()
+                val config = StableXrayConfigFactory.build(
+                    profile = profile,
+                    sshSocksPort = sshHandle.socksPort,
+                    preferences = preferences,
+                    healthCheckPort = healthCheckPort
+                )
+                startAndVerify(
+                    profile,
+                    config,
+                    tunFd,
+                    sshHandle,
+                    preferences,
+                    healthCheckPort
+                )
             } catch (error: Throwable) {
                 xrayEngine.stop()
                 sshHandle.close()
@@ -83,7 +98,7 @@ class TunnelManager(
         } else {
             val config = StableXrayConfigFactory.build(profile, preferences = preferences)
             try {
-                startAndVerify(profile, config, tunFd, null, preferences)
+                startAndVerify(profile, config, tunFd, null, preferences, null)
             } catch (error: Throwable) {
                 xrayEngine.stop()
                 onCoreStatus("[ERROR] Xray/TUN detenido · ${error.message.orEmpty().take(180)}")
@@ -97,12 +112,13 @@ class TunnelManager(
         config: String,
         tunFd: Int,
         sshHandle: SshTunnelHandle?,
-        preferences: NetworkPreferences
+        preferences: NetworkPreferences,
+        healthCheckPort: Int?
     ): TunnelRuntime {
         onCoreStatus("[XRAY] ${StableXrayConfigFactory.summary(profile, preferences)}")
         onCoreStatus("[DNS] ${preferences.dnsMode.label} · ${preferences.dnsServers().joinToString()}")
         onCoreStatus("[ROUTING] Regla explícita TUN → proxy · TCP/UDP")
-        xrayEngine.start(config, tunFd)
+        xrayEngine.start(config, tunFd, healthCheckPort)
         onCoreStatus("[TUN] Xray Core conectado a la interfaz Android")
         val outbound = xrayEngine.verifyActiveOutbound()
         onCoreStatus("[NETWORK] Internet validado por el outbound · ${outbound.latencyMs} ms")
@@ -126,6 +142,17 @@ class TunnelManager(
         }
         onCoreStatus("[SSH] Iniciando intercambio de claves y autenticación")
     }
+
+    /**
+     * Xray requires a concrete port for the loopback health-check inbound.
+     * The reservation is released immediately before Xray binds it; binding
+     * to IPv4 loopback keeps the probe private to this device.
+     */
+    private fun reserveLoopbackPort(): Int = ServerSocket(
+        0,
+        1,
+        InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+    ).use { it.localPort }
 
     /** Checks the already-running core without changing Android routes. */
     @Synchronized

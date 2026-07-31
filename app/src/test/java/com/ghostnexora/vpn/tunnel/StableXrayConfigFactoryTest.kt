@@ -35,6 +35,7 @@ class StableXrayConfigFactoryTest {
         assertEquals("ws", proxy.getJSONObject("streamSettings").getString("network"))
 
         val rules = root.getJSONObject("routing").getJSONArray("rules")
+        assertEquals("IPIfNonMatch", root.getJSONObject("routing").getString("domainStrategy"))
         assertEquals("dns-out", rules.getJSONObject(0).getString("outboundTag"))
         assertEquals("proxy", rules.getJSONObject(1).getString("outboundTag"))
         assertEquals("tcp,udp", rules.getJSONObject(1).getString("network"))
@@ -80,12 +81,41 @@ class StableXrayConfigFactoryTest {
             sni = "front.example.com"
         )
 
-        val root = JSONObject(StableXrayConfigFactory.build(profile, sshSocksPort = 10808))
+        val root = JSONObject(
+            StableXrayConfigFactory.build(
+                profile,
+                sshSocksPort = 10808,
+                healthCheckPort = 18080
+            )
+        )
         val proxy = root.getJSONArray("outbounds").getJSONObject(0)
         val server = proxy.getJSONObject("settings").getJSONArray("servers").getJSONObject(0)
         assertEquals("socks", proxy.getString("protocol"))
         assertEquals("127.0.0.1", server.getString("address"))
         assertEquals(10808, server.getInt("port"))
+
+        val inbounds = root.getJSONArray("inbounds")
+        val health = (0 until inbounds.length())
+            .map(inbounds::getJSONObject)
+            .first { it.getString("tag") == "health-check" }
+        assertEquals("127.0.0.1", health.getString("listen"))
+        assertEquals(18080, health.getInt("port"))
+        assertEquals("socks", health.getString("protocol"))
+
+        val routing = root.getJSONObject("routing")
+        assertEquals("AsIs", routing.getString("domainStrategy"))
+        val rules = routing.getJSONArray("rules")
+        assertTrue((0 until rules.length()).any {
+            val rule = rules.getJSONObject(it)
+            rule.optString("outboundTag") == "proxy" &&
+                rule.optJSONArray("inboundTag")?.optString(0) == "health-check"
+        })
+
+        val outbounds = root.getJSONArray("outbounds")
+        val dns = (0 until outbounds.length())
+            .map(outbounds::getJSONObject)
+            .first { it.getString("tag") == "dns-out" }
+        assertEquals("proxy", dns.getJSONObject("proxySettings").getString("tag"))
     }
 
     @Test

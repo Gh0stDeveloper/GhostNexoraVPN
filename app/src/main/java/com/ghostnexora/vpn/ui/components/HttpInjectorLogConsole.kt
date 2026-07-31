@@ -181,7 +181,8 @@ private enum class LogFilter(val label: String) {
         return when (this) {
             ALL -> true
             NETWORK -> tag == "NETWORK" || message.contains("RED") || message.contains("TUN")
-            SSH -> tag == "SSH" || message.contains("SSH")
+            SSH -> tag == "SSH" || tag == "SOCKS" ||
+                message.contains("SSH") || message.contains("SOCKS")
             TLS -> tag == "TLS" || message.contains("TLS") || message.contains("CERTIFIC")
             CORE -> tag == "CORE" || message.contains("XRAY") || message.contains("CORE")
             ERROR -> entry.level == LogLevel.ERROR || entry.level == LogLevel.WARNING

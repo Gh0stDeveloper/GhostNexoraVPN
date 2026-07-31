@@ -27,7 +27,7 @@ class TunnelLogEventParserTest {
         assertEquals(LogLevel.SUCCESS, ssh.level)
         assertEquals("SSH", ssh.tag)
         assertEquals(LogLevel.SUCCESS, socks.level)
-        assertEquals("SSH", socks.tag)
+        assertEquals("SOCKS", socks.tag)
         assertEquals(LogLevel.INFO, network.level)
         assertEquals("NETWORK", network.tag)
         assertEquals("CORE", core.tag)

@@ -80,4 +80,20 @@ class ConnectionErrorCatalogTest {
         assertTrue(!failure.solution.contains("path", ignoreCase = true))
         assertTrue(!failure.solution.contains("service name", ignoreCase = true))
     }
+
+    @Test
+    fun mapsLoopbackHealthRouteFailureToSshOnly() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException(
+                "La ruta Xray → SOCKS → SSH no completó el handshake TLS remoto: connection refused"
+            ),
+            sshProfile
+        )
+
+        assertEquals("SSH-ROUTE-204", failure.code)
+        assertEquals("SSH", failure.stage)
+        assertTrue(failure.title.contains("SSH + SSL"))
+        assertTrue(!failure.solution.contains("UUID", ignoreCase = true))
+        assertTrue(!failure.solution.contains("path", ignoreCase = true))
+    }
 }

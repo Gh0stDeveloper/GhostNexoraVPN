@@ -406,7 +406,10 @@ class SshSocksServer(
     private val onStatus: (String) -> Unit = {}
 ) : Closeable {
     private val running = AtomicBoolean(false)
+    private val firstChannelOpenedReported = AtomicBoolean(false)
     private val firstForwardedChannelReported = AtomicBoolean(false)
+    private val firstDownlinkReported = AtomicBoolean(false)
+    private val firstIoFailureReported = AtomicBoolean(false)
     private val executor: ExecutorService = Executors.newCachedThreadPool()
     private val clients = Collections.synchronizedSet(mutableSetOf<Socket>())
     private var serverSocket: ServerSocket? = null
@@ -495,30 +498,30 @@ class SshSocksServer(
             val remoteOutput = channel.outputStream
             channel.connect(20_000)
             check(channel.isConnected) { "El servidor SSH no abrió el canal direct-tcpip" }
+            if (firstChannelOpenedReported.compareAndSet(false, true)) {
+                onStatus("[SOCKS] Canal direct-tcpip abierto por el servidor SSH")
+            }
 
             sendReply(output, 0x00)
             socksHandshakeCompleted = true
             client.soTimeout = 0
 
-            val activeChannel = channel
             executor.execute {
                 try {
-                    copyToSshChannel(input, remoteOutput) {
+                    copyClientToSshAndHalfClose(input, remoteOutput) {
                         if (firstForwardedChannelReported.compareAndSet(false, true)) {
-                            onStatus("[SOCKS] Canal direct-tcpip verificado · datos reenviados por SSH")
+                            onStatus("[SOCKS] Subida activa · datos enviados por direct-tcpip SSH")
                         }
                     }
-                } catch (_: IOException) {
-                } finally {
-                    runCatching { activeChannel.disconnect() }
-                    runCatching { client.close() }
+                } catch (error: IOException) {
+                    reportIoFailure("subida", error)
                 }
             }
 
-            try {
-                remoteInput.copyTo(output, DEFAULT_BUFFER_SIZE)
-                output.flush()
-            } catch (_: IOException) {
+            copyFromSshChannel(remoteInput, output) {
+                if (firstDownlinkReported.compareAndSet(false, true)) {
+                    onStatus("[SOCKS] Bajada activa · respuesta remota recibida por SSH")
+                }
             }
         } catch (error: Throwable) {
             if (!socksHandshakeCompleted && running.get()) {
@@ -531,12 +534,24 @@ class SshSocksServer(
                     .take(160)
                     .ifBlank { error.javaClass.simpleName }
                 onStatus("[SOCKS] ERROR · canal direct-tcpip no disponible · $detail")
+            } else if (socksHandshakeCompleted && error is IOException) {
+                reportIoFailure("bajada", error)
             }
         } finally {
             runCatching { channel?.disconnect() }
             runCatching { client.close() }
             clients -= client
         }
+    }
+
+    private fun reportIoFailure(direction: String, error: IOException) {
+        if (!running.get() || !firstIoFailureReported.compareAndSet(false, true)) return
+        val detail = error.message
+            .orEmpty()
+            .replace('\n', ' ')
+            .take(160)
+            .ifBlank { error.javaClass.simpleName }
+        onStatus("[SOCKS] WARN · cierre de $direction · $detail")
     }
 
     private fun sendReply(output: OutputStream, code: Int) {
@@ -578,6 +593,52 @@ class SshSocksServer(
  * closes its side of the pipe. Flush every block while the stream is active.
  */
 internal fun copyToSshChannel(
+    input: InputStream,
+    output: OutputStream,
+    bufferSize: Int = DEFAULT_BUFFER_SIZE,
+    onFirstFlush: () -> Unit = {}
+): Long {
+    require(bufferSize > 0) { "bufferSize must be positive" }
+    val buffer = ByteArray(bufferSize)
+    var copied = 0L
+    var firstFlushPending = true
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        if (count == 0) continue
+        output.write(buffer, 0, count)
+        output.flush()
+        copied += count
+        if (firstFlushPending) {
+            firstFlushPending = false
+            onFirstFlush()
+        }
+    }
+    return copied
+}
+
+/**
+ * Half-closes only the client -> SSH direction when the SOCKS client reaches
+ * EOF. The caller deliberately keeps the channel and client socket alive so
+ * the remote response can finish on the opposite direction.
+ */
+internal fun copyClientToSshAndHalfClose(
+    input: InputStream,
+    output: OutputStream,
+    bufferSize: Int = DEFAULT_BUFFER_SIZE,
+    onFirstFlush: () -> Unit = {}
+): Long = try {
+    copyToSshChannel(input, output, bufferSize, onFirstFlush)
+} finally {
+    output.close()
+}
+
+/**
+ * Mirrors the remote half of the SSH channel back to the SOCKS client. Socket
+ * streams are normally unbuffered, but flushing each block also keeps wrapped
+ * streams deterministic and lets readiness be reported on the first response.
+ */
+internal fun copyFromSshChannel(
     input: InputStream,
     output: OutputStream,
     bufferSize: Int = DEFAULT_BUFFER_SIZE,

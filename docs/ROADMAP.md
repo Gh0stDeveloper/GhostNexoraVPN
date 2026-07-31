@@ -107,7 +107,7 @@ Replace remaining generic Xray option text with typed fields for:
 
 ## Post-merge device qualification backlog
 
-For the 1.0.39 device qualification cycle:
+For the 1.0.40 device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the JSch error.
 2. Run diagnostics for the same SSH + SSL profile.
