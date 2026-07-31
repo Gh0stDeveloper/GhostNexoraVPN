@@ -19,7 +19,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.PushbackInputStream
 import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
@@ -41,6 +40,7 @@ class SshTunnelEngine(
     private val context: Context? = null,
     private val onStatus: (String) -> Unit = {}
 ) {
+    private val socketConnector = PhysicalNetworkSocketConnector(context, onStatus)
 
     fun connect(profile: VpnProfile): Session {
         val mode = profile.selectedMode
@@ -71,7 +71,7 @@ class SshTunnelEngine(
         session.setServerAliveInterval(15_000)
         session.setServerAliveCountMax(3)
         session.setTimeout(25_000)
-        session.setSocketFactory(TunnelSocketFactory(profile, onStatus))
+        session.setSocketFactory(TunnelSocketFactory(profile, onStatus, socketConnector))
 
         try {
             onStatus("[SSH] Abriendo sesión y negociando algoritmos")
@@ -130,7 +130,8 @@ data class SshTunnelHandle(
 
 private class TunnelSocketFactory(
     private val profile: VpnProfile,
-    private val onStatus: (String) -> Unit
+    private val onStatus: (String) -> Unit,
+    private val socketConnector: PhysicalNetworkSocketConnector
 ) : SocketFactory {
 
     private val wrappedInputs = Collections.synchronizedMap(WeakHashMap<Socket, InputStream>())
@@ -162,11 +163,13 @@ private class TunnelSocketFactory(
         }
 
         if (mode.usesTls) {
+            val sniHost = profile.sni.trim().ifBlank { targetHost }
+            onStatus("[TLS] Transporte $targetHost:$targetPort · SNI independiente $sniHost")
             val tlsSocket = TlsTransport.upgrade(
                 connectedSocket = socket,
                 targetHost = targetHost,
                 targetPort = targetPort,
-                sniHost = profile.sni.trim().ifBlank { targetHost },
+                sniHost = sniHost,
                 verificationMode = profile.selectedTlsVerificationMode
             )
             onStatus(
@@ -189,15 +192,8 @@ private class TunnelSocketFactory(
     override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
 
     private fun connectDirect(host: String, port: Int): Socket {
-        onStatus("[NETWORK] Abriendo socket TCP · $host:$port")
-        val startedAt = System.nanoTime()
-        return Socket().apply {
-            tcpNoDelay = true
-            keepAlive = true
-            connect(InetSocketAddress(host, port), 20_000)
-            val latencyMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
-            onStatus("[NETWORK] Socket TCP conectado · $latencyMs ms")
-        }
+        onStatus("[NETWORK] Abriendo transporte físico TCP · $host:$port")
+        return socketConnector.connect(host, port, 20_000)
     }
 
     /**
