@@ -14,10 +14,15 @@ class PhysicalNetworkSocketArchitectureTest {
         )
 
         assertTrue(source.contains("NetworkCapabilities.NET_CAPABILITY_NOT_VPN"))
+        assertTrue(source.contains("manager.registerNetworkCallback"))
         assertTrue(source.contains("network.getAllByName(host)"))
         assertTrue(source.contains("network.bindSocket(socket)"))
         assertTrue(source.contains("for ((addressIndex, address) in addresses.withIndex())"))
         assertTrue(source.contains("sortedBy { if (it is Inet4Address) 0 else 1 }"))
+        assertFalse(
+            "Deprecated global network enumeration must not return",
+            source.contains("manager.allNetworks")
+        )
     }
 
     @Test
