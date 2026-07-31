@@ -3,10 +3,10 @@ package com.ghostnexora.vpn.data.model
 /**
  * Política TLS aplicada únicamente a los transportes SSH encapsulados en TLS.
  *
- * CUSTOM_SNI conserva la validación de la cadena de certificados del sistema,
- * pero no exige que el SNI enviado aparezca en el SAN del certificado. Esto
- * reproduce la compatibilidad necesaria para servidores tipo HTTP Custom sin
- * convertir la aplicación en un cliente global "trust all".
+ * CUSTOM_SNI reproduce el flujo de HTTP Injector/HTTP Custom: conserva el host
+ * del perfil como identidad lógica SSH, pero abre el socket TCP/TLS contra el
+ * SNI configurado. La cadena del certificado continúa validándose con los
+ * TrustManager de Android, aunque no se exige coincidencia SNI/SAN.
  */
 enum class TlsVerificationMode(
     val id: String,
@@ -17,13 +17,13 @@ enum class TlsVerificationMode(
     STRICT(
         id = "strict",
         label = "TLS estricto",
-        description = "Valida la cadena del certificado y exige que el SNI coincida con su SAN.",
+        description = "Conecta al host del servidor, valida la cadena del certificado y exige que el SNI coincida con su SAN.",
         verifiesHostname = true
     ),
     CUSTOM_SNI(
         id = "custom_sni",
-        label = "Compatible con HTTP Custom",
-        description = "Envía el SNI configurado sin exigir coincidencia SAN; la cadena TLS y la identidad SSH siguen verificándose.",
+        label = "Compatible con HTTP Injector/Custom",
+        description = "Conecta TCP/TLS al SNI configurado y después inicia SSH, sin exigir coincidencia SAN; la cadena TLS y la identidad SSH siguen verificándose.",
         verifiesHostname = false
     );
 
