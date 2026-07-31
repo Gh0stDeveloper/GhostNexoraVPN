@@ -27,6 +27,7 @@ class XrayCoreEngine(
 ) {
     private val appContext = context.applicationContext
     private var controller: CoreController? = null
+    private var activeHealthCheckPort: Int? = null
 
     val isRunning: Boolean
         get() = controller?.isRunning == true
@@ -45,8 +46,11 @@ class XrayCoreEngine(
     }
 
     @Synchronized
-    fun start(config: String, tunFd: Int) {
+    fun start(config: String, tunFd: Int, healthCheckPort: Int? = null) {
         require(tunFd > 0) { "Descriptor TUN inválido" }
+        healthCheckPort?.let {
+            require(it in 1..65535) { "Puerto de comprobación Xray inválido" }
+        }
         if (isRunning) error("Xray Core ya está ejecutándose")
 
         initializeCore()
@@ -60,9 +64,11 @@ class XrayCoreEngine(
             if (!newController.isRunning) {
                 error("Xray Core no pudo iniciar el loop TUN")
             }
+            activeHealthCheckPort = healthCheckPort
             onStatus("[CORE] Xray Core activo")
         } catch (error: Throwable) {
             controller = null
+            activeHealthCheckPort = null
             runCatching { newController.stopLoop() }
             throw IllegalStateException(
                 error.message?.takeIf { it.isNotBlank() } ?: "Fallo iniciando Xray Core",
@@ -76,6 +82,10 @@ class XrayCoreEngine(
     fun verifyActiveOutbound(): OutboundCheck {
         val activeController = controller?.takeIf { it.isRunning }
             ?: error("Xray Core no está activo para validar la salida")
+        val healthCheckPort = activeHealthCheckPort
+        if (healthCheckPort != null) {
+            return verifySshSocksOutbound(healthCheckPort)
+        }
         onStatus("[NETWORK] Comprobando Internet a través del outbound activo")
         return measureAcrossEndpoints { url ->
             activeController.measureDelay(url)
@@ -104,12 +114,45 @@ class XrayCoreEngine(
     fun stop() {
         val activeController = controller ?: return
         controller = null
+        activeHealthCheckPort = null
         runCatching {
             if (activeController.isRunning) activeController.stopLoop()
         }
     }
 
     fun version(): String = runCatching { Libv2ray.checkVersionX() }.getOrDefault("desconocida")
+
+    private fun verifySshSocksOutbound(healthCheckPort: Int): OutboundCheck {
+        var lastError: Throwable? = null
+        onStatus("[NETWORK] Comprobando ruta Xray → SOCKS → direct-tcpip SSH")
+
+        for ((index, target) in Socks5OutboundProbe.targets.withIndex()) {
+            try {
+                onStatus(
+                    "[SOCKS] Prueba real ${index + 1}/${Socks5OutboundProbe.targets.size} · " +
+                        "TLS remoto por SSH"
+                )
+                val result = Socks5OutboundProbe.measure(healthCheckPort, target)
+                onStatus(
+                    "[SOCKS] Ruta bidireccional verificada · ${result.tlsProtocol} · " +
+                        "${result.cipherSuite} · ${result.latencyMs} ms"
+                )
+                return OutboundCheck(result.latencyMs, target.endpoint)
+            } catch (error: Throwable) {
+                lastError = error
+                onStatus(
+                    "[SOCKS] WARN · prueba ${index + 1} falló · " +
+                        error.message.orEmpty().replace('\n', ' ').take(180)
+                )
+            }
+        }
+
+        throw IllegalStateException(
+            "La ruta Xray → SOCKS → SSH no completó el handshake TLS remoto: " +
+                lastError?.message.orEmpty().replace('\n', ' ').take(180),
+            lastError
+        )
+    }
 
     private fun measureAcrossEndpoints(measure: (String) -> Long): OutboundCheck {
         var lastError: Throwable? = null

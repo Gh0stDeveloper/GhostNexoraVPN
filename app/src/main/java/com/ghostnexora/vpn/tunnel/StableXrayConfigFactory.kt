@@ -22,9 +22,15 @@ object StableXrayConfigFactory {
     fun build(
         profile: VpnProfile,
         sshSocksPort: Int? = null,
-        preferences: NetworkPreferences = NetworkPreferences()
+        preferences: NetworkPreferences = NetworkPreferences(),
+        healthCheckPort: Int? = null
     ): String {
         val options = parseOptions(profile.payload)
+        val isSshBridge = sshSocksPort != null
+        healthCheckPort?.let {
+            require(isSshBridge) { "Health-check inbound is only valid with an SSH SOCKS bridge" }
+            require(it in 1..65535) { "Invalid health-check port" }
+        }
         val proxy = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
             profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options, preferences)
@@ -32,22 +38,24 @@ object StableXrayConfigFactory {
             profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
             else -> error("No Xray outbound for ${profile.connectionModeLabel}")
         }
+        val inbounds = JSONArray().put(tunInbound(preferences))
+        healthCheckPort?.let { inbounds.put(healthCheckInbound(it)) }
 
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning").put("dnsLog", true))
             .put("stats", JSONObject())
             .put("policy", policy())
             .put("dns", protectedDns(preferences))
-            .put("inbounds", JSONArray().put(tunInbound(preferences)))
+            .put("inbounds", inbounds)
             .put(
                 "outbounds",
                 JSONArray()
                     .put(proxy)
-                    .put(dnsOutbound(preferences))
+                    .put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
                     .put(directOutbound())
                     .put(blockOutbound())
             )
-            .put("routing", routing())
+            .put("routing", routing(isSshBridge, healthCheckPort))
             .toString()
     }
 
@@ -99,6 +107,25 @@ object StableXrayConfigFactory {
                 .put("destOverride", JSONArray(listOf("http", "tls", "quic")))
         )
 
+    /**
+     * Loopback-only probe entrypoint used after the TUN loop starts. The app
+     * connects here with SOCKS5 and performs a real TLS handshake through the
+     * selected outbound. This avoids AndroidLibXrayLite's in-memory
+     * CoreController.measureDelay pipe, which can fail independently from the
+     * actual TUN/SOCKS route.
+     */
+    private fun healthCheckInbound(port: Int): JSONObject = JSONObject()
+        .put("tag", "health-check")
+        .put("listen", "127.0.0.1")
+        .put("port", port)
+        .put("protocol", "socks")
+        .put(
+            "settings",
+            JSONObject()
+                .put("auth", "noauth")
+                .put("udp", false)
+        )
+
     private fun protectedDns(preferences: NetworkPreferences): JSONObject {
         val strategy = preferences.ipMode.xrayQueryStrategy
         val servers = JSONArray()
@@ -130,7 +157,10 @@ object StableXrayConfigFactory {
         .put("queryStrategy", strategy)
         .put("skipFallback", false)
 
-    private fun dnsOutbound(preferences: NetworkPreferences): JSONObject = JSONObject()
+    private fun dnsOutbound(
+        preferences: NetworkPreferences,
+        detourThroughProxy: Boolean
+    ): JSONObject = JSONObject()
         .put("tag", "dns-out")
         .put("protocol", "dns")
         .put(
@@ -141,6 +171,11 @@ object StableXrayConfigFactory {
                 .put("port", 53)
                 .put("userLevel", 8)
         )
+        .apply {
+            if (detourThroughProxy) {
+                put("proxySettings", JSONObject().put("tag", "proxy"))
+            }
+        }
 
     private fun directOutbound(): JSONObject = JSONObject()
         .put("tag", "direct")
@@ -153,27 +188,40 @@ object StableXrayConfigFactory {
         .put("protocol", "blackhole")
         .put("settings", JSONObject().put("response", JSONObject().put("type", "none")))
 
-    private fun routing(): JSONObject = JSONObject()
-        .put("domainStrategy", "IPIfNonMatch")
-        .put(
-            "rules",
-            JSONArray()
-                .put(
-                    JSONObject()
-                        .put("type", "field")
-                        .put("inboundTag", JSONArray().put("tun"))
-                        .put("network", "tcp,udp")
-                        .put("port", "53")
-                        .put("outboundTag", "dns-out")
-                )
-                .put(
-                    JSONObject()
-                        .put("type", "field")
-                        .put("inboundTag", JSONArray().put("tun"))
-                        .put("network", "tcp,udp")
-                        .put("outboundTag", "proxy")
-                )
-        )
+    private fun routing(isSshBridge: Boolean, healthCheckPort: Int?): JSONObject {
+        val rules = JSONArray()
+        if (healthCheckPort != null) {
+            rules.put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("inboundTag", JSONArray().put("health-check"))
+                    .put("network", "tcp")
+                    .put("outboundTag", "proxy")
+            )
+        }
+        rules
+            .put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("inboundTag", JSONArray().put("tun"))
+                    .put("network", "tcp,udp")
+                    .put("port", "53")
+                    .put("outboundTag", "dns-out")
+            )
+            .put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("inboundTag", JSONArray().put("tun"))
+                    .put("network", "tcp,udp")
+                    .put("outboundTag", "proxy")
+            )
+
+        return JSONObject()
+            // SSH direct-tcpip resolves destination names at the SSH server.
+            // Avoid resolving them on the physical Android network first.
+            .put("domainStrategy", if (isSshBridge) "AsIs" else "IPIfNonMatch")
+            .put("rules", rules)
+    }
 
     private fun socksOutbound(port: Int): JSONObject {
         require(port in 1..65535) { "Invalid SSH SOCKS port" }

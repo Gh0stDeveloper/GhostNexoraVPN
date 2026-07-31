@@ -205,6 +205,12 @@ class GhostVpnService : VpnService() {
             }
 
             ACTION_DISCONNECT -> serviceScope.launch {
+                logSafe(
+                    LogLevel.INFO,
+                    "Solicitud de desconexión recibida desde el control de la aplicación",
+                    activeProfile?.id,
+                    "VPN"
+                )
                 repository.setVpnDesiredConnected(false)
                 handleDisconnect()
             }

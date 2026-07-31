@@ -2,6 +2,20 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.40
+
+### Fixed
+
+- Fixed the remaining SSH SOCKS half-close race. End-of-input from Xray now closes only the client-to-SSH uplink and keeps the direct-tcpip channel alive until the remote response finishes, preventing the response-side `io: read/write on closed pipe`.
+- Replaced the SSH readiness dependency on AndroidLibXrayLite's in-memory `CoreController.measureDelay()` pipe with a loopback-only Xray SOCKS probe. The probe performs a real remote TLS handshake through `Xray → SOCKS → direct-tcpip SSH` before publishing `Connected`.
+- SSH bridge profiles now use `AsIs` routing so destination names are resolved through the SSH server instead of leaking or stalling on the physical Android network.
+- Protected TCP DNS is explicitly detoured through the selected SSH SOCKS outbound.
+
+### Changed
+
+- Added separate, sanitized SOCKS lifecycle events for channel open, uplink, downlink, remote TLS verification, warnings, and explicit user-requested disconnects.
+- Bumped the application to `1.0.40 (40)`.
+
 ## 1.0.39
 
 ### Fixed

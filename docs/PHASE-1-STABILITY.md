@@ -2,7 +2,7 @@
 
 This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33.
 
-> Runtime note for 1.0.39: non-destructive diagnostics still use the preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process. The SSH SOCKS bridge flushes each JSch channel block immediately so the active outbound can complete its request before publishing `Connected`.
+> Runtime note for 1.0.40: non-destructive diagnostics still use the preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process. SSH readiness is verified through a loopback-only Xray SOCKS inbound and a real remote TLS handshake; a client uplink EOF no longer closes the response half of the direct-tcpip channel.
 
 ## Goals
 

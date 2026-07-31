@@ -17,12 +17,16 @@ data class TunnelLogEvent(
 object TunnelLogEventParser {
     private val prefix = Regex("^\\[([A-Z0-9_-]{2,16})]\\s*")
     private val successWords = listOf(
+        "ABIERTO",
         "ACTIVO",
+        "ACTIVA",
         "AUTENTICADA",
         "AUTENTICACIÓN COMPLETADA",
+        "BAJADA ACTIVA",
         "CONECTADO",
         "COMPLETADO",
         "LISTO",
+        "SUBIDA ACTIVA",
         "VERIFICADO"
     )
 
@@ -51,7 +55,8 @@ object TunnelLogEventParser {
 
     private fun normalizeTag(marker: String, message: String): String = when (marker) {
         "TLS" -> "TLS"
-        "SSH", "SOCKS", "PAYLOAD", "PROXY" -> "SSH"
+        "SSH", "PAYLOAD", "PROXY" -> "SSH"
+        "SOCKS" -> "SOCKS"
         "XRAY", "CORE" -> "CORE"
         "NETWORK", "DNS", "ROUTING", "TUN" -> "NETWORK"
         "SETTINGS" -> "SETTINGS"

@@ -32,6 +32,16 @@ object ConnectionErrorCatalog {
                 "DNS-001", "DNS", "The server name could not be resolved", raw,
                 "Check the host and the selected DNS servers."
             )
+            profile.selectedMode.isSsh && (
+                lower.contains("ruta xray") ||
+                    lower.contains("health-check") ||
+                    lower.contains("xray socks outbound")
+                ) -> failure(
+                "SSH-ROUTE-204", "SSH",
+                "${profile.connectionModeLabel} authenticated, but its Xray/SOCKS route failed",
+                raw,
+                "Keep this profile as ${profile.connectionModeLabel}; export the SSH/SOCKS stages to identify channel-open, uplink, downlink or remote TLS failure."
+            )
             lower.contains("connection refused") -> failure(
                 "TCP-002", "TCP", "The remote port rejected the connection", raw,
                 "Verify the server address, port and service status."
