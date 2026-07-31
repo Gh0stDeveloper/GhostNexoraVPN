@@ -41,8 +41,10 @@ class Socks5OutboundProbeTest {
             write(byteArrayOf(0x1F, 0x90.toByte()))
         }.toByteArray()
 
-        Socks5OutboundProbe.readConnectReply(ByteArrayInputStream(response))
-        assertEquals(10, domain.size)
+        val input = ByteArrayInputStream(response)
+        Socks5OutboundProbe.readConnectReply(input)
+
+        assertEquals(0, input.available())
     }
 
     @Test
