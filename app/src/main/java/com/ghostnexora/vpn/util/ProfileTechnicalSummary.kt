@@ -19,6 +19,20 @@ data class ProfileTechnicalSummary(
 
 object ProfileTechnicalSummaries {
     fun from(profile: VpnProfile): ProfileTechnicalSummary {
+        if (profile.isLocked) {
+            return ProfileTechnicalSummary(
+                protocol = "PROTEGIDO",
+                server = "[OCULTO]",
+                transport = "[OCULTO]",
+                security = "GNX3 bloqueado",
+                sni = "",
+                hostHeader = "",
+                path = "",
+                serviceName = "",
+                proxy = "",
+                warnings = emptyList()
+            )
+        }
         val options = parseOptions(profile.payload)
         val protocol = when (profile.selectedMode) {
             ConnectionMode.V2RAY -> options["protocol"]?.uppercase()

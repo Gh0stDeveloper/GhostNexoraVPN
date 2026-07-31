@@ -184,7 +184,8 @@ private fun GhostNexoraApp() {
 private fun SensitiveWindowProtection(route: String?) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val sensitive = route == Screen.CreateProfile.route ||
+    val sensitive = route == Screen.Profiles.route ||
+        route == Screen.CreateProfile.route ||
         route?.startsWith("edit_profile") == true ||
         route == Screen.Import.route ||
         route == Screen.Export.route

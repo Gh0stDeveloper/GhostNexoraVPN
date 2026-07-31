@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
+import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -75,6 +76,15 @@ fun CreateEditProfileScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showNotePreview by remember { mutableStateOf(false) }
+
+    if (showNotePreview) {
+        HtmlNoteDialog(
+            title = "Vista previa de la nota",
+            html = state.noteHtml,
+            onDismiss = { showNotePreview = false }
+        )
+    }
 
     LaunchedEffect(profileId) {
         viewModel.loadProfile(profileId)
@@ -279,12 +289,21 @@ fun CreateEditProfileScreen(
                         supportingText = { Text("Para V2Ray usa vmess o vless para indicar el protocolo.") }
                     )
                     OutlinedTextField(
-                        value = state.notes,
-                        onValueChange = viewModel::onNotesChange,
-                        label = { Text("Notas") },
+                        value = state.noteHtml,
+                        onValueChange = viewModel::onNoteHtmlChange,
+                        label = { Text("Nota HTML/CSS") },
                         modifier = Modifier.fillMaxWidth(),
-                        minLines = 3
+                        minLines = 4,
+                        supportingText = {
+                            Text("Texto, estilos, tablas y enlaces de contacto seguros.")
+                        }
                     )
+                    TextButton(
+                        onClick = { showNotePreview = true },
+                        enabled = state.noteHtml.isNotBlank()
+                    ) {
+                        Text("Vista previa HTML", color = NeonCyan)
+                    }
                 }
             }
 

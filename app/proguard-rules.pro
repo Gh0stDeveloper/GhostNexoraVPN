@@ -14,6 +14,8 @@
 -keep class com.ghostnexora.vpn.security.NativeGuard {
     private static native byte[] nativeDomainSeparator();
     private static native void nativeWipe(byte[]);
+    private static native byte[] nativeGnx3KeyFragment();
+    private static native boolean nativeRuntimeCompromised();
 }
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
@@ -23,6 +25,11 @@
 -keep class com.ghostnexora.vpn.util.VpnProfileDocument { <fields>; }
 -keep class com.ghostnexora.vpn.util.VpnProfileJson { <fields>; }
 -keep class com.ghostnexora.vpn.util.ProxyJson { <fields>; }
+-keep class com.ghostnexora.vpn.util.Gnx3ProfileDocument { <fields>; }
+# The local locked-profile envelope must remain readable after an app update.
+# Field names stay stable while the classes themselves may still be obfuscated.
+-keepclassmembers,allowoptimization class com.ghostnexora.vpn.data.model.VpnProfile { <fields>; }
+-keepclassmembers,allowoptimization class com.ghostnexora.vpn.data.model.ProxyConfig { <fields>; }
 
 -keepclassmembers enum * {
     public static **[] values();
@@ -38,6 +45,12 @@
 -keep class com.ghostnexora.vpn.data.model.TlsVerificationMode { *; }
 -keep class com.ghostnexora.vpn.util.PayloadEngine { *; }
 -keep class com.ghostnexora.vpn.util.ProtocolLinkParser { *; }
+# Retain these runtime paths but permit R8 to optimize and rename them. CI
+# checks both survival and actual obfuscation in mapping.txt.
+-keep,allowoptimization,allowobfuscation class com.ghostnexora.vpn.security.Gnx3ConfigCodec { *; }
+-keep,allowoptimization,allowobfuscation class com.ghostnexora.vpn.security.LockedProfileVault { *; }
+-keep,allowoptimization,allowobfuscation class com.ghostnexora.vpn.security.HtmlNoteSanitizer { *; }
+-keep,allowoptimization,allowobfuscation class com.ghostnexora.vpn.security.AppManagedConfigKeyProvider { *; }
 
 # JSch crypto providers and the application-owned direct injection bridge.
 -keep class com.ghostnexora.vpn.tunnel.AndroidSecureRandomProvider { public <init>(); public *; }

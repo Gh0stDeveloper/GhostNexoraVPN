@@ -126,6 +126,14 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(snackbarMessage = "Select or connect a profile before running diagnostics") }
                 return@launch
             }
+            if (profile.isLocked) {
+                _uiState.update {
+                    it.copy(
+                        snackbarMessage = "El diagnóstico independiente está deshabilitado para configuraciones bloqueadas"
+                    )
+                }
+                return@launch
+            }
 
             _uiState.update {
                 it.copy(diagnosticRunning = true, diagnosticSteps = emptyList(), diagnosticReport = null)

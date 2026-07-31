@@ -12,7 +12,7 @@ Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified rou
 
 A process running is not considered a successful VPN. The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and reports success only after the active outbound delivers Internet.
 
-Current development version: **1.0.40 (40)**.
+Current development version: **1.0.41 (41)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -78,7 +78,10 @@ Configuration generation and packaging are automated. Exact real-server combinat
 - `ssh://` Ghost Nexora import convention
 - standard Xray outbound JSON
 - QR, clipboard, and Android file picker
-- GNX2 password-protected encrypted format
+- GNX3 individual encrypted profiles with optional creator password
+- locked GNX3 profiles with masked parameters and disabled edit/duplicate/re-export
+- safe creator notes with HTML/CSS formatting and contact links
+- GNX2 password-protected multi-profile backup format
 - legacy JSON migration
 - technical preview before import
 - duplicate-safe merge and replace using security-relevant fingerprints
@@ -87,12 +90,16 @@ Configuration generation and packaging are automated. Exact real-server combinat
 ### Security
 
 - AES-256-GCM profile protection with Android Keystore.
+- Opaque Keystore-backed storage for the complete contents of locked profiles.
+- GNX3 authenticated encryption with random data keys, key wrapping, nonces, salts, and optional PBKDF2 passwords.
 - GNX2 authenticated encryption with random keys, nonces, and salts.
 - Strict TLS by default, with an explicit per-profile SSH SNI compatibility mode; no global trust-all mode.
 - Persistent SSH known-host verification.
 - Direct Android `SecureRandom` injection into JSch.
 - Sanitization before log storage, display, copy, and export.
-- `FLAG_SECURE` on create/edit profile and import/export screens.
+- `FLAG_SECURE` on profile, create/edit, and import/export screens.
+- Conservative HTML allowlist plus a network-disabled, JavaScript-disabled note viewer.
+- Runtime debugger/instrumentation signals before a locked profile is opened.
 - R8/resource shrinking and native hardening.
 - Scoped package visibility for the split-tunneling selector.
 - Manifest, token-pattern, native ABI, DEX, Lint, Debug, and Release checks in CI.
@@ -111,7 +118,7 @@ Configuration generation and packaging are automated. Exact real-server combinat
 | [DNS and routing](docs/DNS-AND-ROUTING.md) | IP modes, DNS, MTU, application rules |
 | [Split tunneling](docs/SPLIT-TUNNELING.md) | allow/exclude behavior and security |
 | [Security architecture](docs/SECURITY.md) | threat model and controls |
-| [Configuration formats](docs/CONFIG-FORMAT.md) | GNX2, links, JSON, fingerprints |
+| [Configuration formats](docs/CONFIG-FORMAT.md) | GNX3/GNX2, links, JSON, fingerprints |
 | [Import and export](docs/IMPORT-EXPORT.md) | preview, merge, replace, limits |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | error codes and corrective actions |
 | [Compatibility](docs/COMPATIBILITY.md) | evidence labels and current status |
@@ -139,7 +146,18 @@ A normal connection must complete:
 
 A failure before TUN creation does not change device default routes. A startup failure after TUN creation closes the interface; during an established-session recovery, Kill Switch may intentionally retain blocked routing.
 
-## GNX2 encrypted configuration
+## GNX3 and GNX2 encrypted configurations
+
+GNX3 is the individual sharing format. It contains one profile, an optional
+safe HTML/CSS creator note, a lock policy, and either:
+
+- a creator password protected with PBKDF2-HMAC-SHA256; or
+- app-managed compatibility material derived from the official APK signing
+  identity and native diversification data.
+
+Every GNX3 file uses a fresh data key, salt, wrapping nonce, and payload nonce.
+A locked import is immediately resealed as one opaque Android Keystore-backed
+record; ordinary profile flows receive only a masked view.
 
 GNX2 exports:
 
@@ -150,7 +168,11 @@ GNX2 exports:
 5. wrap the data key with a separate authenticated operation;
 6. authenticate the versioned container with HMAC-SHA256.
 
-There is no embedded master password or fixed export key. Client-side protection increases resistance but cannot make actively used server details impossible to recover on a device fully controlled by an attacker.
+GNX2 has no embedded master password or fixed export key. GNX3 password mode is
+the strongest portable option. GNX3 app-managed mode improves default
+confidentiality and official-build compatibility, but its client-side material
+can ultimately be reconstructed by an attacker who controls the APK or process.
+No client can keep actively used server details permanently encrypted in memory.
 
 ## Android permissions
 
@@ -190,7 +212,7 @@ Production release metadata now includes the APK SHA-256 and signing-certificate
 app/src/main/java/com/ghostnexora/vpn/
 ├── data/          Room, DataStore, profiles and routing preferences
 ├── diagnostics/   staged non-destructive diagnostics
-├── security/      Keystore, GNX2, sanitizer and SSH known hosts
+├── security/      Keystore, GNX3/GNX2, HTML/log sanitizers and SSH known hosts
 ├── tunnel/        SSH, payloads, Xray, configuration and errors
 ├── service/       Android VPN and floating foreground services
 ├── update/        release discovery, verification and installation

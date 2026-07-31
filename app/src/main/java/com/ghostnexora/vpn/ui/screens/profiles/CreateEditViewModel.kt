@@ -7,6 +7,7 @@ import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.security.HtmlNoteSanitizer
 import com.ghostnexora.vpn.util.PayloadEngine
 import com.ghostnexora.vpn.util.isValidHost
 import com.ghostnexora.vpn.util.isValidPort
@@ -35,6 +36,19 @@ class CreateEditViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             val profile = repository.getProfileById(profileId)
             if (profile != null) {
+                if (profile.isLocked) {
+                    _uiState.update {
+                        it.copy(
+                            isEditMode = true,
+                            isLoading = false,
+                            isLockedProfile = true,
+                            profileId = profile.id,
+                            name = profile.name,
+                            error = "El creador bloqueó la edición y visualización de esta configuración"
+                        )
+                    }
+                    return@launch
+                }
                 _uiState.update {
                     it.copy(
                         isEditMode = true,
@@ -55,7 +69,7 @@ class CreateEditViewModel @Inject constructor(
                         proxyPort = profile.proxy.port.takeIf { p -> p > 0 }?.toString() ?: "",
                         proxyType = profile.proxy.type,
                         tags = profile.tagsRaw,
-                        notes = profile.notes,
+                        noteHtml = profile.displayNoteHtml,
                         enabled = profile.enabled
                     )
                 }
@@ -107,7 +121,8 @@ class CreateEditViewModel @Inject constructor(
     fun onProxyPortChange(v: String) = _uiState.update { it.copy(proxyPort = v) }
     fun onProxyTypeChange(v: String) = _uiState.update { it.copy(proxyType = v) }
     fun onTagsChange(v: String) = _uiState.update { it.copy(tags = v) }
-    fun onNotesChange(v: String) = _uiState.update { it.copy(notes = v) }
+    fun onNoteHtmlChange(v: String) =
+        _uiState.update { it.copy(noteHtml = v.take(64 * 1024)) }
     fun onEnabledChange(v: Boolean) = _uiState.update { it.copy(enabled = v) }
     fun togglePasswordVisible() = _uiState.update { it.copy(passwordVisible = !it.passwordVisible) }
     fun toggleAdvancedSection() = _uiState.update { it.copy(showAdvanced = !it.showAdvanced) }
@@ -178,6 +193,12 @@ class CreateEditViewModel @Inject constructor(
     }
 
     fun save() {
+        if (_uiState.value.isLockedProfile) {
+            _uiState.update {
+                it.copy(error = "Las configuraciones bloqueadas no se pueden editar")
+            }
+            return
+        }
         if (!validate()) return
 
         val s = _uiState.value
@@ -207,12 +228,24 @@ class CreateEditViewModel @Inject constructor(
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
                     .joinToString(","),
-                notes = s.notes.trim(),
+                notes = "",
+                noteHtml = HtmlNoteSanitizer.sanitize(s.noteHtml),
                 enabled = s.enabled
             )
 
-            if (s.isEditMode) repository.updateProfile(profile) else repository.saveProfile(profile)
-            _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
+            runCatching {
+                if (s.isEditMode) repository.updateProfile(profile)
+                else repository.saveProfile(profile)
+            }.onSuccess {
+                _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        error = error.message?.take(160) ?: "No se pudo guardar el perfil"
+                    )
+                }
+            }
         }
     }
 }
@@ -221,6 +254,7 @@ data class CreateEditUiState(
     val isEditMode: Boolean = false,
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
+    val isLockedProfile: Boolean = false,
     val savedSuccessfully: Boolean = false,
     val error: String? = null,
     val profileId: String = VpnProfile.empty().id,
@@ -239,7 +273,7 @@ data class CreateEditUiState(
     val proxyPort: String = "",
     val proxyType: String = "",
     val tags: String = "",
-    val notes: String = "",
+    val noteHtml: String = "",
     val enabled: Boolean = true,
     val passwordVisible: Boolean = false,
     val showAdvanced: Boolean = false,

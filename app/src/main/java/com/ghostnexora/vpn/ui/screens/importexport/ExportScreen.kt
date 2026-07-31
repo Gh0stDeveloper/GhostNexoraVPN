@@ -69,6 +69,7 @@ fun ExportScreen(
 ) {
     val state by viewModel.exportState.collectAsState()
     val profiles by viewModel.allProfiles.collectAsState()
+    val exportableProfiles = profiles.filterNot { it.isLocked }
     val snackbar = remember { SnackbarHostState() }
     val manualSave = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -137,14 +138,26 @@ fun ExportScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             when {
-                                state.selectedIds.isEmpty() -> "Se exportarán todos (${profiles.size})"
-                                else -> "Seleccionados ${state.selectedIds.size} de ${profiles.size}"
+                                state.selectedIds.isEmpty() ->
+                                    "Se exportarán todos los editables (${exportableProfiles.size})"
+                                else ->
+                                    "Seleccionados ${state.selectedIds.size} de ${exportableProfiles.size} editables"
                             },
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
                         TextButton(onClick = { viewModel.toggleSelectAll(profiles) }) {
-                            Text(if (state.selectedIds.size == profiles.size) "Deseleccionar" else "Seleccionar todo", color = NeonCyan)
+                            Text(
+                                if (
+                                    exportableProfiles.isNotEmpty() &&
+                                    state.selectedIds.size == exportableProfiles.size
+                                ) {
+                                    "Deseleccionar"
+                                } else {
+                                    "Seleccionar editables"
+                                },
+                                color = NeonCyan
+                            )
                         }
                     }
                 }
@@ -152,7 +165,9 @@ fun ExportScreen(
                 items(profiles, key = { it.id }) { profile ->
                     val selected = profile.id in state.selectedIds
                     GhostCard(
-                        modifier = Modifier.clickable { viewModel.toggleProfileSelection(profile.id) },
+                        modifier = Modifier.clickable(
+                            enabled = !profile.isLocked
+                        ) { viewModel.toggleProfileSelection(profile.id) },
                         backgroundColor = if (selected) NeonCyan.copy(alpha = 0.08f) else SurfaceVariant,
                         borderColor = if (selected) NeonCyan else BorderNormal,
                         contentPadding = PaddingValues(Dimens.SpaceMD)
@@ -165,11 +180,33 @@ fun ExportScreen(
                                     .background(if (selected) NeonCyan else Color.Transparent),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (selected) Icon(Icons.Filled.Check, null, tint = TextOnAccent, modifier = Modifier.size(16.dp))
+                                if (profile.isLocked) {
+                                    Icon(
+                                        Icons.Filled.Lock,
+                                        null,
+                                        tint = NeonAmber,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else if (selected) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        null,
+                                        tint = TextOnAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary)
-                                Text("${profile.host}:${profile.port} · ${profile.connectionModeLabel}", color = TextTertiary, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    if (profile.isLocked) {
+                                        "Bloqueado · no se puede reexportar"
+                                    } else {
+                                        "${profile.host}:${profile.port} · ${profile.connectionModeLabel}"
+                                    },
+                                    color = if (profile.isLocked) NeonAmber else TextTertiary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
@@ -207,7 +244,9 @@ fun ExportScreen(
                             text = "Guardar archivo .gnx cifrado",
                             onClick = { viewModel.exportSelected(profiles) },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = state.passwordValid && !state.isLoading,
+                            enabled = exportableProfiles.isNotEmpty() &&
+                                state.passwordValid &&
+                                !state.isLoading,
                             containerColor = NeonGreen,
                             contentColor = TextOnAccent
                         )
@@ -215,7 +254,9 @@ fun ExportScreen(
                             text = "Elegir ubicación",
                             onClick = { manualSave.launch("ghost_nexora_${System.currentTimeMillis()}.gnx") },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = state.passwordValid && !state.isLoading,
+                            enabled = exportableProfiles.isNotEmpty() &&
+                                state.passwordValid &&
+                                !state.isLoading,
                             containerColor = NeonCyan,
                             contentColor = TextOnAccent
                         )

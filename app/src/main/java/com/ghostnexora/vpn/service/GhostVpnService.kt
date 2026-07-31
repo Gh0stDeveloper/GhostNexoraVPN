@@ -64,6 +64,7 @@ class GhostVpnService : VpnService() {
     private var tunInterface: ParcelFileDescriptor? = null
     private var tunnelRuntime: TunnelRuntime? = null
     private var activeProfile: VpnProfile? = null
+    private var logRedactionProfile: VpnProfile? = null
     private var reconnectJob: Job? = null
     private var healthJob: Job? = null
     private var statsJob: Job? = null
@@ -151,6 +152,7 @@ class GhostVpnService : VpnService() {
         const val EXTRA_PROFILE_ID = "extra_profile_id"
 
         private val RECONNECT_DELAYS = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
+        private val SENSITIVE_LOG_TAGS = setOf("SSH", "TLS", "PROXY", "PAYLOAD", "SOCKS")
 
         private val _connectionState = MutableStateFlow<VpnConnectionState>(VpnConnectionState.Disconnected)
         val connectionState: StateFlow<VpnConnectionState> = _connectionState.asStateFlow()
@@ -238,6 +240,7 @@ class GhostVpnService : VpnService() {
         healthJob?.cancel()
         statsJob?.cancel()
         cleanupTunnel(closeTun = true)
+        logRedactionProfile = null
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
         runCatching { setUnderlyingNetworks(null) }
         tunnelLogChannel.close()
@@ -247,7 +250,19 @@ class GhostVpnService : VpnService() {
     }
 
     private suspend fun handleConnect(profileId: String) = connectionMutex.withLock {
-        val profile = repository.getProfileById(profileId)
+        val profile = runCatching { repository.getProfileForConnection(profileId) }
+            .getOrElse { error ->
+                repository.setVpnDesiredConnected(false)
+                val message = error.message
+                    ?.take(180)
+                    ?.takeIf(String::isNotBlank)
+                    ?: "No se pudo abrir el perfil protegido"
+                publishState(VpnConnectionState.Error(message))
+                logSafe(LogLevel.ERROR, message, profileId, "SECURITY")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return@withLock
+            }
         if (profile == null) {
             repository.setVpnDesiredConnected(false)
             publishState(VpnConnectionState.Error("Perfil no encontrado"))
@@ -263,6 +278,7 @@ class GhostVpnService : VpnService() {
         statsJob?.cancel()
         cleanupTunnel(closeTun = true)
         activeProfile = profile
+        logRedactionProfile = profile.takeIf(VpnProfile::isLocked)
         reconnectCount = 0
         sessionConnectedSince = System.currentTimeMillis()
         publishState(VpnConnectionState.Connecting(profile.name))
@@ -332,6 +348,7 @@ class GhostVpnService : VpnService() {
             publishState(VpnConnectionState.Error(message, profile.name))
             updateNotification(VpnConnectionState.Error(message, profile.name))
             logSafe(LogLevel.ERROR, message, profile.id, "VPN")
+            logRedactionProfile = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -357,6 +374,7 @@ class GhostVpnService : VpnService() {
         publishTraffic(VpnTrafficStats())
         publishState(VpnConnectionState.Disconnected)
         logSafe(LogLevel.SUCCESS, "VPN desconectada", profileId, "VPN")
+        logRedactionProfile = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -697,6 +715,16 @@ class GhostVpnService : VpnService() {
     }
 
     private suspend fun logTransportReady(profile: VpnProfile) {
+        if (profile.isLocked) {
+            logSafe(
+                LogLevel.SUCCESS,
+                "Transporte protegido autenticado · parámetros ocultos por el creador",
+                profile.id,
+                "PROTECTED"
+            )
+            logSafe(LogLevel.DEBUG, "Core protegido activo", profile.id, "CORE")
+            return
+        }
         when (profile.selectedMode) {
             ConnectionMode.SSH_DIRECT -> logSafe(LogLevel.SUCCESS, "SSH autenticado · bridge SOCKS/TUN activo", profile.id, "SSH")
             ConnectionMode.SSL_SNI -> logSafe(
@@ -734,7 +762,11 @@ class GhostVpnService : VpnService() {
     }
 
     private fun connectedState(profile: VpnProfile): VpnConnectionState.Connected =
-        VpnConnectionState.Connected(profile.name, profile.host, sessionConnectedSince)
+        VpnConnectionState.Connected(
+            profile.name,
+            if (profile.isLocked) "[OCULTO]" else profile.host,
+            sessionConnectedSince
+        )
 
     private fun buildNotification(state: VpnConnectionState): Notification {
         val openAppIntent = PendingIntent.getActivity(
@@ -805,6 +837,15 @@ class GhostVpnService : VpnService() {
             "SYSTEM"
         )
         logSafe(LogLevel.INFO, "Red de salida: $physicalNetworkType", profile.id, "NETWORK")
+        if (profile.isLocked) {
+            logSafe(
+                LogLevel.INFO,
+                "Configuración bloqueada · servidor, método y parámetros [OCULTOS]",
+                profile.id,
+                "PROTECTED"
+            )
+            return
+        }
         logSafe(LogLevel.INFO, "Servidor ${profile.host}:${profile.port}", profile.id, "NETWORK")
         if (profile.selectedMode.usesTls || profile.sslEnabled) {
             val verification = if (profile.selectedMode.isSsh) {
@@ -905,10 +946,55 @@ class GhostVpnService : VpnService() {
         message: String,
         profileId: String? = null,
         tag: String = "VPN"
-    ) = repository.log(level, message, profileId, tag)
+    ) {
+        val protectedProfile = logRedactionProfile
+            ?.takeIf { profileId == null || it.id == profileId }
+        val safeMessage = protectedProfile
+            ?.let { redactLockedLog(message, it) }
+            ?: message
+        repository.log(
+            level,
+            safeMessage,
+            profileId,
+            if (protectedProfile != null && tag in SENSITIVE_LOG_TAGS) {
+                "PROTECTED"
+            } else {
+                tag
+            }
+        )
+    }
+
+    private fun redactLockedLog(message: String, profile: VpnProfile): String {
+        var redacted = message
+        val exactValues = listOf(
+            "${profile.host}:${profile.port}",
+            "${profile.proxy.host}:${profile.proxy.port}",
+            profile.payload,
+            profile.password,
+            profile.username,
+            profile.sni,
+            profile.proxy.host,
+            profile.host,
+            profile.selectedMode.label,
+            profile.connectionMode,
+            profile.method
+        )
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending(String::length)
+        exactValues.forEach { value ->
+            redacted = redacted.replace(value, "[OCULTO]", ignoreCase = true)
+        }
+        return redacted
+            .replace(Regex(""":${profile.port}\b"""), ":[OCULTO]")
+            .replace(Regex("""(?i)\b(SNI|Host|Proxy|Payload)\s+[^\s·|,;]+""")) {
+                "${it.groupValues[1]} [OCULTO]"
+            }
+    }
 
     private data class PendingTunnelLog(
         val profileId: String?,
         val event: TunnelLogEvent
     )
+
 }

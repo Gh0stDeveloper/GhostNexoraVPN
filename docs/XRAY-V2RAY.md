@@ -41,7 +41,7 @@ The importer accepts:
 - `vmess://` Base64 JSON;
 - standard Xray JSON containing compatible outbound objects;
 - Ghost Nexora legacy JSON;
-- GNX2 encrypted profiles.
+- GNX3 individual and GNX2 backup encrypted profiles.
 
 The preview shows server, transport, TLS/REALITY, SNI, Host, path, service name, and warnings before storage.
 

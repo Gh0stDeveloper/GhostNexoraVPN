@@ -172,14 +172,25 @@ jobs:
           database = Path("app/src/main/java/com/ghostnexora/vpn/data/local/AppDatabase.kt").read_text()
           profile = Path("app/src/main/java/com/ghostnexora/vpn/data/model/VpnProfile.kt").read_text()
           required_database = (
-              "version = 3",
+              "version = 4",
               "Migration(2, 3)",
+              "Migration(3, 4)",
               "ADD COLUMN tls_verification_mode TEXT NOT NULL DEFAULT 'strict'",
-              ".addMigrations(MIGRATION_2_3)",
+              "ADD COLUMN note_html TEXT NOT NULL DEFAULT ''",
+              "ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0",
+              "ADD COLUMN sealed_config TEXT NOT NULL DEFAULT ''",
+              "ADD COLUMN locked_package_id TEXT NOT NULL DEFAULT ''",
+              "ADD COLUMN protection_version INTEGER NOT NULL DEFAULT 0",
+              ".addMigrations(MIGRATION_2_3, MIGRATION_3_4)",
           )
           required_profile = (
               'name = "tls_verification_mode"',
               'defaultValue = "\'strict\'"',
+              'name = "note_html"',
+              'name = "is_locked"',
+              'name = "sealed_config"',
+              'name = "locked_package_id"',
+              'name = "protection_version"',
           )
           missing = [
               token
@@ -191,8 +202,8 @@ jobs:
               if token not in profile
           ]
           if missing:
-              raise SystemExit(f"TLS profile migration is incomplete: {missing}")
-          print("Profile migration 2 -> 3 verified")
+              raise SystemExit(f"Profile migration chain is incomplete: {missing}")
+          print("Profile migrations 2 -> 3 -> 4 verified")
           PY
 
       - name: Run unit tests
@@ -292,6 +303,24 @@ jobs:
           done
           MAPPING="$(find app/build/outputs/mapping/release -type f -name 'mapping.txt' -print -quit)"
           test -s "$MAPPING"
+          for source_class in \
+            'com.ghostnexora.vpn.security.Gnx3ConfigCodec' \
+            'com.ghostnexora.vpn.security.LockedProfileVault' \
+            'com.ghostnexora.vpn.security.HtmlNoteSanitizer' \
+            'com.ghostnexora.vpn.security.AppManagedConfigKeyProvider'
+          do
+            mapping_line="$(grep -F "${source_class} -> " "$MAPPING" | head -n 1)"
+            test -n "$mapping_line" || {
+              echo "Missing hardened GNX3 runtime class from R8 mapping: $source_class"
+              exit 1
+            }
+            mapped_class="${mapping_line#* -> }"
+            mapped_class="${mapped_class%:}"
+            if [ "$mapped_class" = "$source_class" ]; then
+              echo "GNX3 runtime class was not obfuscated: $source_class"
+              exit 1
+            fi
+          done
           if grep -Eq '^[[:space:]]+java\.util\.List drawerItems ->' "$MAPPING"; then
             echo "Screen.drawerItems must not have a static backing list; it can capture null during class initialization."
             exit 1

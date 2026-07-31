@@ -48,24 +48,30 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 
 ## Data model
 
-- `VpnProfile`: server, credentials, mode, SNI, SSH TLS policy, payload, proxy, tags, notes, state.
+- `VpnProfile`: server, credentials, mode, SNI, SSH TLS policy, payload, proxy, tags, safe HTML note, lock policy, and state.
 - `NetworkPreferences`: IP mode, MTU, DNS mode, custom resolvers, reconnect limit.
 - `AppRoutingPreferences`: all, only selected, or exclude selected applications.
 - `LogEntry`: sanitized timestamped stage event.
 - `VpnTrafficStats`: Xray proxy-outbound session counters and current rates.
 
-Sensitive `VpnProfile` fields are encrypted before Room persistence. DataStore contains non-secret operational preferences.
+Editable-profile secrets are encrypted before Room persistence. A locked GNX3
+profile is stored as one opaque Android Keystore-backed envelope; its ordinary
+Room columns contain no server, credential, SNI, proxy, payload, or method
+parameters. DataStore contains non-secret operational preferences.
 
 ## Import architecture
 
 Import content is processed in this order:
 
-1. GNX2 encrypted envelope.
-2. Standard Xray JSON outbound document.
-3. Ghost Nexora legacy JSON.
-4. Protocol links: VMess, VLESS, Trojan, Hysteria2/Hy2, and SSH.
+1. GNX3 individual encrypted envelope.
+2. GNX2 encrypted backup envelope.
+3. Standard Xray JSON outbound document.
+4. Ghost Nexora legacy JSON.
+5. Protocol links: VMess, VLESS, Trojan, Hysteria2/Hy2, and SSH.
 
-Every successful parse produces ordinary `VpnProfile` instances, technical summaries, and duplicate fingerprints before storage.
+Every successful parse produces a preview and duplicate identity before
+storage. Locked GNX3 parameters are resealed immediately and the UI receives
+only a masked profile.
 
 ## Security invariants
 
@@ -77,6 +83,8 @@ Every successful parse produces ordinary `VpnProfile` instances, technical summa
 - No empty application allowlist that silently becomes full-device routing.
 - No unsanitized secrets in persistent logs.
 - No plaintext profile credentials in Room.
+- No locked-profile parameters in normal UI/repository flows or diagnostic preflight.
+- No executable or network-loaded content in creator HTML notes.
 
 ## Extensibility
 

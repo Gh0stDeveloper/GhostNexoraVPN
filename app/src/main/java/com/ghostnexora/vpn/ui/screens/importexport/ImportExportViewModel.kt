@@ -36,6 +36,8 @@ class ImportExportViewModel @Inject constructor(
     private val _exportState = MutableStateFlow(ExportUiState())
     val exportState: StateFlow<ExportUiState> = _exportState.asStateFlow()
 
+    private var pendingImportProfiles: List<VpnProfile> = emptyList()
+
     val allProfiles: StateFlow<List<VpnProfile>> = repository.allProfiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -59,7 +61,8 @@ class ImportExportViewModel @Inject constructor(
                     fileName = resolveFileName(uri),
                     sourceLabel = "Archivo",
                     loader = { jsonManager.importFromUri(uri, password.takeIf { it.isNotEmpty() }) },
-                    selectedUri = uri
+                    selectedUri = uri,
+                    selectedRawText = null
                 )
             } finally {
                 password.fill('\u0000')
@@ -68,8 +71,14 @@ class ImportExportViewModel @Inject constructor(
     }
 
     fun retryEncryptedImport() {
-        val uri = _importState.value.selectedUri ?: return
-        onFilePicked(uri)
+        val state = _importState.value
+        when {
+            state.selectedUri != null -> onFilePicked(state.selectedUri)
+            state.selectedRawText != null -> onTextProvided(
+                state.selectedRawText,
+                state.sourceName.ifBlank { "Texto" }
+            )
+        }
     }
 
     fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") {
@@ -80,7 +89,8 @@ class ImportExportViewModel @Inject constructor(
                     fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
                     sourceLabel = sourceLabel,
                     loader = { jsonManager.importFromString(rawText, password.takeIf { it.isNotEmpty() }) },
-                    selectedUri = null
+                    selectedUri = null,
+                    selectedRawText = rawText
                 )
             } finally {
                 password.fill('\u0000')
@@ -89,7 +99,7 @@ class ImportExportViewModel @Inject constructor(
     }
 
     fun confirmImport(merge: Boolean) {
-        val profiles = _importState.value.previewProfiles
+        val profiles = pendingImportProfiles
         if (profiles.isEmpty()) return
         viewModelScope.launch {
             _importState.update { it.copy(isLoading = true, error = null) }
@@ -110,6 +120,7 @@ class ImportExportViewModel @Inject constructor(
     }
 
     fun resetImport() {
+        pendingImportProfiles = emptyList()
         _importState.value = ImportUiState()
     }
 
@@ -121,18 +132,21 @@ class ImportExportViewModel @Inject constructor(
         fileName: String,
         sourceLabel: String,
         loader: suspend () -> ImportResult,
-        selectedUri: Uri?
+        selectedUri: Uri?,
+        selectedRawText: String?
     ) {
         _importState.update { it.copy(isLoading = true, error = null) }
         try {
             when (val result = loader()) {
                 is ImportResult.Success -> {
+                    pendingImportProfiles = result.storageProfiles
                     val existing = repository.allProfiles.first()
                     val (_, duplicateCount) = ProfileFingerprint.uniqueAgainst(result.profiles, existing)
                     _importState.update {
                         it.copy(
                             isLoading = false,
                             selectedUri = selectedUri,
+                            selectedRawText = selectedRawText,
                             fileName = fileName,
                             previewProfiles = result.profiles,
                             technicalSummaries = result.profiles.map(ProfileTechnicalSummaries::from),
@@ -154,9 +168,11 @@ class ImportExportViewModel @Inject constructor(
                 }
 
                 is ImportResult.PasswordRequired -> _importState.update {
+                    pendingImportProfiles = emptyList()
                     it.copy(
                         isLoading = false,
                         selectedUri = selectedUri,
+                        selectedRawText = selectedRawText,
                         fileName = fileName,
                         sourceName = sourceLabel,
                         passwordRequired = true,
@@ -169,9 +185,11 @@ class ImportExportViewModel @Inject constructor(
                 }
 
                 is ImportResult.Error -> _importState.update {
+                    pendingImportProfiles = emptyList()
                     it.copy(
                         isLoading = false,
                         selectedUri = selectedUri,
+                        selectedRawText = selectedRawText,
                         fileName = fileName,
                         sourceName = sourceLabel,
                         error = result.message,
@@ -196,7 +214,7 @@ class ImportExportViewModel @Inject constructor(
     }
 
     fun toggleSelectAll(profiles: List<VpnProfile>) {
-        val allIds = profiles.map(VpnProfile::id).toSet()
+        val allIds = profiles.filterNot(VpnProfile::isLocked).map(VpnProfile::id).toSet()
         val current = _exportState.value.selectedIds
         _exportState.update {
             it.copy(selectedIds = if (current.size == allIds.size) emptySet() else allIds)
@@ -264,8 +282,12 @@ class ImportExportViewModel @Inject constructor(
     }
 
     private fun resolveExportSelection(allProfiles: List<VpnProfile>): List<VpnProfile> =
-        if (_exportState.value.selectedIds.isEmpty()) allProfiles
-        else allProfiles.filter { it.id in _exportState.value.selectedIds }
+        allProfiles
+            .filterNot(VpnProfile::isLocked)
+            .let { eligible ->
+                if (_exportState.value.selectedIds.isEmpty()) eligible
+                else eligible.filter { it.id in _exportState.value.selectedIds }
+            }
 
     private fun resolveFileName(uri: Uri): String = runCatching {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -278,6 +300,7 @@ class ImportExportViewModel @Inject constructor(
 data class ImportUiState(
     val isLoading: Boolean = false,
     val selectedUri: Uri? = null,
+    val selectedRawText: String? = null,
     val fileName: String = "",
     val sourceName: String = "",
     val previewProfiles: List<VpnProfile> = emptyList(),
@@ -291,7 +314,7 @@ data class ImportUiState(
     val skippedDuplicateCount: Int = 0,
     val error: String? = null
 ) {
-    val hasFile: Boolean get() = selectedUri != null
+    val hasFile: Boolean get() = selectedUri != null || selectedRawText != null
     val canImport: Boolean get() = previewProfiles.isNotEmpty() && !isLoading
 }
 

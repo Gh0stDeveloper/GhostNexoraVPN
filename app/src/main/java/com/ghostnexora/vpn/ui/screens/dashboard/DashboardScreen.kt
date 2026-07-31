@@ -314,7 +314,8 @@ private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(profile?.name ?: "Sin perfil activo", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 Text(
-                    profile?.let { "${it.host}:${it.port} · ${it.connectionModeLabel}" } ?: "Selecciona una configuración",
+                    profile?.let { "${it.serverAddress} · ${it.connectionModeLabel}" }
+                        ?: "Selecciona una configuración",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )

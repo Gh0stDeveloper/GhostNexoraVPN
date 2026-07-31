@@ -12,6 +12,7 @@ import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.security.LocalSecretCipher
+import com.ghostnexora.vpn.security.LockedProfileVault
 import com.ghostnexora.vpn.security.LogSanitizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,7 +26,8 @@ class ProfileRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val logDao: LogDao,
     private val dataStore: DataStoreManager,
-    private val secretCipher: LocalSecretCipher
+    private val secretCipher: LocalSecretCipher,
+    private val lockedProfileVault: LockedProfileVault
 ) {
     val allProfiles: Flow<List<VpnProfile>> = profileDao.getAllProfiles().map(::revealAll)
     val enabledProfiles: Flow<List<VpnProfile>> = profileDao.getEnabledProfiles().map(::revealAll)
@@ -36,25 +38,38 @@ class ProfileRepository @Inject constructor(
         profileDao.searchProfiles(query).map(::revealAll)
 
     fun observeProfile(id: String): Flow<VpnProfile?> =
-        profileDao.observeProfileById(id).map { it?.let(secretCipher::reveal) }
+        profileDao.observeProfileById(id).map { it?.let(::visibleProfile) }
 
     suspend fun getProfileById(id: String): VpnProfile? =
-        profileDao.getProfileById(id)?.let(secretCipher::reveal)
+        profileDao.getProfileById(id)?.let(::visibleProfile)
+
+    /**
+     * Único acceso a los parámetros completos de un perfil bloqueado.
+     * GhostVpnService llama este método dentro del proceso VPN privado.
+     */
+    suspend fun getProfileForConnection(id: String): VpnProfile? =
+        profileDao.getProfileById(id)?.let { stored ->
+            if (stored.isLocked) lockedProfileVault.open(stored)
+            else secretCipher.reveal(stored)
+        }
 
     suspend fun getLastUsedProfile(): VpnProfile? =
-        profileDao.getLastUsedProfile()?.let(secretCipher::reveal)
+        profileDao.getLastUsedProfile()?.let(::visibleProfile)
 
     suspend fun saveProfile(profile: VpnProfile) {
-        profileDao.insertProfile(secretCipher.protect(profile))
+        profileDao.insertProfile(protectForStorage(profile))
         log(LogLevel.INFO, "Perfil guardado: ${profile.name}", profile.id, tag = "PROFILE")
     }
 
     suspend fun saveProfiles(profiles: List<VpnProfile>) {
-        profileDao.insertProfiles(profiles.map(secretCipher::protect))
+        profileDao.insertProfiles(profiles.map(::protectForStorage))
         log(LogLevel.INFO, "${profiles.size} perfiles importados", tag = "PROFILE")
     }
 
     suspend fun updateProfile(profile: VpnProfile) {
+        check(profileDao.getProfileById(profile.id)?.isLocked != true) {
+            "Las configuraciones bloqueadas no se pueden editar"
+        }
         profileDao.updateProfile(secretCipher.protect(profile))
         log(LogLevel.INFO, "Perfil actualizado: ${profile.name}", profile.id, tag = "PROFILE")
     }
@@ -78,7 +93,9 @@ class ProfileRepository @Inject constructor(
 
     /** Migra perfiles creados por versiones antiguas que guardaban secretos en texto claro. */
     suspend fun migrateLegacySecrets(): Int {
-        val legacy = profileDao.getAllProfilesOnce().filterNot(secretCipher::isProtected)
+        val legacy = profileDao.getAllProfilesOnce()
+            .filterNot(VpnProfile::isLocked)
+            .filterNot(secretCipher::isProtected)
         legacy.forEach { profileDao.insertProfile(secretCipher.protect(secretCipher.reveal(it))) }
         if (legacy.isNotEmpty()) {
             log(LogLevel.SUCCESS, "${legacy.size} perfiles migrados a almacenamiento cifrado", tag = "SECURITY")
@@ -156,7 +173,22 @@ class ProfileRepository @Inject constructor(
         dataStore.clearAll()
     }
 
-    private fun revealAll(profiles: List<VpnProfile>): List<VpnProfile> = profiles.map(secretCipher::reveal)
+    private fun revealAll(profiles: List<VpnProfile>): List<VpnProfile> =
+        profiles.map(::visibleProfile)
+
+    private fun visibleProfile(profile: VpnProfile): VpnProfile =
+        if (profile.isLocked) lockedProfileVault.visible(profile)
+        else secretCipher.reveal(profile)
+
+    private fun protectForStorage(profile: VpnProfile): VpnProfile =
+        if (profile.isLocked) {
+            require(lockedProfileVault.isSealed(profile)) {
+                "Un perfil bloqueado debe estar sellado antes de guardarse"
+            }
+            profile
+        } else {
+            secretCipher.protect(profile)
+        }
 
     private suspend fun trimLogsIfNeeded() {
         val maxEntries = logsMaxEntries.first().coerceIn(100, 5_000)
