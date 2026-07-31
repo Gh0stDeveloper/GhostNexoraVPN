@@ -9,7 +9,7 @@ class NativeRuntimeArchitectureTest {
     @Test
     fun everyEnabledModeHasAnExplicitRuntimePlan() {
         ConnectionMode.entries
-            .filter(ConnectionMode::supported)
+            .filter { it.supported }
             .forEach { mode ->
                 val plan = NativeRuntimeArchitecture.plan(mode)
                 assertTrue(plan.tunAdapter.contains("Xray TUN", ignoreCase = true))
