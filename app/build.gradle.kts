@@ -137,11 +137,11 @@ dependencies {
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("com.squareup.okio:okio:3.4.0")
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.code.gson:gson:2.14.0")
 
-    implementation("com.github.mwiede:jsch:0.2.25")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
-    implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
+    implementation("com.github.mwiede:jsch:2.28.6")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
     implementation(libs.kotlinx.coroutines.android)
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
