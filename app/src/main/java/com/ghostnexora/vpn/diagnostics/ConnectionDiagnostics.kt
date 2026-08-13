@@ -200,11 +200,11 @@ class ConnectionDiagnosticsEngine(
         }
         val tlsSocket = try {
             TlsTransport.upgrade(
-                connectedSocket = rawSocket,
-                targetHost = profile.host,
-                targetPort = profile.port,
-                sniHost = sni,
-                verificationMode = profile.selectedTlsVerificationMode
+                rawSocket,
+                profile.host,
+                profile.port,
+                sni,
+                profile.selectedTlsVerificationMode
             )
         } catch (error: Throwable) {
             runCatching { rawSocket.close() }

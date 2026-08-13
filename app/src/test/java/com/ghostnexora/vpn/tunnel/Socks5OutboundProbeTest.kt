@@ -19,12 +19,12 @@ class Socks5OutboundProbeTest {
 
         val connectOutput = ByteArrayOutputStream()
         Socks5OutboundProbe.requestIpv4Connect(
-            input = ByteArrayInputStream(
+            ByteArrayInputStream(
                 byteArrayOf(0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0x2A, 0x2A)
             ),
-            output = connectOutput,
-            address = byteArrayOf(1, 1, 1, 1),
-            port = 443
+            connectOutput,
+            byteArrayOf(1, 1, 1, 1),
+            443
         )
         assertArrayEquals(
             byteArrayOf(0x05, 0x01, 0x00, 0x01, 1, 1, 1, 1, 0x01, 0xBB.toByte()),
