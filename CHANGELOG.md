@@ -2,6 +2,23 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.49
+
+### Fixed
+
+- `SSH + SSL/SNI` compatibility now accepts private, self-signed, or incomplete certificate chains instead of failing with `Trust anchor for certification path not found`.
+- The configured SSH host remains the physical TCP endpoint and SSH identity, while the configured SNI remains an independent TLS `ClientHello` name.
+- Compatibility remains scoped to profiles that explicitly enable the HTTP Injector/Custom policy; strict TLS still uses Android's trust store and hostname verification.
+
+### Security
+
+- Compatibility requires a non-empty, currently valid X.509 leaf certificate and keeps persistent SSH host-key verification as the final server identity check.
+- The interface and technical summary now disclose that the compatibility policy does not authenticate the TLS certificate authority or SNI/SAN relationship.
+
+### Changed
+
+- Bumped the application to `1.0.49 (49)`.
+
 ## 1.0.43
 
 ### Fixed

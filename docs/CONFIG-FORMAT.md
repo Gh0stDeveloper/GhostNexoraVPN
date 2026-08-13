@@ -112,8 +112,10 @@ Recognized `mode` values include:
 
 `tlsMode=strict` is the safe default. `tlsMode=custom_sni` enables the
 HTTP Custom-compatible SSH policy: the configured SNI is sent without
-requiring it to match the certificate SAN, while platform certificate-chain
-validation and SSH host-key verification remain active.
+requiring a public certificate authority or an SNI/SAN match. It still checks
+that a currently valid leaf certificate is present, and the inner SSH
+host-key verification remains active. The relaxed policy is scoped to that
+imported SSH profile; it does not change TLS validation elsewhere in the app.
 
 This is an application import convention, not a claim that all SSH clients use the same URI schema.
 

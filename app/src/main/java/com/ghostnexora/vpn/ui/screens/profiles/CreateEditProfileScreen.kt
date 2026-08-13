@@ -197,7 +197,7 @@ fun CreateEditProfileScreen(
                                         state.selectedMode.isSsh &&
                                         state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
                                     ) {
-                                        "Se enviará este SNI aunque sea distinto del SAN del certificado."
+                                        "Se enviará este SNI aunque el certificado use otra CA o identidad."
                                     } else {
                                         "Debe coincidir con un nombre válido del certificado TLS."
                                     }
@@ -212,7 +212,7 @@ fun CreateEditProfileScreen(
                             subtitle = if (
                                 state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
                             ) {
-                                "Activa: permite SNI y SAN distintos. La cadena TLS y la huella SSH siguen verificándose."
+                                "Activa: acepta certificados privados/autofirmados y SNI/SAN distintos. Úsala solo con perfiles confiables; SSH conserva la huella del servidor."
                             } else {
                                 "Desactivada: TLS estricto exige que el certificado pertenezca al SNI."
                             },

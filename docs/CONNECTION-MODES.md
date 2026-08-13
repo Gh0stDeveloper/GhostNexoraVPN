@@ -17,9 +17,12 @@ This document describes implemented behavior. It does not certify interoperabili
 SSH uses password authentication in the current production path. Private-key authentication, proxy credentials, and alternate payload/TLS ordering remain roadmap items until implemented and tested.
 
 The HTTP Custom-compatible policy applies only to SSH modes that use TLS. It
-sends an arbitrary valid DNS SNI and skips only SNI/SAN hostname matching. It
-does not install a trust-all certificate manager. Payload-only SSH has no TLS
-certificate stage and is unaffected by that selector.
+sends an arbitrary valid DNS SNI and accepts private, self-signed, or incomplete
+certificate chains without requiring an SNI/SAN match. It still requires a
+currently valid leaf certificate, is installed only for the explicitly selected
+SSH profile, and relies on the inner persistent SSH host key for final server
+identity. Payload-only SSH has no TLS certificate stage and is unaffected by
+that selector.
 
 The local SSH bridge supports SOCKS5 CONNECT and carries TCP through JSch `direct-tcpip` channels. It does not claim generic UDP tunneling over SSH.
 

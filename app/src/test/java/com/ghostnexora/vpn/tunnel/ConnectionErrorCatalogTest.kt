@@ -60,7 +60,7 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
-    fun customSniFailurePointsToCertificateTrustInsteadOfHostname() {
+    fun customSniFailureExplainsItsScopedCertificatePolicy() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException("certificate trust anchor failed"),
             injectorProfile
@@ -69,6 +69,8 @@ class ConnectionErrorCatalogTest {
         assertEquals("TLS-004", failure.code)
         assertTrue(failure.solution.contains("modo compatible", ignoreCase = true))
         assertTrue(failure.solution.contains("SNI/SAN"))
+        assertTrue(failure.solution.contains("CA privada", ignoreCase = true))
+        assertTrue(failure.solution.contains("vigente", ignoreCase = true))
     }
 
     @Test

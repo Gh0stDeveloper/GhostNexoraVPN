@@ -7,27 +7,31 @@ package com.ghostnexora.vpn.data.model
  * e identidad lógica SSH. El SNI se envía únicamente en ClientHello para que
  * el servidor TLS seleccione el certificado o virtual host correspondiente.
  *
- * CUSTOM_SNI conserva los TrustManager de Android, pero no exige coincidencia
- * entre el SNI configurado y los SAN del certificado. Nunca sustituye el host
- * SSH por el dominio SNI como destino físico.
+ * CUSTOM_SNI es una política explícita de interoperabilidad: permite una
+ * cadena privada/autofirmada y no exige coincidencia entre el SNI y los SAN.
+ * Nunca sustituye el host SSH por el dominio SNI como destino físico. La
+ * identidad final continúa protegida por la huella SSH persistente.
  */
 enum class TlsVerificationMode(
     val id: String,
     val label: String,
     val description: String,
-    val verifiesHostname: Boolean
+    val verifiesHostname: Boolean,
+    val verifiesCertificateChain: Boolean
 ) {
     STRICT(
         id = "strict",
         label = "TLS estricto",
         description = "Conecta al servidor SSH, envía el SNI configurado y exige que el certificado sea válido para ese SNI.",
-        verifiesHostname = true
+        verifiesHostname = true,
+        verifiesCertificateChain = true
     ),
     CUSTOM_SNI(
         id = "custom_sni",
         label = "Compatible con HTTP Injector/Custom",
-        description = "Conecta TCP al servidor SSH y usa el dominio configurado solo como SNI TLS, sin exigir coincidencia SNI/SAN; la cadena TLS y la identidad SSH siguen verificándose.",
-        verifiesHostname = false
+        description = "Conecta TCP al servidor SSH y usa el dominio configurado solo como SNI TLS, sin exigir una CA pública ni coincidencia SNI/SAN; TLS cifra el canal y SSH verifica la identidad final.",
+        verifiesHostname = false,
+        verifiesCertificateChain = false
     );
 
     companion object {

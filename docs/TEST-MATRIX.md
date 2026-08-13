@@ -27,7 +27,9 @@ CI success alone is labeled **CI verified**.
 | SSH + SSL | TLS 1.3, valid SNI | strict certificate success | Pending |
 | SSH + SSL | invalid SNI | `TLS-004`; startup TUN closes without publishing Connected | Pending |
 | SSH + SSL | custom SNI + trusted chain + different SAN | compatible handshake, SSH continues | Pending |
-| SSH + SSL | custom SNI + untrusted chain | `TLS-004`; no trust-all fallback | Pending |
+| SSH + SSL | strict SNI + untrusted chain | `TLS-004`; no compatibility fallback | Pending |
+| SSH + SSL | custom SNI + private/self-signed chain | compatible handshake, SSH host-key verification continues | Pending |
+| SSH + SSL | custom SNI + expired leaf | `TLS-004`; compatibility still enforces certificate dates | Pending |
 | SSH + Payload | HTTP 200 | SSH continues | Pending |
 | SSH + Payload | HTTP 101 | SSH continues | Pending |
 | SSH + Payload | 403 | structured payload failure | Pending |
