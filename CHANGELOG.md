@@ -2,6 +2,18 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.50
+
+### Fixed
+
+- Native Xray startup callbacks no longer perform blocking Room/DataStore writes on AndroidLibXrayLite's callback thread.
+- Core, SSH, SOCKS and TUN events are persisted through a dedicated FIFO writer, allowing `startLoop()` to return after `Started successfully, running` and the VPN service to publish `Connected`.
+- Disconnect remains available while queued diagnostic events finish writing independently of the VPN lifecycle thread.
+
+### Changed
+
+- Bumped the application to `1.0.50 (50)`.
+
 ## 1.0.49
 
 ### Fixed

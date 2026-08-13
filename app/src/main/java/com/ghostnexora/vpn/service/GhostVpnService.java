@@ -86,6 +86,12 @@ public final class GhostVpnService extends VpnService {
         thread.setDaemon(true);
         return thread;
     });
+    /* Native core callbacks run inline before startLoop() returns; persistence must not run there. */
+    private final ExecutorService logExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "ghost-vpn-log-writer");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final AtomicBoolean reconnecting = new AtomicBoolean(false);
     private final Object tunnelLock = new Object();
 
@@ -238,6 +244,7 @@ public final class GhostVpnService extends VpnService {
         }
         scheduler.shutdownNow();
         serviceExecutor.shutdownNow();
+        logExecutor.shutdown();
         super.onDestroy();
     }
 
@@ -952,10 +959,16 @@ public final class GhostVpnService extends VpnService {
     }
 
     private void log(LogLevel level, String message, @Nullable String profileId, String tag) {
+        if (repositoryBridge == null || logExecutor.isShutdown()) {
+            return;
+        }
         try {
-            if (repositoryBridge != null) {
-                repositoryBridge.log(level, message, profileId, tag);
-            }
+            logExecutor.execute(() -> {
+                try {
+                    repositoryBridge.log(level, message, profileId, tag);
+                } catch (Throwable ignored) {
+                }
+            });
         } catch (Throwable ignored) {
         }
     }

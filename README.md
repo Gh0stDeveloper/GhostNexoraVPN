@@ -10,9 +10,9 @@
 
 Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified routing, strict security defaults, encrypted profile management, actionable diagnostics, and transparent compatibility status.
 
-A process running is not considered a successful VPN. The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and reports success only after the active outbound delivers Internet.
+The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts, publishes `Connected` only after the transport, native core, and TUN are active, and then verifies the active outbound in the background.
 
-Current development version: **1.0.41 (41)**.
+Current development version: **1.0.50 (50)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -23,7 +23,7 @@ Current development version: **1.0.41 (41)**.
 - Android `VpnService` TUN routing.
 - Private `:vpn` process isolation for the native core, separate from the application interface.
 - Physical network tracking for cellular, Wi-Fi, and Ethernet.
-- Fail-closed TUN startup with active outbound verification before `Connected`.
+- Fail-closed TUN startup, core-ready `Connected` state, and independent background outbound verification.
 - Bounded native-process recovery without closing the application interface.
 - IPv4-only, IPv4-preferred, and dual-stack modes.
 - MTU presets from 1280 to 1500 shared by Android and Xray.
@@ -140,8 +140,8 @@ A normal connection must complete:
 4. Private VPN-process startup and persisted recovery intent.
 5. Fail-closed Android TUN creation.
 6. Single SSH/Xray startup against the TUN descriptor.
-7. Active outbound Internet verification.
-8. Connected-state publication to the UI process.
+7. Connected-state publication to the UI process after native core readiness.
+8. Active outbound Internet verification in the background.
 9. Health and session-statistics monitoring.
 
 A failure before TUN creation does not change device default routes. A startup failure after TUN creation closes the interface; during an established-session recovery, Kill Switch may intentionally retain blocked routing.
