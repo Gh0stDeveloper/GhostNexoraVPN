@@ -25,12 +25,13 @@ class PhysicalNetworkSocketArchitectureTest {
     }
 
     @Test
-    fun javaVpnServiceOwnsTheSocketProtectionLifecycle() {
+    fun javaVpnServiceInstallsProtectionWithoutOpeningProbeSockets() {
         val source = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
         assertTrue(source.contains("OutboundSocketProtection.install(this::protect)"))
         assertTrue(source.contains("OutboundSocketProtection.clear()"))
-        assertTrue(source.contains("if (!protect(socket))"))
-        assertTrue(source.contains("network.bindSocket(socket)"))
+        assertFalse(source.contains("measureTcpLatency"))
+        assertFalse(source.contains("new Socket"))
+        assertTrue(source.contains("setUnderlyingNetworks(new Network[]{network})"))
         assertTrue(source.contains("extends VpnService"))
     }
 
