@@ -229,6 +229,10 @@ final class TunnelSocketFactory implements SocketFactory {
             status("[TLS] Modo Injector · extremo TCP/SSH " + targetHost + ":" + targetPort +
                     " · SNI TLS " + sniHost);
         }
+        if (mode.getUsesTls() && !verificationMode.getVerifiesCertificateChain()) {
+            status("[TLS] Compatibilidad explícita · CA y SNI/SAN flexibles · " +
+                    "identidad final protegida por huella SSH");
+        }
 
         if (proxy != null) {
             socket = connectDirect(proxy.getHost().trim(), proxy.getPort());

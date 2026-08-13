@@ -69,7 +69,7 @@ object ProfileTechnicalSummaries {
                 profile.selectedMode.usesTls &&
                 !profile.selectedTlsVerificationMode.verifiesHostname
             ) {
-                add("Compatibilidad SNI activa: no se exige coincidencia entre SNI y SAN")
+                add("Compatibilidad TLS activa: no se validan CA ni SNI/SAN; la identidad final depende de la huella SSH")
             }
             if (profile.selectedMode == ConnectionMode.V2RAY && protocol == "VLESS" && profile.username.isBlank()) add("UUID vacío")
             if (profile.selectedMode.requiresPayload && PayloadEngine.validate(profile.payload).isValid.not()) add("Payload con errores de sintaxis")

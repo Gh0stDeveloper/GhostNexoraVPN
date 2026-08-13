@@ -92,7 +92,7 @@ object ConnectionErrorCatalog {
                     profile.selectedMode.usesTls &&
                     !profile.selectedTlsVerificationMode.verifiesHostname
                 ) {
-                    "El modo compatible ya permite una diferencia SNI/SAN. Revisa la confianza, vigencia y servicio TLS del certificado."
+                    "El modo compatible acepta una CA privada y una diferencia SNI/SAN, pero exige que el servidor presente un certificado vigente. Revisa también la fecha del dispositivo y confirma que la compatibilidad siga activa."
                 } else {
                     "Usa el SNI indicado por el administrador o activa explícitamente la compatibilidad SNI tipo HTTP Custom para este perfil SSH."
                 }

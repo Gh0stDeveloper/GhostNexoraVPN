@@ -412,15 +412,20 @@ private fun CreatorNoteSection(profile: VpnProfile?) {
                 Column {
                     Text("Nota del creador", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                     Text(
-                        profile?.name.orEmpty(),
+                        "${profile?.name.orEmpty()} · Contenido completo",
                         color = TextTertiary,
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
             }
+            Text(
+                "Desliza dentro de la nota para leer toda la información",
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
             HtmlNoteView(
                 html = note,
-                modifier = Modifier.fillMaxWidth().height(340.dp)
+                modifier = Modifier.fillMaxWidth().height(420.dp)
             )
         }
     }

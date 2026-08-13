@@ -35,9 +35,11 @@ The upstream proxy requested credentials. Current production proxy-auth support 
 - For an SSH profile known to work in HTTP Custom with a different SNI and
   certificate name, enable **Compatibilidad SNI tipo HTTP Custom** on that
   profile.
-- Compatibility skips only SNI/SAN matching; an expired, untrusted, or invalid
-  certificate chain still fails.
-- For private certificates, use future explicit pinning rather than trust-all.
+- Compatibility accepts private/self-signed certificate chains and skips
+  SNI/SAN matching, but a missing, expired, or not-yet-valid leaf certificate
+  still fails. Check the device date and the certificate validity period.
+- This policy preserves TLS encryption but authenticates the final endpoint
+  through the stored SSH host key. Use it only for trusted SSH profiles.
 
 ## SSH authentication — `SSH-401`
 

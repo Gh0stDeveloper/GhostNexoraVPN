@@ -25,15 +25,21 @@ Android builds inject an application-owned `SecureRandom` provider directly into
 
 ## TLS layer
 
-The TLS socket:
+The TLS socket always sends the configured SNI. Its trust policy is selected per
+SSH profile:
 
-- uses the platform trust store;
-- sends the configured SNI;
-- enables HTTPS endpoint identification in strict mode;
-- can omit only SNI/SAN matching when the profile explicitly enables HTTP
-  Custom compatibility;
-- still rejects an untrusted, expired, or otherwise invalid certificate chain;
-- does not offer a global trust-all mode.
+- strict mode uses Android's platform trust store and HTTPS hostname
+  verification against the configured SNI;
+- HTTP Custom compatibility accepts a private, self-signed, or incomplete
+  chain and does not require an SNI/SAN match;
+- compatibility still requires a non-empty, currently valid leaf certificate;
+- the compatibility manager is never installed globally or used by strict,
+  V2Ray, Trojan, Hysteria2, update, or API connections;
+- the inner SSH handshake independently verifies and persists the SSH host key.
+
+Compatibility therefore preserves encryption but delegates final server
+authentication to SSH. First-use SSH fingerprints must only be accepted for a
+profile received from a trusted creator.
 
 Certificate pinning and selectable TLS/ALPN versions remain roadmap features.
 

@@ -82,12 +82,14 @@ are replaced before persistent logging.
 
 ## TLS
 
-- Platform certificate trust is used.
-- Hostname verification is enabled by default.
+- Platform certificate trust and hostname verification are used by default.
 - SNI is explicit when required.
-- SSH profiles may explicitly allow SNI/SAN mismatch for HTTP Custom
-  compatibility; platform certificate-chain validation remains active.
-- Global trust-all is prohibited.
+- SSH-over-TLS profiles may explicitly enable HTTP Custom compatibility. That
+  scoped policy accepts private/self-signed chains and SNI/SAN mismatch, checks
+  leaf-certificate validity, and delegates final identity authentication to the
+  persistent SSH host key.
+- No compatibility trust manager is installed globally or reused by strict TLS,
+  Xray protocols, updater, or API traffic.
 - REALITY parameters are accepted only when present in the profile.
 
 Planned explicit certificate/public-key pinning should be opt-in per profile and must show issuer, subject, validity, and fingerprint before trust.

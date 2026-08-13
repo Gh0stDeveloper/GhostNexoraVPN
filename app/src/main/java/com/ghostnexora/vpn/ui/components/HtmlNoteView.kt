@@ -1,9 +1,12 @@
 package com.ghostnexora.vpn.ui.components
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.view.MotionEvent
+import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -19,8 +22,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
 import com.ghostnexora.vpn.security.HtmlNoteSanitizer
 import java.io.ByteArrayInputStream
 
@@ -32,14 +38,19 @@ fun HtmlNoteView(
 ) {
     val safeHtml = remember(html) { HtmlNoteSanitizer.sanitize(html) }
     val document = remember(safeHtml) { noteDocument(safeHtml) }
+    val nestedScrollInteropConnection = rememberNestedScrollInteropConnection()
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.nestedScroll(nestedScrollInteropConnection),
         factory = { context ->
-            WebView(context).apply {
+            ScrollableNoteWebView(context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
                 setNetworkAvailable(false)
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
+                isScrollbarFadingEnabled = false
+                scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                ViewCompat.setNestedScrollingEnabled(this, true)
                 settings.apply {
                     javaScriptEnabled = false
                     javaScriptCanOpenWindowsAutomatically = false
@@ -95,6 +106,33 @@ fun HtmlNoteView(
     )
 }
 
+/**
+ * Keeps vertical gestures inside a long creator note while it can still move,
+ * then returns the gesture to the scrollable Compose dashboard at either edge.
+ */
+private class ScrollableNoteWebView(context: Context) : WebView(context) {
+    private var previousTouchY = 0f
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                previousTouchY = event.y
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val direction = if (event.y < previousTouchY) 1 else -1
+                parent?.requestDisallowInterceptTouchEvent(canScrollVertically(direction))
+                previousTouchY = event.y
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        return super.onTouchEvent(event)
+    }
+}
+
 @Composable
 fun HtmlNoteDialog(
     title: String,
@@ -132,7 +170,10 @@ private fun noteDocument(body: String): String = """
             content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
       <style>
         :root { color-scheme: dark; }
-        html, body { max-width: 100%; }
+        html, body {
+          max-width: 100%; min-height: 100%; overflow-x: hidden; overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
         body {
           margin: 0; padding: 12px; background: transparent; color: #E8F2F5;
           font-family: sans-serif; line-height: 1.5; overflow-wrap: anywhere;

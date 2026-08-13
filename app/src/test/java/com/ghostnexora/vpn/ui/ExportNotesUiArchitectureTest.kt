@@ -44,6 +44,26 @@ class ExportNotesUiArchitectureTest {
     }
 
     @Test
+    fun dashboardCreatorNoteKeepsItsCompleteContentVerticallyScrollable() {
+        val dashboard = sourceFile(
+            "src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardScreen.kt"
+        )
+        val noteView = sourceFile(
+            "src/main/java/com/ghostnexora/vpn/ui/components/HtmlNoteView.kt"
+        )
+
+        assertTrue(dashboard.contains("Contenido completo"))
+        assertTrue(dashboard.contains("Desliza dentro de la nota para leer toda la información"))
+        assertTrue(noteView.contains("ScrollableNoteWebView(context)"))
+        assertTrue(noteView.contains("rememberNestedScrollInteropConnection()"))
+        assertTrue(noteView.contains(".nestedScroll(nestedScrollInteropConnection)"))
+        assertTrue(noteView.contains("ViewCompat.setNestedScrollingEnabled(this, true)"))
+        assertTrue(noteView.contains("requestDisallowInterceptTouchEvent"))
+        assertTrue(noteView.contains("isScrollbarFadingEnabled = false"))
+        assertTrue(noteView.contains("overflow-y: auto"))
+    }
+
+    @Test
     fun logPageIsAPlainFullHeightConsoleInsteadOfANestedCard() {
         val dashboard = sourceFile(
             "src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardScreen.kt"
