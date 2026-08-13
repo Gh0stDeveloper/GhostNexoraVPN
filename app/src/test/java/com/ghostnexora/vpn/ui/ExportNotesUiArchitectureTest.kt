@@ -64,7 +64,7 @@ class ExportNotesUiArchitectureTest {
     }
 
     @Test
-    fun logPageIsAPlainFullHeightConsoleInsteadOfANestedCard() {
+    fun logPageUsesOneFullHeightConsoleInsteadOfOneCardPerEvent() {
         val dashboard = sourceFile(
             "src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardScreen.kt"
         )
@@ -77,7 +77,9 @@ class ExportNotesUiArchitectureTest {
         val console = sourceFile(
             "src/main/java/com/ghostnexora/vpn/ui/components/HttpInjectorLogConsole.kt"
         )
-        assertFalse(console.contains("RoundedCornerShape"))
+        assertTrue(console.contains("Surface("))
+        assertTrue(console.contains("items(orderedLogs"))
+        assertFalse(console.contains("GhostCard("))
         assertTrue(console.contains("maxHeight: Dp?"))
     }
 

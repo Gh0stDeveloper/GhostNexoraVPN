@@ -58,7 +58,19 @@ class TunnelLogEventParserTest {
         )
 
         assertTrue('\n' !in event.message)
-        assertTrue(event.message.length <= 1_024)
+        assertTrue(event.message.length <= 8_192)
         assertNull(TunnelLogEventParser.parse(" \n "))
+    }
+
+    @Test
+    fun marksEnglishJschMilestonesAsSuccess() {
+        assertEquals(
+            LogLevel.SUCCESS,
+            TunnelLogEventParser.parse("[SSH] INFO · Connection established")?.level
+        )
+        assertEquals(
+            LogLevel.SUCCESS,
+            TunnelLogEventParser.parse("[SSH] INFO · Authentication succeeded (password).")?.level
+        )
     }
 }

@@ -68,6 +68,20 @@ Not claimed:
 - proxy authentication in the current SSH upstream proxy stage;
 - production private-key authentication.
 
+## Optional server banner
+
+The UI displays only the SSH authentication banner delivered by JSch through
+`UserInfo.showMessage`. At most one banner is accepted per connection. The VPN
+does not open a shell channel to obtain `/etc/motd`, so Ubuntu version, system
+load, update status, addresses, and other VPS administration details are not
+requested or exposed in the application.
+
+Injector-style formatting (`font`, bold, links, line breaks and other safe
+presentation tags) and common ANSI foreground colors are normalized into a
+sanitized rich-text block. Script execution, event handlers, forms, frames,
+remote resources and active content remain blocked. If a server sends no SSH
+authentication banner, the UI simply omits this block.
+
 ## Required physical tests
 
 - password auth on ports 22, 80, 443, and a custom port;

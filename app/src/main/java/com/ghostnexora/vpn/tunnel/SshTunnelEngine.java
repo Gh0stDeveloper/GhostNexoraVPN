@@ -11,7 +11,6 @@ import com.ghostnexora.vpn.util.PayloadContext;
 import com.ghostnexora.vpn.util.PayloadEngine;
 import com.ghostnexora.vpn.util.PayloadPlan;
 import com.jcraft.jsch.ChannelDirectTCPIP;
-import com.jcraft.jsch.ChannelShell;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
@@ -49,9 +48,9 @@ import kotlin.jvm.functions.Function1;
 
 /** Java SSH engine for direct, TLS/SNI, payload and upstream-proxy VPN modes. */
 public final class SshTunnelEngine {
-    private static final int MAX_SERVER_MESSAGE_BYTES = 8 * 1024;
     private static final int MAX_SERVER_MESSAGE_CHARS = 8 * 1024;
-    private static final long SERVER_MESSAGE_TIMEOUT_MS = 1_200L;
+    private static final Pattern ANSI_SGR =
+            Pattern.compile("\\u001B\\[([0-9;]*)m");
     private static final Pattern ANSI_CSI =
             Pattern.compile("\\u001B\\[[0-?]*[ -/]*[@-~]");
     private static final Pattern ANSI_OSC =
@@ -108,7 +107,6 @@ public final class SshTunnelEngine {
                 status("[SSH] Abriendo sesión y negociando algoritmos");
                 session.connect(25_000);
                 status("[SSH] Autenticación completada · sesión cifrada activa");
-                capturePostLoginMessage(session, userInfo);
             } catch (JSchException error) {
                 String message = error.getMessage() != null ? error.getMessage() : "";
                 if (message.toLowerCase(Locale.US).contains("auth fail")) {
@@ -156,74 +154,114 @@ public final class SshTunnelEngine {
         onStatus.invoke(message);
     }
 
-    /**
-     * OpenSSH normally sends /etc/motd only when a session channel is opened.
-     * This reuses the authenticated SSH transport; it does not create a second
-     * TCP, TLS or SSH connection and never sends a synthetic Internet request.
-     */
-    private static void capturePostLoginMessage(Session session, ProfileUserInfo userInfo) {
-        ChannelShell channel = null;
-        try {
-            channel = (ChannelShell) session.openChannel("shell");
-            channel.setPty(false);
-            InputStream input = channel.getInputStream();
-            channel.connect(2_000);
-
-            ByteArrayOutputStream message = new ByteArrayOutputStream();
-            byte[] buffer = new byte[1_024];
-            long deadline = System.nanoTime() + SERVER_MESSAGE_TIMEOUT_MS * 1_000_000L;
-            long quietSince = 0L;
-            while (System.nanoTime() < deadline && message.size() < MAX_SERVER_MESSAGE_BYTES) {
-                int available = input.available();
-                if (available > 0) {
-                    int count = input.read(
-                            buffer,
-                            0,
-                            Math.min(buffer.length, Math.min(available,
-                                    MAX_SERVER_MESSAGE_BYTES - message.size()))
-                    );
-                    if (count < 0) break;
-                    if (count > 0) {
-                        message.write(buffer, 0, count);
-                        quietSince = System.nanoTime();
-                    }
-                    continue;
-                }
-                if (message.size() > 0 && quietSince > 0L
-                        && System.nanoTime() - quietSince >= 200_000_000L) {
-                    break;
-                }
-                if (channel.isClosed()) break;
-                Thread.sleep(25L);
-            }
-            userInfo.publishServerMessage(message.toString(StandardCharsets.UTF_8.name()));
-        } catch (Throwable ignored) {
-            // A restricted account may deny shell channels. The VPN transport
-            // remains valid and authentication banners are still captured.
-        } finally {
-            if (channel != null) {
-                try { channel.disconnect(); } catch (Throwable ignored) { }
-            }
-        }
-    }
-
     static String normalizeServerMessage(String raw) {
         if (raw == null || raw.trim().isEmpty()) return "";
-        String withoutAnsi = ANSI_OSC.matcher(ANSI_CSI.matcher(raw).replaceAll("")).replaceAll("");
-        StringBuilder clean = new StringBuilder(Math.min(withoutAnsi.length(), MAX_SERVER_MESSAGE_CHARS));
-        boolean pendingSpace = false;
-        for (int index = 0; index < withoutAnsi.length() && clean.length() < MAX_SERVER_MESSAGE_CHARS; index++) {
+        String withHtmlColors = ansiSgrToHtml(raw);
+        String withoutAnsi = ANSI_OSC.matcher(ANSI_CSI.matcher(withHtmlColors).replaceAll(""))
+                .replaceAll("")
+                .replace("\r\n", "\n")
+                .replace('\r', '\n');
+        StringBuilder clean = new StringBuilder(
+                Math.min(withoutAnsi.length(), MAX_SERVER_MESSAGE_CHARS)
+        );
+        int consecutiveLineBreaks = 0;
+        for (int index = 0;
+             index < withoutAnsi.length() && clean.length() < MAX_SERVER_MESSAGE_CHARS;
+             index++) {
             char value = withoutAnsi.charAt(index);
-            if (value == '\r' || value == '\n' || value == '\t' || Character.isWhitespace(value)) {
-                pendingSpace = clean.length() > 0;
+            if (value == '\n') {
+                if (clean.length() > 0 && consecutiveLineBreaks < 2) clean.append('\n');
+                consecutiveLineBreaks++;
+                continue;
+            }
+            if (value == '\t') {
+                if (clean.length() + 4 <= MAX_SERVER_MESSAGE_CHARS) clean.append("    ");
+                consecutiveLineBreaks = 0;
                 continue;
             }
             if (Character.isISOControl(value)) continue;
-            if (pendingSpace && clean.length() > 0) clean.append(' ');
             clean.append(value);
-            pendingSpace = false;
+            consecutiveLineBreaks = 0;
         }
         return clean.toString().trim();
+    }
+
+    /** Converts common terminal SGR colors into legacy HTML understood by Injector-style banners. */
+    private static String ansiSgrToHtml(String raw) {
+        java.util.regex.Matcher matcher = ANSI_SGR.matcher(raw);
+        StringBuilder converted = new StringBuilder(raw.length() + 64);
+        int previousEnd = 0;
+        String color = null;
+        boolean bold = false;
+        boolean formattingOpen = false;
+        while (matcher.find()) {
+            converted.append(raw, previousEnd, matcher.start());
+            if (formattingOpen) appendAnsiClose(converted, color, bold);
+
+            String sequence = matcher.group(1);
+            String[] values = sequence == null || sequence.isEmpty()
+                    ? new String[]{"0"}
+                    : sequence.split(";");
+            for (String value : values) {
+                int code;
+                try {
+                    code = Integer.parseInt(value);
+                } catch (NumberFormatException ignored) {
+                    continue;
+                }
+                if (code == 0) {
+                    color = null;
+                    bold = false;
+                } else if (code == 1) {
+                    bold = true;
+                } else if (code == 22) {
+                    bold = false;
+                } else if (code == 39) {
+                    color = null;
+                } else {
+                    String mapped = ansiColor(code);
+                    if (mapped != null) color = mapped;
+                }
+            }
+            formattingOpen = color != null || bold;
+            if (formattingOpen) appendAnsiOpen(converted, color, bold);
+            previousEnd = matcher.end();
+        }
+        converted.append(raw, previousEnd, raw.length());
+        if (formattingOpen) appendAnsiClose(converted, color, bold);
+        return converted.toString();
+    }
+
+    private static void appendAnsiOpen(StringBuilder output, String color, boolean bold) {
+        if (color != null) output.append("<font color=\"").append(color).append("\">");
+        if (bold) output.append("<b>");
+    }
+
+    private static void appendAnsiClose(StringBuilder output, String color, boolean bold) {
+        if (bold) output.append("</b>");
+        if (color != null) output.append("</font>");
+    }
+
+    private static String ansiColor(int code) {
+        switch (code) {
+            case 30: return "#90A4AE";
+            case 31: return "#FF5252";
+            case 32: return "#69F0AE";
+            case 33: return "#FFD740";
+            case 34: return "#40C4FF";
+            case 35: return "#EA80FC";
+            case 36: return "#18FFFF";
+            case 37: return "#FFFFFF";
+            case 90: return "#B0BEC5";
+            case 91: return "#FF8A80";
+            case 92: return "#B9F6CA";
+            case 93: return "#FFE57F";
+            case 94: return "#80D8FF";
+            case 95: return "#EA80FC";
+            case 96: return "#84FFFF";
+            case 97: return "#FFFFFF";
+            default: return null;
+        }
     }
 
     private static int clampPort(int port) {
@@ -893,7 +931,7 @@ final class ProfileUserInfo implements UserInfo {
     void publishServerMessage(String message) {
         String normalized = SshTunnelEngine.normalizeServerMessage(message);
         if (normalized.isEmpty()) return;
-        serverMessageShown.set(true);
+        if (!serverMessageShown.compareAndSet(false, true)) return;
         onStatus.invoke("[SSH] Mensaje del servidor · " + normalized);
     }
 }

@@ -31,6 +31,8 @@ import com.ghostnexora.vpn.data.model.VpnTrafficStats;
 import com.ghostnexora.vpn.data.repository.ProfileRepository;
 import com.ghostnexora.vpn.data.repository.VpnRepositoryBridge;
 import com.ghostnexora.vpn.tunnel.OutboundSocketProtection;
+import com.ghostnexora.vpn.tunnel.TunnelLogEvent;
+import com.ghostnexora.vpn.tunnel.TunnelLogEventParser;
 import com.ghostnexora.vpn.tunnel.TunnelManager;
 import com.ghostnexora.vpn.tunnel.TunnelRuntime;
 import com.ghostnexora.vpn.tunnel.XrayTrafficDelta;
@@ -164,7 +166,10 @@ public final class GhostVpnService extends VpnService {
         connectivityManager =
                 (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         tunnelManager = new TunnelManager(getApplicationContext(), status -> {
-            log(LogLevel.INFO, status, profileId(), statusTag(status));
+            TunnelLogEvent event = TunnelLogEventParser.INSTANCE.parse(status);
+            if (event != null) {
+                log(event.getLevel(), status, profileId(), event.getTag());
+            }
             return Unit.INSTANCE;
         });
         OutboundSocketProtection.install(this::protect);
@@ -978,18 +983,6 @@ public final class GhostVpnService extends VpnService {
     private String profileId() {
         VpnProfile profile = activeProfile;
         return profile != null ? profile.getId() : null;
-    }
-
-    private static String statusTag(String status) {
-        if (status == null) {
-            return "CORE";
-        }
-        int start = status.indexOf('[');
-        int end = status.indexOf(']');
-        if (start == 0 && end > 1) {
-            return status.substring(1, end).toUpperCase();
-        }
-        return "CORE";
     }
 
     private static String safeMessage(Throwable error, String fallback) {

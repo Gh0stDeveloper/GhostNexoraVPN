@@ -9,6 +9,7 @@ import com.ghostnexora.vpn.BuildConfig
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.ui.components.LogPresentation
 import com.ghostnexora.vpn.util.httpInjectorLine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -46,13 +47,14 @@ class LogsViewModel @Inject constructor(
         _selectedLevel,
         _searchQuery
     ) { all, level, query ->
-        all.filter { entry ->
-            val matchLevel = level == null || entry.level == level
-            val matchQuery = query.isBlank() ||
-                entry.message.contains(query, ignoreCase = true) ||
-                entry.tag.contains(query, ignoreCase = true)
-            matchLevel && matchQuery
-        }.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id })
+        all.filterNot { entry -> LogPresentation.isLegacyVpsMotd(entry.message) }
+            .filter { entry ->
+                val matchLevel = level == null || entry.level == level
+                val matchQuery = query.isBlank() ||
+                    entry.message.contains(query, ignoreCase = true) ||
+                    entry.tag.contains(query, ignoreCase = true)
+                matchLevel && matchQuery
+            }.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setLevelFilter(level: LogLevel?) { _selectedLevel.value = level }
@@ -65,7 +67,7 @@ class LogsViewModel @Inject constructor(
     fun confirmClearLogs() {
         viewModelScope.launch {
             repository.clearLogs()
-            _uiState.update { it.copy(showClearDialog = false, snackbarMessage = "Logs deleted") }
+            _uiState.update { it.copy(showClearDialog = false, snackbarMessage = "Registros eliminados") }
         }
     }
 
@@ -73,15 +75,15 @@ class LogsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching {
                 context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8).use { writer ->
-                    checkNotNull(writer) { "Android could not open the selected file" }
+                    checkNotNull(writer) { "Android no pudo abrir el archivo seleccionado" }
                     writer.write(exportLogsAsText(logs))
                 }
             }
             _uiState.update {
                 it.copy(
                     snackbarMessage = result.fold(
-                        onSuccess = { "Diagnostic report exported" },
-                        onFailure = { error -> "Export failed: ${error.message.orEmpty().take(120)}" }
+                        onSuccess = { "Diagnóstico exportado" },
+                        onFailure = { error -> "No se pudo exportar: ${error.message.orEmpty().take(120)}" }
                     )
                 )
             }
