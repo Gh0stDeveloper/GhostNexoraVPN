@@ -39,6 +39,8 @@ object ConnectionErrorCatalog {
                 "Revisa el host y los servidores DNS seleccionados."
             )
             profile.selectedMode.isSsh && (
+                lower.contains("route-data-204") ||
+                    lower.contains("ruta de datos activa") ||
                 lower.contains("ruta xray") ||
                     lower.contains("health-check") ||
                     lower.contains("xray socks outbound")
@@ -143,7 +145,8 @@ object ConnectionErrorCatalog {
                 raw,
                 "El perfil alcanzó la autenticación SSH. Verifica que la cuenta permita direct-tcpip y exporta el registro SSH/SOCKS."
             )
-            lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
+            lower.contains("route-data-204") || lower.contains("ruta de datos") ||
+                lower.contains("no entregan acceso") || lower.contains("no pudo entregar") ||
                 lower.contains("generate_204") || lower.contains("outbound") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-ROUTE-204" else "ROUTE-204",
                 if (profile.selectedMode.isSsh) "SSH" else "ROUTING",

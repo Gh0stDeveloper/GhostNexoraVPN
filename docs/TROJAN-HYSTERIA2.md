@@ -58,7 +58,7 @@ Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400
 
 ## Runtime state and verification
 
-For Trojan and Hysteria2, the Dashboard publishes `Connected` only when the Android TUN is valid, Xray is active, and Android exposes the application's owned `TRANSPORT_VPN` network. No outbound HTTP check runs automatically afterward. The passive health monitor applies the configured reconnection/Kill Switch policy if the runtime or Android VPN registration disappears.
+For Trojan and Hysteria2, the Dashboard publishes `Connected` only when the Android TUN is valid, Xray is active, Android exposes the application's exact owned `TRANSPORT_VPN` network, and one bounded HTTPS flow returns through the selected outbound. No outbound check runs periodically afterward. The passive health monitor applies the configured reconnection/Kill Switch policy if the runtime or Android VPN registration disappears.
 
 The UI state is not interoperability certification. Device verification still requires a successful outbound check, real upload/download traffic, leak testing, and sustained operation under the relevant network conditions.
 

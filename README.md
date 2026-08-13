@@ -10,9 +10,9 @@
 
 Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified routing, strict security defaults, encrypted profile management, actionable diagnostics, and transparent compatibility status.
 
-The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and publishes `Connected` only after the transport and native core are active and Android exposes the application's `TRANSPORT_VPN` network. Normal sessions do not create synthetic Internet probes.
+The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and publishes `Connected` only after Android exposes the exact owned VPN network and one bounded request proves bidirectional Internet access through that TUN and the selected outbound. Runtime monitoring is passive after acceptance.
 
-Current development version: **1.0.52 (52)**.
+Current development version: **1.0.53 (53)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -23,8 +23,8 @@ Current development version: **1.0.52 (52)**.
 - Android `VpnService` TUN routing.
 - Private `:vpn` process isolation for the native core, separate from the application interface.
 - Physical network tracking for cellular, Wi-Fi, and Ethernet.
-- Fail-closed TUN startup and system-confirmed `Connected` state tied to Android's owned VPN network.
-- Passive runtime health checks with no automatic Cloudflare/Google probes or periodic latency sockets.
+- Fail-closed TUN startup and `Connected` state tied to Android's exact owned VPN network plus a real bidirectional data-plane response.
+- One VPN-bound startup/reconnection qualification using the existing runtime, followed by passive health checks with no fallback pair or periodic latency sockets.
 - Bounded native-process recovery without closing the application interface.
 - IPv4-only, IPv4-preferred, and dual-stack modes.
 - MTU presets from 1280 to 1500 shared by Android and Xray.

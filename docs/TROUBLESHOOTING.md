@@ -60,9 +60,11 @@ Install the latest APK and export the diagnostic report. CI verifies required JS
 
 Use a valid UUID. Check that VMess/VLESS was imported into the correct protocol and that whitespace was not added.
 
-## Core started but no Internet — `ROUTE-204`
+## VPN indicator present but no working route — `ROUTE-DATA-204`
 
-Since 1.0.51 the Dashboard can show `Connected` only after Android registers the application's VPN network and SSH/Xray remain active. This confirms the system VPN interface, but actual server forwarding is exercised only when an application generates traffic.
+Since 1.0.53 the Dashboard remains in `Connecting` until one request bound to the application's exact VPN network receives a response through TUN, Xray, and the selected outbound. Seeing Android's VPN indicator or Xray's `Started successfully` event alone is not sufficient.
+
+If qualification fails, the log reports `[ROUTE-DATA-204]`, initial startup closes the TUN, and the UI must not publish `Connected`. For SSH profiles, verify that the account permits `direct-tcpip` forwarding and that the VPS has outbound Internet access.
 
 Check:
 
@@ -79,16 +81,18 @@ Check:
 
 Start with IPv4 only, MTU 1400, and Automatic protected DNS.
 
-## No Android VPN indicator or false `Connected` state — `TUN-REG`
+## Connection acceptance sequence — `TUN-REG` / `ROUTE-DATA-204`
 
-Version 1.0.51 does not publish `Connected` until Android exposes an owned `TRANSPORT_VPN` network. A successful startup includes:
+Version 1.0.53 requires both Android registration and real data-plane evidence. A successful startup includes this order:
 
 ```text
-Android confirmó TRANSPORT_VPN para esta aplicación · interfaz del sistema activa
-VPN de Android, TUN, Xray y transporte activos · estado Conectado publicado
+Android confirmó la VPN propia · dirección TUN y ruta predeterminada activas
+Validando un único flujo por VPN Android → TUN → Xray → outbound
+Ruta de datos bidireccional verificada · HTTP …
+VPN, TUN y ruta de datos real verificados · estado Conectado publicado
 ```
 
-If this confirmation does not appear, startup must fail rather than claim the VPN is connected. Check:
+The SOCKS channel, upload, and download events can appear between validation and the final state for SSH modes. They belong to the same authenticated session. If the final data-plane confirmation does not appear, startup must fail rather than claim the VPN is connected. Check:
 
 1. Android VPN permission is still granted.
 2. No other VPN is active.
@@ -96,7 +100,7 @@ If this confirmation does not appear, startup must fail rather than claim the VP
 4. The selected application-routing list is valid.
 5. Battery/security tools are not revoking the service.
 
-The old `Prueba real 1/2` startup sequence was removed. It represented two fallback test targets, not two VPN sessions, but it still created unwanted synthetic traffic.
+There is exactly one acceptance request and no `Prueba real 1/2` fallback pair. After the connection is accepted, monitoring is passive and does not repeat the request periodically.
 
 ## Application routing — `APP-ROUTE-001`
 
@@ -147,7 +151,7 @@ A failure applying a required package rule must abort TUN startup. It must not b
 - Disable battery restrictions.
 - Record whether the physical network returned before retry exhaustion.
 - Test with Kill Switch both enabled and disabled to distinguish intentional blocking.
-- Confirm reconnection publishes `Connected` only after Android registers the replacement VPN runtime.
+- Confirm reconnection publishes `Connected` only after Android registers the replacement VPN runtime and its single data-plane qualification succeeds.
 
 ## Cannot install test APK
 

@@ -2,9 +2,9 @@
 
 ## Design goals
 
-Ghost Nexora VPN separates profile storage, transport creation, Android routing, explicit diagnostics, passive health monitoring, and UI state. A transport cannot mark the VPN connected by itself: the authoritative state belongs to `GhostVpnService` after Android establishes the TUN, exposes the application's VPN network, and Xray reports that its native loop is running.
+Ghost Nexora VPN separates profile storage, transport creation, Android routing, explicit diagnostics, passive health monitoring, and UI state. A transport cannot mark the VPN connected by itself: the authoritative state belongs to `GhostVpnService` after Android establishes the TUN, exposes the application's exact VPN network, Xray reports that its native loop is running, and the data plane returns a real response.
 
-`Connected` means that the selected SSH/Xray transport, local bridge where required, native core, valid TUN descriptor, and Android-owned `TRANSPORT_VPN` network are active. Normal VPN sessions do not contact remote health endpoints; Internet preflight exists only in the user-invoked Diagnostics flow.
+`Connected` means that the selected SSH/Xray transport, local bridge where required, native core, valid TUN descriptor, Android-owned `TRANSPORT_VPN` network, and one bidirectional Internet flow through that exact network are active. A single bounded acceptance request runs at startup or reconnection; health monitoring is passive afterward.
 
 ## Runtime layers
 
@@ -23,7 +23,7 @@ Explicit same-application state/traffic IPC
 GhostVpnService — private :vpn process
   ├─ physical-network tracking
   ├─ fail-closed VpnService.Builder routes and strict app rules
-  ├─ Android-owned VPN registration gate
+  ├─ exact Android-owned VPN registration and data-plane gate
   ├─ native-core ownership and bounded process recovery
   ├─ health monitoring and reconnection
   └─ session statistics
@@ -46,11 +46,12 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 6. Establish the Android TUN in fail-closed mode.
 7. Start one SSH/Xray runtime against the TUN descriptor.
 8. Require the TUN descriptor to remain valid and `ConnectivityManager` to expose an owned `TRANSPORT_VPN` network.
-9. Recheck the SSH/Xray transport, then publish `Connected` to the UI process.
-10. Start passive transport, VPN-registration, and statistics monitoring. These checks do not open remote sockets.
-11. On transport or Android VPN-registration loss, reconnect or close/retain the TUN according to Kill Switch policy.
+9. Bind one socket to that exact VPN `Network` and require an HTTPS response through TUN → Xray → selected outbound.
+10. Recheck the SSH/Xray transport, then publish `Connected` to the UI process.
+11. Start passive transport, VPN-registration, and statistics monitoring. These checks do not open remote sockets.
+12. On transport or Android VPN-registration loss, reconnect and repeat the single qualification, or close/retain the TUN according to Kill Switch policy.
 
-No automatic Internet, TLS, SOCKS, ping, or latency probe is permitted in a normal VPN session. Real application traffic opens forwarding channels on demand.
+Exactly one bounded HTTPS request qualifies each startup or restored runtime. It uses the existing VPN/Xray/SSH chain, has no fallback target or retry counter, and is canceled by teardown. No periodic Internet, TLS, SOCKS, ping, or latency probe is permitted after acceptance.
 
 ## Data model
 
@@ -58,7 +59,7 @@ No automatic Internet, TLS, SOCKS, ping, or latency probe is permitted in a norm
 - `NetworkPreferences`: IP mode, MTU, DNS mode, custom resolvers, reconnect limit.
 - `AppRoutingPreferences`: all, only selected, or exclude selected applications.
 - `LogEntry`: sanitized timestamped stage event.
-- `VpnTrafficStats`: Xray proxy-outbound session counters, rates, and reconnect count. Normal sessions do not synthesize traffic to calculate latency.
+- `VpnTrafficStats`: Xray proxy-outbound session counters, rates, reconnect count, and latency measured by the single acceptance flow.
 
 Editable-profile secrets are encrypted before Room persistence. A locked GNX3
 profile is stored as one opaque Android Keystore-backed envelope; its ordinary
@@ -85,8 +86,8 @@ only a masked profile.
 - The VPN package and its SSH/native-core traffic cannot be captured by its own full-device TUN.
 - Application-routing failures are not swallowed; TUN startup fails closed when required package rules cannot be applied.
 - TUN traffic has no silent direct fallback.
-- `Connected` requires Android's owned VPN network and never relies on a remote probe.
-- Normal connection and passive health monitoring create no autonomous remote test connections.
+- `Connected` requires Android's exact owned VPN network and one successful bidirectional response through it.
+- Normal connection creates only the bounded acceptance flow; passive health monitoring creates no autonomous remote test connections.
 - No global TLS trust bypass.
 - No empty application allowlist that silently becomes full-device routing.
 - No unsanitized secrets in persistent logs.
@@ -101,7 +102,7 @@ New protocols should implement:
 - profile validation;
 - deterministic configuration generation;
 - non-destructive diagnostics;
-- explicit, user-invoked connectivity diagnostics and passive runtime health checks;
+- one bounded data-plane acceptance check, explicit user-invoked diagnostics, and passive runtime health checks;
 - structured error classification;
 - sanitized stage logging;
 - unit tests and physical-server interoperability cases.

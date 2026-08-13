@@ -26,8 +26,8 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 |---|---|
 | Android TUN IPv4/IP modes/MTU/DNS generation | CI verified |
 | Fail-closed TUN startup with mandatory application self-bypass | CI verified by Build Android #501; device behavior pending |
-| Immediate core-ready `Connected` state and asynchronous outbound verification | CI verified by Build Android #501; device behavior pending |
-| Non-blocking disconnect while a health probe is active | CI/source verified; physical regression pending |
+| Fail-closed `Connected` gate using the exact VPN network and one data-plane response | CI/source verified; physical regression pending |
+| Non-blocking disconnect while data-plane qualification is active | CI/source verified; physical regression pending |
 | JSch Android random provider | CI verified |
 | SSH direct/password | Device testing pending |
 | SSH + TLS/SNI strict and HTTP Custom-compatible | CI verified; real-server device testing pending |
@@ -50,7 +50,7 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 
 ## Connection-state interpretation
 
-The Dashboard `Connected` state means the selected transport and Xray native loop are active, the TUN descriptor remains valid, and Android exposes a `TRANSPORT_VPN` network owned by this application. Normal sessions do not run an Internet/TLS/SOCKS probe afterward. Sustained real traffic and leak tests are still required before a protocol/device combination is promoted to device verified.
+The Dashboard `Connected` state means the selected transport and Xray native loop are active, the TUN descriptor remains valid, Android exposes the exact `TRANSPORT_VPN` network owned by this application, and one bounded HTTPS flow returned through that network. Monitoring is passive afterward. Sustained real traffic and leak tests are still required before a protocol/device combination is promoted to device verified.
 
 A feature is not promoted to device verified merely because the UI says `Connected`. The evidence record must include successful real traffic, health verification, leak checks, and teardown/recovery behavior.
 

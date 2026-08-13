@@ -49,10 +49,16 @@ class LogPresentationTest {
             message = "[SSH] INFO · server proposal: ciphers c2s"
         )
         val error = LogEntry(level = LogLevel.ERROR, tag = "VPN", message = "Falló")
+        val qualified = LogEntry(
+            level = LogLevel.INFO,
+            tag = "NETWORK",
+            message = "Ruta de datos bidireccional verificada · 123 ms"
+        )
 
         assertTrue(LogPresentation.belongsToSummary(milestone))
         assertTrue(LogPresentation.belongsToSummary(banner))
         assertTrue(LogPresentation.belongsToSummary(error))
+        assertTrue(LogPresentation.belongsToSummary(qualified))
         assertFalse(LogPresentation.belongsToSummary(verbose))
     }
 

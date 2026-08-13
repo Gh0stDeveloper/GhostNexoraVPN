@@ -2,6 +2,21 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.53
+
+### Fixed
+
+- The app no longer publishes `Connected` merely because Android displays the VPN indicator and Xray reports `Started successfully`. It now requires a real bidirectional response through the exact Android VPN network, TUN, Xray outbound, and existing SSH session where applicable.
+- A failed or timed-out data-plane qualification closes the initial TUN, removes the false VPN state, and reports `[ROUTE-DATA-204]` instead of leaving a non-working connection marked as protected.
+- Reconnection also remains in `Reconnecting` until its replacement runtime passes the same data-plane qualification.
+
+### Changed
+
+- Added one bounded HTTPS `HEAD` qualification request to `one.one.one.one`. It is bound to the owned VPN `Network`, is not protected from the TUN, and contains no profile credentials, server address, payload, or user traffic.
+- The qualification reuses the same VPN, Xray runtime, SOCKS bridge, and authenticated SSH session. It does not create a second VPN or SSH login and has no `1/2` fallback sequence.
+- Runtime health monitoring remains passive after connection acceptance and opens no periodic remote probe sockets.
+- Bumped the application to `1.0.53 (53)`.
+
 ## 1.0.52
 
 ### Fixed

@@ -31,7 +31,8 @@ object TunnelLogEventParser {
         "MATCHES THE EDDSA HOST KEY",
         "STARTED SUCCESSFULLY",
         "SUBIDA ACTIVA",
-        "VERIFICADO"
+        "VERIFICADO",
+        "VERIFICADA"
     )
 
     fun parse(raw: String): TunnelLogEvent? {

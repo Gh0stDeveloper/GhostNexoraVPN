@@ -65,17 +65,18 @@ Normal VPN startup has one gated state transition:
 1. Android establishes a valid TUN descriptor.
 2. `CoreController.startLoop()` reports a running Xray loop and the selected transport remains alive.
 3. `ConnectivityManager` exposes an owned `TRANSPORT_VPN` network.
-4. Only then does `GhostVpnService` publish `Connected`.
+4. One HTTPS request bound to that exact network returns through the selected Xray outbound.
+5. Only then does `GhostVpnService` publish `Connected`.
 
-`Libv2ray.measureOutboundDelay` remains available for the explicit non-destructive diagnostic workflow before TUN creation. The normal connection path does not run that preflight automatically and does not call an active outbound probe synchronously inside `TunnelManager.start()`.
+`Libv2ray.measureOutboundDelay` remains available for the explicit non-destructive diagnostic workflow before TUN creation. The normal connection path does not start that separate preflight runtime; it qualifies the already running data plane once, outside `TunnelManager.start()`.
 
-The normal connection path also has no post-start remote probe, loopback health-check inbound, or periodic latency socket. Passive health checks observe the existing Xray/transport runtime and Android VPN registration. Real applications generate the traffic used to qualify forwarding.
+The normal connection path has no fallback endpoint pair, loopback health-check inbound, or periodic latency socket. Passive health checks observe the existing Xray/transport runtime and Android VPN registration after the single acceptance flow.
 
 A running core by itself is not enough for the UI `Connected` state and is not sufficient evidence for **device verified** compatibility. Qualification still requires sustained real traffic.
 
 ## Concurrency requirements
 
-- Startup state publication does not run HTTP, TLS, SOCKS, ping, or DNS probes.
+- Startup state publication waits for one bounded HTTPS flow on a worker thread.
 - Passive health checks must not open sockets or retain the runtime monitor.
 - Explicit Diagnostics remote I/O remains isolated from the normal VPN lifecycle.
 - Disconnect and reconnection must remain available while real traffic is active.
