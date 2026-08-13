@@ -60,23 +60,25 @@ TLS uses strict certificate and hostname verification. REALITY parameters are pr
 
 ## Startup and health verification
 
-Normal VPN startup has two independent milestones:
+Normal VPN startup has one gated state transition:
 
-1. **Core ready:** the Android TUN exists and `CoreController.startLoop()` reports a running Xray loop. `GhostVpnService` immediately publishes `Connected`.
-2. **Outbound verified:** an I/O coroutine measures the active outbound against independent HTTP 204 endpoints. The result updates latency and logs without blocking the UI or service teardown.
+1. Android establishes a valid TUN descriptor.
+2. `CoreController.startLoop()` reports a running Xray loop and the selected transport remains alive.
+3. `ConnectivityManager` exposes an owned `TRANSPORT_VPN` network.
+4. Only then does `GhostVpnService` publish `Connected`.
 
 `Libv2ray.measureOutboundDelay` remains available for the explicit non-destructive diagnostic workflow before TUN creation. The normal connection path does not run that preflight automatically and does not call an active outbound probe synchronously inside `TunnelManager.start()`.
 
-A failed first background check does not create a direct fallback. The fail-closed TUN remains active and periodic health checks retry. Repeated failures invoke the configured reconnection and Kill Switch policy.
+The normal connection path also has no post-start remote probe, loopback health-check inbound, or periodic latency socket. Passive health checks observe the existing Xray/transport runtime and Android VPN registration. Real applications generate the traffic used to qualify forwarding.
 
-A running core is enough for the transient UI `Connected` state, but it is not sufficient evidence for **device verified** compatibility. Qualification still requires a successful outbound check plus sustained real traffic.
+A running core by itself is not enough for the UI `Connected` state and is not sufficient evidence for **device verified** compatibility. Qualification still requires sustained real traffic.
 
 ## Concurrency requirements
 
-- Network probes run on `Dispatchers.IO`.
-- Startup state publication does not wait for HTTP, TLS, SOCKS, ping, or DNS probes.
-- `XrayCoreEngine.verifyActiveOutbound()` snapshots the active controller under a short monitor and performs remote I/O outside that monitor.
-- A slow or stuck check must not prevent `stopLoop()`, disconnect, or reconnection.
+- Startup state publication does not run HTTP, TLS, SOCKS, ping, or DNS probes.
+- Passive health checks must not open sockets or retain the runtime monitor.
+- Explicit Diagnostics remote I/O remains isolated from the normal VPN lifecycle.
+- Disconnect and reconnection must remain available while real traffic is active.
 
 ## Compatibility status
 

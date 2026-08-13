@@ -58,7 +58,7 @@ Start physical testing with MTU 1280 or 1360 when QUIC stalls, then compare 1400
 
 ## Runtime state and verification
 
-For Trojan and Hysteria2, the Dashboard publishes `Connected` when the Android TUN and Xray native loop are active. The first outbound HTTP check runs afterward on a background I/O coroutine. A failed check does not block the UI and does not enable a direct fallback; the health monitor retries and applies the configured reconnection/Kill Switch policy after repeated failures.
+For Trojan and Hysteria2, the Dashboard publishes `Connected` only when the Android TUN is valid, Xray is active, and Android exposes the application's owned `TRANSPORT_VPN` network. No outbound HTTP check runs automatically afterward. The passive health monitor applies the configured reconnection/Kill Switch policy if the runtime or Android VPN registration disappears.
 
 The UI state is not interoperability certification. Device verification still requires a successful outbound check, real upload/download traffic, leak testing, and sustained operation under the relevant network conditions.
 
@@ -78,8 +78,8 @@ The UI state is not interoperability certification. Device verification still re
 - gRPC/TLS;
 - server authentication rejection;
 - IPv4-only and dual stack;
-- delayed/unreachable health endpoint without UI freeze;
-- disconnect while the background check is active.
+- Android VPN registration failure without false `Connected` state;
+- disconnect while real traffic is active.
 
 ### Hysteria2
 
@@ -91,6 +91,6 @@ The UI state is not interoperability certification. Device verification still re
 - screen-off/background session;
 - MTU 1280, 1360, and 1400;
 - IPv6-capable and IPv4-only servers;
-- health-check failure while the fail-closed TUN remains active.
+- Android VPN registration loss while the fail-closed TUN remains active.
 
-A successful core start is sufficient for the transient UI `Connected` state, but insufficient for a device-verified support claim.
+A successful core start alone is insufficient for both the UI `Connected` state and a device-verified support claim.

@@ -2,12 +2,38 @@ package com.ghostnexora.vpn.tunnel
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 
 class SshSocksBridgeTest {
+    @Test
+    fun forwardsAndSanitizesTheSshServerMessage() {
+        val statuses = mutableListOf<String>()
+        val userInfo = ProfileUserInfo("secret") { message ->
+            statuses += message
+            kotlin.Unit
+        }
+
+        assertFalse(userInfo.hasServerMessage())
+        userInfo.showMessage("\u001B[32mBienvenido\u001B[0m\r\nGhost VPS\u0000")
+
+        assertTrue(userInfo.hasServerMessage())
+        assertEquals(
+            listOf("[SSH] Mensaje del servidor · Bienvenido Ghost VPS"),
+            statuses
+        )
+    }
+
+    @Test
+    fun keepsLongServerMessagesBeyondTheOldLogPreviewLimit() {
+        val longMessage = "M".repeat(4_096)
+        assertEquals(longMessage, SshTunnelEngine.normalizeServerMessage(longMessage))
+    }
+
     @Test
     fun flushesEveryChunkBeforeTheClientClosesItsInput() {
         val payload = "GET /generate_204 HTTP/1.1\r\nHost: example.com\r\n\r\n".toByteArray()

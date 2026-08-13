@@ -2,6 +2,20 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.51
+
+### Fixed
+
+- `Connected` is now published only after the TUN descriptor is valid, Xray/transport remain alive, and Android exposes an owned `TRANSPORT_VPN` network. If Android does not register the VPN, startup fails instead of showing a false connected state without the system VPN indicator.
+- SSH authentication banners are forwarded to the connection log. The client also opens a short-lived shell channel on the same authenticated SSH session to capture the server MOTD without creating another TCP/TLS/SSH connection.
+- The Android VPN configuration now includes its activity intent and selected physical underlying network before `Builder.establish()`.
+
+### Changed
+
+- Removed the automatic `1/2` Cloudflare/Google startup probe, periodic outbound probes, loopback health-check inbound, and ten-second TCP latency sockets from normal VPN sessions. Real application traffic is now the only traffic that opens SSH `direct-tcpip` forwarding channels.
+- Health monitoring is passive: it checks the existing SSH/Xray runtime and Android's owned VPN registration without contacting remote test endpoints.
+- Bumped the application to `1.0.51 (51)`.
+
 ## 1.0.50
 
 ### Fixed

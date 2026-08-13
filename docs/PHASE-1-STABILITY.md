@@ -1,17 +1,17 @@
 # Phase 1 — Runtime Stability and Diagnostics
 
-This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33 and the startup-concurrency correction introduced after 1.0.41.
+This document describes the first production-hardening phase implemented in Ghost Nexora VPN 1.0.33 and the system-registration correction completed in 1.0.51.
 
-> Runtime note: non-destructive diagnostics still use the preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process. SSH readiness is available through a loopback-only Xray SOCKS inbound, but real remote probes run only after the service publishes `Connected` and never hold the startup or teardown path.
+> Runtime note: non-destructive diagnostics still use the explicit preflight described below. Normal connection startup owns a single native runtime in the private `:vpn` process and contains no loopback probe inbound or automatic remote test requests.
 
 ## Goals
 
-Phase 1 focuses on connection correctness before expanding protocol features. Android TUN creation and native core startup are separate from long-running Internet health verification:
+Phase 1 focuses on connection correctness before expanding protocol features:
 
-- the application must not report `Connected` before SSH/Xray and the Android TUN are active;
-- the application must not freeze the UI or service state machine while waiting for a remote probe;
-- captured traffic must remain fail-closed while verification is pending or failing;
-- active outbound evidence is required for device qualification, even though it is not a synchronous UI gate.
+- the application must not report `Connected` before SSH/Xray, the valid Android TUN, and the owned VPN network are active;
+- normal VPN startup and health monitoring must not generate remote probe traffic;
+- captured traffic must remain fail-closed without a direct fallback;
+- real outbound evidence is required for device qualification, even though synthetic traffic is not a UI gate.
 
 ## Implemented features
 
@@ -39,19 +39,18 @@ Each result includes:
 - stable error code;
 - corrective action.
 
-### Non-blocking normal startup
+### System-confirmed normal startup
 
 The normal Dashboard connection path does not reuse the diagnostic preflight as a synchronous gate. Its sequence is:
 
 1. establish strict application-routing rules and the fail-closed TUN;
 2. authenticate SSH and start the local bridge when required;
 3. start Xray against the TUN descriptor;
-4. publish `Connected` immediately after the native core is running;
-5. launch active outbound verification on `Dispatchers.IO`;
-6. record latency or warning results without blocking the UI;
-7. let the periodic health monitor retry and trigger protected reconnection only after repeated failures.
+4. require Android to expose an owned `TRANSPORT_VPN` network while the TUN descriptor remains valid;
+5. recheck the existing transport/core and publish `Connected`;
+6. start passive registration/runtime health and statistics monitoring.
 
-The first verification has a bounded service-level wait. A probe does not retain the `TunnelManager` or `XrayCoreEngine` monitor while performing remote I/O, so disconnect and core shutdown remain available.
+No initial probe, periodic endpoint probe, or latency socket runs in this path. SSH forwarding channels are opened only for actual device traffic; disconnect and core shutdown remain available.
 
 ### Application self-bypass
 
@@ -104,9 +103,8 @@ Automatic reconnection uses:
 - exponential delays with deterministic jitter;
 - physical-network availability checks;
 - fresh SSH/Xray runtime creation;
-- immediate core-ready state publication after a successful restart;
-- asynchronous post-start outbound verification;
-- two consecutive failed periodic health checks before declaring an Internet outage;
+- Android VPN-registration confirmation after a successful restart;
+- passive transport/core and VPN-registration checks;
 - separate behavior for Kill Switch enabled and disabled.
 
 When the retry limit is reached:
@@ -181,10 +179,10 @@ A normal connection follows this sequence:
 6. Create fail-closed Android TUN routes.
 7. Start one SSH/Xray runtime against the TUN descriptor.
 8. Confirm the native Xray loop is running.
-9. Publish `Connected` to the UI process.
-10. Run outbound verification asynchronously and start health monitoring.
+9. Confirm the TUN descriptor is valid and Android exposes an owned `TRANSPORT_VPN` network.
+10. Publish `Connected` to the UI process and start passive health monitoring.
 
-A failure before step 6 does not change the device's routes. A transport startup failure after step 6 closes the TUN unless Kill Switch protection is intentionally retaining blocked routing during recovery. A background probe failure does not silently restore direct traffic.
+A failure before step 6 does not change the device's routes. A transport or Android VPN-registration failure after step 6 closes the TUN unless Kill Switch protection is intentionally retaining blocked routing during recovery. No normal-session remote probe or silent direct fallback exists.
 
 ## Runtime validation still required
 
@@ -201,8 +199,8 @@ CI cannot prove interoperability with every private server. Physical Android tes
 - sleep and process recreation;
 - IPv4-only and dual-stack mobile networks;
 - each MTU preset on affected carriers;
-- unreachable verification endpoints without a frozen UI;
-- manual disconnect while `Prueba real` is running;
+- Android VPN-registration failure without a false connected state;
+- manual disconnect while real traffic is running;
 - all application-routing modes with proof that the VPN package never enters its own TUN.
 
 The diagnostic report is the required artifact when a real-server test fails.

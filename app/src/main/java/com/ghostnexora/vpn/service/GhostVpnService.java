@@ -1,5 +1,6 @@
 package com.ghostnexora.vpn.service;
 
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
@@ -10,6 +11,8 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.Process;
+import android.os.SystemClock;
 import android.provider.Settings;
 
 import androidx.annotation.Nullable;
@@ -27,14 +30,12 @@ import com.ghostnexora.vpn.data.model.VpnProfile;
 import com.ghostnexora.vpn.data.model.VpnTrafficStats;
 import com.ghostnexora.vpn.data.repository.ProfileRepository;
 import com.ghostnexora.vpn.data.repository.VpnRepositoryBridge;
-import com.ghostnexora.vpn.tunnel.OutboundCheck;
 import com.ghostnexora.vpn.tunnel.OutboundSocketProtection;
 import com.ghostnexora.vpn.tunnel.TunnelManager;
 import com.ghostnexora.vpn.tunnel.TunnelRuntime;
 import com.ghostnexora.vpn.tunnel.XrayTrafficDelta;
+import com.ghostnexora.vpn.ui.MainActivity;
 
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -65,7 +66,7 @@ public final class GhostVpnService extends VpnService {
     public static final String ACTION_DISCONNECT = "com.ghostnexora.vpn.DISCONNECT";
     public static final String EXTRA_PROFILE_ID = "extra_profile_id";
 
-    private static final long INITIAL_VERIFICATION_TIMEOUT_MS = 30_000L;
+    private static final long VPN_REGISTRATION_TIMEOUT_MS = 5_000L;
     private static final long[] RECONNECT_DELAYS = {1_000L, 2_000L, 5_000L, 10_000L, 30_000L};
 
     public static final StateFlow<VpnConnectionState> connectionState =
@@ -81,7 +82,7 @@ public final class GhostVpnService extends VpnService {
         thread.setDaemon(false);
         return thread;
     });
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3, runnable -> {
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "ghost-vpn-monitor");
         thread.setDaemon(true);
         return thread;
@@ -107,13 +108,11 @@ public final class GhostVpnService extends VpnService {
     private volatile String physicalNetworkType = "Sin red";
     private volatile boolean intentionalDisconnect;
     private volatile boolean destroyed;
-    private volatile long verifiedLatencyMs;
     private volatile long sessionConnectedSince;
     private volatile long sessionReceivedBytes;
     private volatile long sessionSentBytes;
     private volatile int reconnectCount;
 
-    private Future<?> startupVerificationTask;
     private Future<?> healthTask;
     private Future<?> statsTask;
     private Future<?> reconnectTask;
@@ -229,7 +228,6 @@ public final class GhostVpnService extends VpnService {
         destroyed = true;
         intentionalDisconnect = true;
         cancelTask(reconnectTask);
-        cancelTask(startupVerificationTask);
         cancelTask(healthTask);
         cancelTask(statsTask);
         cleanupTunnel(true);
@@ -263,13 +261,11 @@ public final class GhostVpnService extends VpnService {
 
         intentionalDisconnect = false;
         cancelTask(reconnectTask);
-        cancelTask(startupVerificationTask);
         cancelTask(healthTask);
         cancelTask(statsTask);
         cleanupTunnel(true);
         activeProfile = profile;
         reconnectCount = 0;
-        verifiedLatencyMs = 0L;
         sessionConnectedSince = 0L;
         publishState(new VpnConnectionState.Connecting(profile.getName()));
         startForeground(
@@ -316,18 +312,21 @@ public final class GhostVpnService extends VpnService {
             synchronized (tunnelLock) {
                 tunnelRuntime = tunnelManager.start(profile, tun.getFd(), preferences);
             }
+            awaitAndroidVpnRegistration(profile);
+            if (!tunnelManager.isAlive(tunnelRuntime)) {
+                throw new IllegalStateException("El transporte se cerró antes de activar la VPN del sistema");
+            }
             repositoryBridge.markLastUsed(profile.getId());
             sessionConnectedSince = System.currentTimeMillis();
             VpnConnectionState.Connected connected = connectedState(profile);
             publishState(connected);
             VpnNotificationHelper.update(this, connected);
             log(LogLevel.SUCCESS,
-                    "Core y TUN activos · estado Conectado publicado · verificación en segundo plano",
+                    "VPN de Android, TUN, Xray y transporte activos · estado Conectado publicado",
                     profile.getId(), "VPN");
             repositoryBridge.resetVpnRecovery();
             resetTrafficBaseline(profile);
             startStatsTicker(profile);
-            startInitialOutboundVerification(profile);
             startHealthMonitor(profile);
             maybeStartFloatingWindow();
         } catch (Throwable error) {
@@ -349,7 +348,6 @@ public final class GhostVpnService extends VpnService {
         repositoryBridge.setVpnDesiredConnected(false);
         repositoryBridge.resetVpnRecovery();
         cancelTask(reconnectTask);
-        cancelTask(startupVerificationTask);
         cancelTask(healthTask);
         cancelTask(statsTask);
         String profileId = profileId();
@@ -432,7 +430,6 @@ public final class GhostVpnService extends VpnService {
         if (profile == null) {
             return;
         }
-        cancelTask(startupVerificationTask);
         cancelTask(healthTask);
         synchronized (tunnelLock) {
             tunnelManager.stop(tunnelRuntime);
@@ -497,6 +494,7 @@ public final class GhostVpnService extends VpnService {
                     }
                     tunnelRuntime = tunnelManager.start(profile, tunInterface.getFd(), preferences);
                 }
+                awaitAndroidVpnRegistration(profile);
                 if (tunnelManager.isAlive(tunnelRuntime)) {
                     reconnectCount++;
                     sessionConnectedSince = System.currentTimeMillis();
@@ -504,10 +502,8 @@ public final class GhostVpnService extends VpnService {
                     publishState(connected);
                     VpnNotificationHelper.update(this, connected);
                     log(LogLevel.SUCCESS,
-                            "Core y TUN restablecidos en intento " + (attempt + 1) +
-                                    " · validación en segundo plano",
+                            "VPN de Android, core y TUN restablecidos en intento " + (attempt + 1),
                             profile.getId(), "NETWORK");
-                    startInitialOutboundVerification(profile);
                     startHealthMonitor(profile);
                     return;
                 }
@@ -532,46 +528,8 @@ public final class GhostVpnService extends VpnService {
         }
     }
 
-    private void startInitialOutboundVerification(VpnProfile profile) {
-        cancelTask(startupVerificationTask);
-        TunnelRuntime expectedRuntime = tunnelRuntime;
-        if (expectedRuntime == null) {
-            return;
-        }
-        startupVerificationTask = scheduler.submit(() -> {
-            long started = System.nanoTime();
-            log(LogLevel.INFO, "Comprobación inicial de Internet iniciada en segundo plano",
-                    profile.getId(), "NETWORK");
-            try {
-                OutboundCheck check = tunnelManager.verifyActive();
-                if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-                        > INITIAL_VERIFICATION_TIMEOUT_MS) {
-                    log(LogLevel.WARNING,
-                            "La comprobación inicial excedió 30s; el monitor continuará reintentando",
-                            profile.getId(), "NETWORK");
-                    return;
-                }
-                if (intentionalDisconnect || activeProfile == null
-                        || !activeProfile.getId().equals(profile.getId())
-                        || tunnelRuntime != expectedRuntime) {
-                    return;
-                }
-                verifiedLatencyMs = Math.max(0L, check.getLatencyMs());
-                log(LogLevel.SUCCESS,
-                        "Salida a Internet verificada en segundo plano · " + verifiedLatencyMs + " ms",
-                        profile.getId(), "NETWORK");
-            } catch (Throwable error) {
-                log(LogLevel.WARNING,
-                        "Túnel activo, pero la comprobación inicial falló · " + safeMessage(error, "sin detalle"),
-                        profile.getId(), "NETWORK");
-            }
-        });
-    }
-
     private void startHealthMonitor(VpnProfile profile) {
         cancelTask(healthTask);
-        final int[] ticks = {0};
-        final int[] failures = {0};
         healthTask = scheduler.scheduleWithFixedDelay(() -> {
             if (destroyed || intentionalDisconnect
                     || !(VpnRuntimeStateStore.currentConnectionState()
@@ -584,28 +542,16 @@ public final class GhostVpnService extends VpnService {
                 triggerReconnect("Fallo detectado en el transporte");
                 return;
             }
-            ticks[0]++;
-            if (ticks[0] % 3 != 0 || isTaskRunning(startupVerificationTask)) {
-                return;
-            }
-            try {
-                tunnelManager.verifyActive();
-                failures[0] = 0;
-            } catch (Throwable error) {
-                failures[0]++;
-                log(LogLevel.WARNING,
-                        "Comprobación de Internet fallida " + failures[0] + "/2 [HEALTH-OUTBOUND]",
-                        profile.getId(), "CORE");
-                if (failures[0] >= 2) {
-                    triggerReconnect("Salida de Internet perdida en dos comprobaciones consecutivas");
-                }
+            if (findOwnedVpnNetwork() == null) {
+                log(LogLevel.WARNING, "Android dejó de registrar la interfaz VPN [HEALTH-VPN]",
+                        profile.getId(), "VPN");
+                triggerReconnect("La interfaz VPN del sistema dejó de estar activa");
             }
         }, 5L, 5L, TimeUnit.SECONDS);
     }
 
     private void startStatsTicker(VpnProfile profile) {
         cancelTask(statsTask);
-        final int[] tick = {0};
         statsTask = scheduler.scheduleAtFixedRate(() -> {
             if (destroyed || intentionalDisconnect || tunnelRuntime == null) {
                 return;
@@ -615,13 +561,6 @@ public final class GhostVpnService extends VpnService {
             long sent = Math.max(0L, traffic.getSentBytes());
             sessionReceivedBytes += received;
             sessionSentBytes += sent;
-            tick[0]++;
-            long latency = tick[0] % 10 == 0 && physicalNetworkAvailable
-                    ? measureTcpLatency(profile.getHost(), profile.getPort())
-                    : verifiedLatencyMs;
-            if (latency > 0L) {
-                verifiedLatencyMs = latency;
-            }
             boolean alive = tunnelManager.isAlive(tunnelRuntime);
             publishTraffic(new VpnTrafficStats(
                     sessionReceivedBytes,
@@ -629,7 +568,7 @@ public final class GhostVpnService extends VpnService {
                     alive ? received : 0L,
                     alive ? sent : 0L,
                     reconnectCount,
-                    verifiedLatencyMs,
+                    0L,
                     physicalNetworkType,
                     profile.getConnectionModeLabel()
             ));
@@ -641,13 +580,12 @@ public final class GhostVpnService extends VpnService {
         sessionReceivedBytes = 0L;
         sessionSentBytes = 0L;
         publishTraffic(new VpnTrafficStats(
-                0L, 0L, 0L, 0L, reconnectCount, verifiedLatencyMs,
+                0L, 0L, 0L, 0L, reconnectCount, 0L,
                 physicalNetworkType, profile.getConnectionModeLabel()
         ));
     }
 
     private synchronized void cleanupTunnel(boolean closeTun) {
-        cancelTask(startupVerificationTask);
         synchronized (tunnelLock) {
             try {
                 tunnelManager.stop(tunnelRuntime);
@@ -723,10 +661,21 @@ public final class GhostVpnService extends VpnService {
         try {
             Builder builder = new Builder()
                     .setSession(profile.getName())
+                    .setConfigureIntent(PendingIntent.getActivity(
+                            this,
+                            0,
+                            new Intent(this, MainActivity.class)
+                                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                    ))
                     .setMtu(preferences.getValidatedMtu())
                     .addAddress("10.20.0.2", 30)
                     .addRoute("0.0.0.0", 0)
                     .setBlocking(true);
+            Network physicalNetwork = underlyingNetwork;
+            if (physicalNetwork != null) {
+                builder.setUnderlyingNetworks(new Network[]{physicalNetwork});
+            }
             if (preferences.getIpMode().getCapturesIpv6()) {
                 builder.addAddress("fd00:20::2", 126);
                 builder.addRoute("::", 0);
@@ -743,12 +692,68 @@ public final class GhostVpnService extends VpnService {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(false);
             }
-            return builder.establish();
+            ParcelFileDescriptor established = builder.establish();
+            if (established == null || !established.getFileDescriptor().valid()) {
+                if (established != null) {
+                    try { established.close(); } catch (Throwable ignored) { }
+                }
+                throw new IllegalStateException(
+                        "Android no activó la interfaz VPN; confirma nuevamente el permiso del sistema"
+                );
+            }
+            return established;
         } catch (Throwable error) {
             log(LogLevel.ERROR, "Error creando TUN: " + safeMessage(error, "sin detalle"),
                     profile.getId(), "NETWORK");
             return null;
         }
+    }
+
+    /**
+     * Builder.establish() creates the TUN descriptor, while ConnectivityManager
+     * exposes the system-owned VPN network that drives Android's key indicator
+     * and routing state. Connected is not published until both views agree.
+     */
+    private Network awaitAndroidVpnRegistration(VpnProfile profile) {
+        long deadline = SystemClock.elapsedRealtime() + VPN_REGISTRATION_TIMEOUT_MS;
+        while (!destroyed && !intentionalDisconnect && SystemClock.elapsedRealtime() < deadline) {
+            ParcelFileDescriptor tun = tunInterface;
+            if (tun == null || !tun.getFileDescriptor().valid()) {
+                throw new IllegalStateException("Android cerró el descriptor TUN antes de registrar la VPN");
+            }
+            Network vpn = findOwnedVpnNetwork();
+            if (vpn != null) {
+                log(LogLevel.SUCCESS,
+                        "Android confirmó TRANSPORT_VPN para esta aplicación · interfaz del sistema activa",
+                        profile.getId(), "VPN");
+                return vpn;
+            }
+            sleep(50L);
+        }
+        throw new IllegalStateException(
+                "Android no registró la red VPN para esta aplicación; no se publicará un estado Conectado falso"
+        );
+    }
+
+    @Nullable
+    private Network findOwnedVpnNetwork() {
+        if (connectivityManager == null) {
+            return null;
+        }
+        int ownUid = Process.myUid();
+        for (Network candidate : connectivityManager.getAllNetworks()) {
+            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(candidate);
+            if (capabilities == null
+                    || !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                continue;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    && capabilities.getOwnerUid() != ownUid) {
+                continue;
+            }
+            return candidate;
+        }
+        return null;
     }
 
     private void applyAppRouting(Builder builder, AppRoutingPreferences preferences) throws Exception {
@@ -869,23 +874,6 @@ public final class GhostVpnService extends VpnService {
             return "Ethernet";
         }
         return "Red física";
-    }
-
-    private long measureTcpLatency(String host, int port) {
-        long start = System.nanoTime();
-        try (Socket socket = new Socket()) {
-            if (!protect(socket)) {
-                throw new IllegalStateException("Android rechazó protect(Socket) para la medición TCP");
-            }
-            Network network = underlyingNetwork;
-            if (network != null) {
-                network.bindSocket(socket);
-            }
-            socket.connect(new InetSocketAddress(host, port), 2_000);
-            return Math.max(1L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-        } catch (Throwable ignored) {
-            return 0L;
-        }
     }
 
     private void startPreparingForeground(String label) {
@@ -1028,10 +1016,6 @@ public final class GhostVpnService extends VpnService {
             } catch (Throwable ignored) {
             }
         }
-    }
-
-    private static boolean isTaskRunning(Future<?> task) {
-        return task != null && !task.isDone() && !task.isCancelled();
     }
 
     private static void cancelTask(Future<?> task) {

@@ -84,8 +84,7 @@ class StableXrayConfigFactoryTest {
         val root = JSONObject(
             StableXrayConfigFactory.build(
                 profile,
-                sshSocksPort = 10808,
-                healthCheckPort = 18080
+                sshSocksPort = 10808
             )
         )
         val proxy = root.getJSONArray("outbounds").getJSONObject(0)
@@ -95,20 +94,14 @@ class StableXrayConfigFactoryTest {
         assertEquals(10808, server.getInt("port"))
 
         val inbounds = root.getJSONArray("inbounds")
-        val health = (0 until inbounds.length())
-            .map(inbounds::getJSONObject)
-            .first { it.getString("tag") == "health-check" }
-        assertEquals("127.0.0.1", health.getString("listen"))
-        assertEquals(18080, health.getInt("port"))
-        assertEquals("socks", health.getString("protocol"))
+        assertEquals(1, inbounds.length())
+        assertEquals("tun", inbounds.getJSONObject(0).getString("tag"))
 
         val routing = root.getJSONObject("routing")
         assertEquals("AsIs", routing.getString("domainStrategy"))
         val rules = routing.getJSONArray("rules")
-        assertTrue((0 until rules.length()).any {
-            val rule = rules.getJSONObject(it)
-            rule.optString("outboundTag") == "proxy" &&
-                rule.optJSONArray("inboundTag")?.optString(0) == "health-check"
+        assertTrue((0 until rules.length()).none {
+            rules.getJSONObject(it).toString().contains("health-check")
         })
 
         val outbounds = root.getJSONArray("outbounds")

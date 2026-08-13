@@ -123,10 +123,10 @@ Replace remaining generic Xray option text with typed fields for:
 For the next device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the SSH + SSL freeze.
-2. Confirm the UI reaches `Connected` immediately after the Xray startup event.
-3. Confirm `Prueba real 1/2 · TLS remoto por SSH` continues in the background.
-4. Disconnect manually while that probe is active and confirm teardown completes.
-5. Block the verification endpoints and confirm the UI remains responsive, the TUN stays fail-closed, and warnings/retries are logged.
+2. Confirm Android displays its VPN indicator before the UI reaches `Connected`.
+3. Leave the session idle and confirm no `Prueba real 1/2`, Cloudflare/Google request, or periodic latency socket appears.
+4. Generate browser traffic and confirm the existing SSH session opens `direct-tcpip` channels on demand.
+5. Disconnect manually while real traffic is active and confirm teardown completes.
 6. Verify the application UID and JSch socket use the physical network in all-app and exclude-selected modes.
 7. Verify only-selected mode excludes the VPN package by omission.
 8. Run diagnostics for the same SSH + SSL profile.
@@ -147,7 +147,7 @@ A transport is labeled **device verified** only when:
 - a real server accepts authentication;
 - DNS and TCP/HTTP traffic work through the tunnel;
 - upload and download are observed;
-- background outbound verification completes or equivalent traffic evidence is recorded;
+- real routed traffic evidence is recorded;
 - reconnection works after an interruption;
 - no unintended direct traffic leak is observed;
 - no self-routing loop or startup deadlock is observed;

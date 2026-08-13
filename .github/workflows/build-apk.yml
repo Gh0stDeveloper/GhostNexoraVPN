@@ -143,7 +143,6 @@ jobs:
               "tunnel/NativeRuntimeArchitecture.java",
               "tunnel/OutboundSocketProtection.java",
               "tunnel/PhysicalNetworkSocketConnector.java",
-              "tunnel/Socks5OutboundProbe.java",
               "tunnel/SshTunnelEngine.java",
               "tunnel/TlsTransport.java",
               "tunnel/TunnelManager.java",

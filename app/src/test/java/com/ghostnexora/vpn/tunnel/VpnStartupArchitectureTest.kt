@@ -16,14 +16,18 @@ class VpnStartupArchitectureTest {
     }
 
     @Test
-    fun javaServicePublishesConnectedBeforeSchedulingInternetVerification() {
+    fun javaServicePublishesConnectedOnlyAfterAndroidRegistersOwnedVpn() {
         val source = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
         val connectSection = source.substringAfter("private void handleConnect").substringBefore("private void handleDisconnect")
         val connectedIndex = connectSection.indexOf("publishState(connected)")
-        val verificationIndex = connectSection.indexOf("startInitialOutboundVerification(profile)")
+        val registrationIndex = connectSection.indexOf("awaitAndroidVpnRegistration(profile)")
         assertTrue(connectedIndex >= 0)
-        assertTrue(verificationIndex >= 0)
-        assertTrue(connectedIndex < verificationIndex)
+        assertTrue(registrationIndex >= 0)
+        assertTrue(registrationIndex < connectedIndex)
+        assertTrue(source.contains("NetworkCapabilities.TRANSPORT_VPN"))
+        assertTrue(source.contains("capabilities.getOwnerUid() != ownUid"))
+        assertTrue(source.contains(".setConfigureIntent(PendingIntent.getActivity("))
+        assertTrue(source.contains("builder.setUnderlyingNetworks(new Network[]{physicalNetwork})"))
     }
 
     @Test
@@ -37,15 +41,31 @@ class VpnStartupArchitectureTest {
     }
 
     @Test
-    fun activeProbeDoesNotHoldTheManagerOrCoreMonitorDuringRemoteIo() {
+    fun normalVpnSessionCreatesNoAutonomousProbeConnections() {
         val managerSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.java")
         assertFalse(managerSource.contains("public synchronized OutboundCheck verifyActive()"))
+        assertFalse(managerSource.contains("healthCheckPort"))
 
         val coreSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/XrayCoreEngine.java")
-        val coreProbe = coreSource.substringAfter("public OutboundCheck verifyActiveOutbound()").substringBefore("public synchronized XrayTrafficDelta drainProxyTraffic")
-        assertTrue(coreProbe.contains("synchronized (this)"))
-        assertTrue(coreProbe.indexOf("synchronized (this)") < coreProbe.indexOf("measureAcrossEndpoints"))
         assertFalse(coreSource.contains("public synchronized OutboundCheck verifyActiveOutbound()"))
+
+        val serviceSource = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
+        assertFalse(serviceSource.contains("startInitialOutboundVerification"))
+        assertFalse(serviceSource.contains("measureTcpLatency"))
+        assertFalse(serviceSource.contains("tunnelManager.verifyActive()"))
+
+        val configSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/StableXrayConfigFactory.kt")
+        assertFalse(configSource.contains("health-check"))
+    }
+
+    @Test
+    fun serverMotdReusesTheAuthenticatedSshSession() {
+        val source = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/SshTunnelEngine.java")
+        val capture = source.substringAfter("private static void capturePostLoginMessage")
+            .substringBefore("static String normalizeServerMessage")
+        assertTrue(capture.contains("session.openChannel(\"shell\")"))
+        assertFalse(capture.contains("jsch.getSession"))
+        assertFalse(capture.contains("new Socket"))
     }
 
     @Test
