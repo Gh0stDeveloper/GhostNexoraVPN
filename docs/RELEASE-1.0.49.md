@@ -29,6 +29,14 @@ SSH ni coincidir con los SAN del certificado presentado.
   huella se rechazan.
 - V2Ray, Trojan, Hysteria2, actualizaciones y llamadas API no usan esta política.
 
+## Nota completa del creador
+
+La nota HTML saneada del perfil activo aparece directamente en Inicio dentro de
+un área más amplia y desplazable. El gesto vertical permanece dentro de la nota
+mientras todavía existe contenido por leer y vuelve al desplazamiento general
+del panel cuando alcanza el inicio o el final. La barra vertical permanece
+visible para indicar que hay más información.
+
 ## Versión
 
 - `versionName`: `1.0.49`
