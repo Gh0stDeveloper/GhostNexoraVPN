@@ -82,7 +82,8 @@ class VpnStartupArchitectureTest {
 
         assertTrue(source.contains("Executors.newSingleThreadExecutor"))
         assertTrue(source.contains("ghost-vpn-log-writer"))
-        assertTrue(onCreate.contains("log(LogLevel.INFO, status"))
+        assertTrue(onCreate.contains("TunnelLogEventParser.INSTANCE.parse(status)"))
+        assertTrue(onCreate.contains("log(event.getLevel(), status"))
         assertTrue(enqueueIndex >= 0)
         assertTrue(persistenceIndex > enqueueIndex)
         assertFalse(onCreate.contains("repositoryBridge.log"))
