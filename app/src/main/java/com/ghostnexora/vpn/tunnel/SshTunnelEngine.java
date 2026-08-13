@@ -72,8 +72,9 @@ public final class SshTunnelEngine {
         if (profile.getUsername().trim().isEmpty()) throw new IllegalArgumentException("El usuario SSH no puede estar vacío");
         if (profile.getPassword().isEmpty()) throw new IllegalArgumentException("La contraseña SSH es obligatoria");
 
+        // A fresh JSch instance has no identities. Avoid removeAllIdentity(), whose Java API
+        // declares JSchException even though there is nothing to clear on a new instance.
         JSch jsch = new JSch();
-        jsch.removeAllIdentity();
         configureKnownHosts(jsch);
 
         String password = profile.getPassword();
