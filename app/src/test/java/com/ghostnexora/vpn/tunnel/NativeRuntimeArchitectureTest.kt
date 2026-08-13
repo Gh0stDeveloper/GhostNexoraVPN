@@ -24,8 +24,8 @@ class NativeRuntimeArchitectureTest {
 
         assertTrue(plan.protocolCore.contains("JSch"))
         assertTrue(plan.localHop?.contains("SOCKS5") == true)
-        assertTrue(plan.carriesTcp)
-        assertFalse(plan.carriesUdp)
+        assertTrue(plan.isCarriesTcp())
+        assertFalse(plan.isCarriesUdp())
         assertTrue(plan.limitations.contains("BadVPN", ignoreCase = true))
     }
 
@@ -35,7 +35,7 @@ class NativeRuntimeArchitectureTest {
 
         assertTrue(plan.protocolCore.contains("Hysteria2", ignoreCase = true))
         assertTrue(plan.protocolCore.contains("Xray", ignoreCase = true))
-        assertTrue(plan.carriesUdp)
+        assertTrue(plan.isCarriesUdp())
         assertTrue(plan.limitations.contains("Hysteria v1", ignoreCase = true))
     }
 }

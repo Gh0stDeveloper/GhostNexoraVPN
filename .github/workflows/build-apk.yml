@@ -122,34 +122,65 @@ jobs:
           print("Manifest policy verified")
           PY
 
-      - name: Verify isolated VPN runtime policy
+      - name: Verify isolated Java VPN runtime policy
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          dashboard = Path(
-              "app/src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardViewModel.kt"
-          ).read_text()
-          datastore = Path(
-              "app/src/main/java/com/ghostnexora/vpn/data/local/DataStoreManager.kt"
-          ).read_text()
-          database = Path(
-              "app/src/main/java/com/ghostnexora/vpn/data/local/AppDatabase.kt"
-          ).read_text()
-          service = Path(
-              "app/src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt"
-          ).read_text()
+          source_root = Path("app/src/main/java/com/ghostnexora/vpn")
+          dashboard = (source_root / "ui/screens/dashboard/DashboardViewModel.kt").read_text()
+          datastore = (source_root / "data/local/DataStoreManager.kt").read_text()
+          database = (source_root / "data/local/AppDatabase.kt").read_text()
+          service_path = source_root / "service/GhostVpnService.java"
+          legacy_service = source_root / "service/GhostVpnService.kt"
 
+          required_java_runtime = (
+              "service/GhostVpnService.java",
+              "service/VpnNotificationHelper.java",
+              "tunnel/AndroidSecureRandomProvider.java",
+              "tunnel/JschRuntime.java",
+              "tunnel/NativeRuntimeArchitecture.java",
+              "tunnel/OutboundSocketProtection.java",
+              "tunnel/PhysicalNetworkSocketConnector.java",
+              "tunnel/Socks5OutboundProbe.java",
+              "tunnel/SshTunnelEngine.java",
+              "tunnel/TlsTransport.java",
+              "tunnel/TunnelManager.java",
+              "tunnel/XrayCoreEngine.java",
+              "tunnel/strategy/TunnelStrategy.java",
+              "tunnel/strategy/SshTunnelStrategy.java",
+          )
+
+          missing = [str(source_root / relative) for relative in required_java_runtime if not (source_root / relative).is_file()]
+          if missing:
+              raise SystemExit(f"Missing Java VPN runtime files: {missing}")
+
+          kotlin_twins = []
+          for relative in required_java_runtime:
+              java_file = source_root / relative
+              kotlin_file = java_file.with_suffix(".kt")
+              if kotlin_file.exists():
+                  kotlin_twins.append(str(kotlin_file))
+          if legacy_service.exists() and str(legacy_service) not in kotlin_twins:
+              kotlin_twins.append(str(legacy_service))
+          if kotlin_twins:
+              raise SystemExit(f"Critical VPN runtime must not have Kotlin implementations: {kotlin_twins}")
+
+          service = service_path.read_text()
           if "TunnelManager" in dashboard or "verifyOutbound" in dashboard:
               raise SystemExit("The UI process must not initialize the native VPN core")
           if "createMultiProcessCoordinator" not in datastore:
               raise SystemExit("Runtime preferences are not coordinated across processes")
           if "enableMultiInstanceInvalidation" not in database:
               raise SystemExit("Room logs will not refresh across the VPN process boundary")
+          if "extends VpnService" not in service:
+              raise SystemExit("GhostVpnService.java must extend Android VpnService")
           if "super.onBind(intent)" not in service:
               raise SystemExit("GhostVpnService must preserve Android's platform VPN binder")
-          print("VPN process isolation policy verified")
+          if "OutboundSocketProtection.install(this::protect)" not in service:
+              raise SystemExit("GhostVpnService must install VpnService.protect(Socket) for outbound transports")
+          print("Java VPN runtime isolation policy verified")
           PY
 
       - name: Scan tracked source for high-confidence secrets

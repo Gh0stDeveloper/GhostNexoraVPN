@@ -24,7 +24,7 @@ class JschRuntimeTest {
     fun everyRuntimeLoadedProviderExistsBeforeOpeningTheNetwork() {
         JschRuntime.verifyEssentialProviders()
 
-        JschRuntime.essentialProviderKeys.forEach { algorithm ->
+        JschRuntime.getEssentialProviderKeys().forEach { algorithm ->
             val className = JSch.getConfig(algorithm)
             assertTrue(className.isNotBlank())
             assertEquals(className, Class.forName(className).name)
