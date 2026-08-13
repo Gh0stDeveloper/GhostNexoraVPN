@@ -12,7 +12,7 @@ Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified rou
 
 The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and publishes `Connected` only after the transport and native core are active and Android exposes the application's `TRANSPORT_VPN` network. Normal sessions do not create synthetic Internet probes.
 
-Current development version: **1.0.51 (51)**.
+Current development version: **1.0.52 (52)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -38,7 +38,8 @@ Current development version: **1.0.51 (51)**.
 ### Diagnostics and logs
 
 - Non-destructive staged diagnostics for physical network, DNS, TCP, TLS/SNI, settings, transport preflight, and real Internet response.
-- Complete real-time sanitized timeline for network, TLS, SSH, SOCKS, Xray, TUN, DNS, routing, and outbound verification.
+- Complete real-time sanitized timeline for network, TLS, SSH, SOCKS, Xray, TUN, DNS, and routing.
+- Accessible single-console presentation with a concise default summary, full technical mode, search, semantic colors, and rich SSH banner rendering.
 - Debug, Info, Warning, Error, and Success levels.
 - Search, filtering, copy, clear, and complete UTF-8 diagnostic export.
 - Device/version/ABI metadata and structured error codes in reports.
@@ -47,7 +48,7 @@ Current development version: **1.0.51 (51)**.
 ### SSH and payloads
 
 - Direct SSH.
-- SSH authentication banner and optional post-login MOTD display from the same authenticated session.
+- Optional SSH authentication banner display with safe Injector-style HTML and ANSI colors; VPS shell/MOTD output is never requested.
 - SSH over strict TLS/SNI or per-profile HTTP Custom-compatible SNI.
 - SSH with HTTP payload.
 - SSH with TLS and payload.

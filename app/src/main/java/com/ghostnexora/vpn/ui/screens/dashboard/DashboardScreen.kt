@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
@@ -39,8 +41,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +67,7 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.ui.components.HtmlNoteView
 import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
+import com.ghostnexora.vpn.ui.components.LogPresentation
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -78,6 +80,7 @@ import com.ghostnexora.vpn.ui.theme.SurfaceVariant
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
+import com.ghostnexora.vpn.ui.theme.backgroundGradient
 import com.ghostnexora.vpn.util.httpInjectorLine
 import com.ghostnexora.vpn.util.toSessionTime
 import kotlinx.coroutines.launch
@@ -117,6 +120,7 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(backgroundGradient())
                 .padding(padding)
                 .padding(horizontal = Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
@@ -140,9 +144,11 @@ fun DashboardScreen(
                     LogPage(
                         logs = state.recentLogs,
                         onCopy = {
-                            val ordered = state.recentLogs.sortedWith(
-                                compareBy<LogEntry> { it.timestamp }.thenBy { it.id }
-                            )
+                            val ordered = state.recentLogs
+                                .filterNot { LogPresentation.isLegacyVpsMotd(it.message) }
+                                .sortedWith(
+                                    compareBy<LogEntry> { it.timestamp }.thenBy { it.id }
+                                )
                             clipboard.setText(
                                 AnnotatedString(ordered.joinToString("\n") { it.httpInjectorLine() })
                             )
@@ -157,37 +163,61 @@ fun DashboardScreen(
 
 @Composable
 private fun CompactDashboardTabs(selectedPage: Int, onSelect: (Int) -> Unit) {
-    TabRow(
-        selectedTabIndex = selectedPage,
-        modifier = Modifier.fillMaxWidth().height(44.dp),
-        containerColor = Color.Transparent
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Dimens.SpaceXS)
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceVariant.copy(alpha = 0.82f))
+            .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Tab(
+        DashboardTab(
             selected = selectedPage == 0,
             onClick = { onSelect(0) },
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Filled.Security, null, modifier = Modifier.size(17.dp))
-                    Text("Inicio", style = MaterialTheme.typography.labelLarge)
-                }
-            }
+            label = "Inicio",
+            icon = { Icon(Icons.Filled.Security, null, modifier = Modifier.size(17.dp)) },
+            modifier = Modifier.weight(1f)
         )
-        Tab(
+        DashboardTab(
             selected = selectedPage == 1,
             onClick = { onSelect(1) },
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Article, null, modifier = Modifier.size(17.dp))
-                    Text("Log", style = MaterialTheme.typography.labelLarge)
-                }
-            }
+            label = "Registro",
+            icon = { Icon(Icons.AutoMirrored.Filled.Article, null, modifier = Modifier.size(17.dp)) },
+            modifier = Modifier.weight(1f)
         )
+    }
+}
+
+@Composable
+private fun DashboardTab(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    icon: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) NeonCyan.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides if (selected) NeonCyan else TextSecondary
+        ) {
+            icon()
+            Spacer(Modifier.size(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            )
+        }
     }
 }
 
@@ -202,26 +232,7 @@ private fun OverviewPage(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
     ) {
-        Text(
-            text = state.connectionState.label().uppercase(Locale.getDefault()),
-            style = MaterialTheme.typography.labelLarge,
-            color = stateColor(state.connectionState),
-            letterSpacing = MaterialTheme.typography.labelLarge.letterSpacing
-        )
-        Text(
-            text = state.activeProfile?.name ?: "Selecciona un servidor",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = TextPrimary,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = connectionSubtitle(state),
-            color = TextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center
-        )
-
-        PowerButton(state.connectionState, onAction)
+        ConnectionHero(state, onAction)
 
         if (state.connectionState is VpnConnectionState.Reconnecting) {
             val reconnecting = state.connectionState
@@ -252,18 +263,78 @@ private fun OverviewPage(
 }
 
 @Composable
+private fun ConnectionHero(state: DashboardUiState, onAction: () -> Unit) {
+    val color = stateColor(state.connectionState)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(color.copy(alpha = 0.13f), SurfaceVariant, SurfaceVariant.copy(alpha = 0.84f))
+                )
+            )
+            .border(1.dp, color.copy(alpha = 0.38f), RoundedCornerShape(24.dp))
+            .padding(horizontal = Dimens.SpaceXL, vertical = Dimens.SpaceLG),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(color.copy(alpha = 0.12f))
+                .padding(horizontal = 11.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+            Text(
+                state.connectionState.label().uppercase(Locale.getDefault()),
+                color = color,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(
+            text = state.activeProfile?.name ?: "Selecciona un servidor",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+            color = TextPrimary,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = connectionSubtitle(state),
+            color = TextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+        PowerButton(state.connectionState, onAction)
+        Text(
+            text = state.connectionState.actionHint(),
+            color = TextTertiary,
+            style = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
     val color = stateColor(state)
     Box(
         modifier = Modifier
-            .size(136.dp)
+            .size(144.dp)
             .clip(CircleShape)
-            .background(color.copy(alpha = 0.12f))
+            .background(color.copy(alpha = 0.08f))
+            .border(1.dp, color.copy(alpha = 0.32f), CircleShape)
             .clickable(onClick = onAction),
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier.size(104.dp).clip(CircleShape).background(color.copy(alpha = 0.12f)),
+            modifier = Modifier
+                .size(108.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.14f))
+                .border(2.dp, color.copy(alpha = 0.78f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -286,18 +357,51 @@ private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
 private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long) {
     GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-            Text("Sesión", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Descarga", formatRate(stats.downloadBytesPerSecond), formatBytes(stats.receivedBytes))
-                Metric("Subida", formatRate(stats.uploadBytesPerSecond), formatBytes(stats.sentBytes), Alignment.End)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Actividad de la sesión",
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text("EN VIVO", color = NeonGreen, style = MaterialTheme.typography.labelSmall)
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Tiempo", elapsed.toSessionTime(), stats.networkType)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+            ) {
+                Metric(
+                    "Descarga",
+                    formatRate(stats.downloadBytesPerSecond),
+                    formatBytes(stats.receivedBytes),
+                    modifier = Modifier.weight(1f)
+                )
+                Metric(
+                    "Subida",
+                    formatRate(stats.uploadBytesPerSecond),
+                    formatBytes(stats.sentBytes),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+            ) {
+                Metric(
+                    "Tiempo",
+                    elapsed.toSessionTime(),
+                    stats.networkType,
+                    modifier = Modifier.weight(1f)
+                )
                 Metric(
                     "Latencia",
                     if (stats.latencyMs > 0) "${stats.latencyMs} ms" else "--",
                     "${stats.reconnectCount} reconexiones",
-                    Alignment.End
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -309,9 +413,15 @@ private fun Metric(
     label: String,
     value: String,
     detail: String,
-    alignment: Alignment.Horizontal = Alignment.Start
+    modifier: Modifier = Modifier
 ) {
-    Column(horizontalAlignment = alignment) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.14f))
+            .padding(Dimens.SpaceMD),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
         Text(label, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
         Text(
             value,
@@ -478,6 +588,15 @@ private fun connectionSubtitle(state: DashboardUiState): String = when (val conn
     is VpnConnectionState.Disconnecting -> "Cerrando rutas y transporte"
     is VpnConnectionState.Error -> connection.message
     VpnConnectionState.Disconnected -> state.activeProfile?.connectionModeLabel ?: "VPN lista para conectar"
+}
+
+private fun VpnConnectionState.actionHint(): String = when (this) {
+    is VpnConnectionState.Connected -> "Toca el botón para cerrar el túnel de forma segura"
+    is VpnConnectionState.Connecting -> "Toca el botón si deseas cancelar el intento"
+    is VpnConnectionState.Reconnecting -> "La aplicación mantiene protegida la ruta durante la recuperación"
+    is VpnConnectionState.Disconnecting -> "Liberando la interfaz VPN de Android"
+    is VpnConnectionState.Error -> "Revisa el registro y toca para volver a intentar"
+    VpnConnectionState.Disconnected -> "Toca el botón para activar la VPN del sistema"
 }
 
 private fun formatRate(bytes: Long): String = "${formatBytes(bytes)}/s"

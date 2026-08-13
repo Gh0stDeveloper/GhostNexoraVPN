@@ -11,7 +11,7 @@ import java.io.OutputStream
 
 class SshSocksBridgeTest {
     @Test
-    fun forwardsAndSanitizesTheSshServerMessage() {
+    fun forwardsOneRichSshAuthenticationBannerAndPreservesItsLayout() {
         val statuses = mutableListOf<String>()
         val userInfo = ProfileUserInfo("secret") { message ->
             statuses += message
@@ -20,12 +20,23 @@ class SshSocksBridgeTest {
 
         assertFalse(userInfo.hasServerMessage())
         userInfo.showMessage("\u001B[32mBienvenido\u001B[0m\r\nGhost VPS\u0000")
+        userInfo.showMessage("Este segundo banner no debe mostrarse")
 
         assertTrue(userInfo.hasServerMessage())
         assertEquals(
-            listOf("[SSH] Mensaje del servidor · Bienvenido Ghost VPS"),
+            listOf(
+                "[SSH] Mensaje del servidor · " +
+                    "<font color=\"#69F0AE\">Bienvenido</font>\nGhost VPS"
+            ),
             statuses
         )
+    }
+
+    @Test
+    fun keepsInjectorStyleHtmlColorsAndBreakTags() {
+        val banner = "<br><b><font color=\"#00FFFF\">HEX TUNNEL<br></font></b>"
+
+        assertEquals(banner, SshTunnelEngine.normalizeServerMessage(banner))
     }
 
     @Test

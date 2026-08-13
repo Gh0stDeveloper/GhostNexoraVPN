@@ -22,16 +22,20 @@ object TunnelLogEventParser {
         "ACTIVA",
         "AUTENTICADA",
         "AUTENTICACIÓN COMPLETADA",
+        "AUTHENTICATION SUCCEEDED",
         "BAJADA ACTIVA",
         "CONECTADO",
         "COMPLETADO",
+        "CONNECTION ESTABLISHED",
         "LISTO",
+        "MATCHES THE EDDSA HOST KEY",
+        "STARTED SUCCESSFULLY",
         "SUBIDA ACTIVA",
         "VERIFICADO"
     )
 
     fun parse(raw: String): TunnelLogEvent? {
-        val normalized = raw.replace('\n', ' ').trim().take(1_024)
+        val normalized = raw.replace('\n', ' ').trim().take(8_192)
         if (normalized.isBlank()) return null
 
         val marker = prefix.find(normalized)?.groupValues?.getOrNull(1).orEmpty()

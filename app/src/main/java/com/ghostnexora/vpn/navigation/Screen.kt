@@ -20,7 +20,7 @@ sealed class Screen(
 ) {
     object Dashboard : Screen(
         route = "dashboard",
-        title = "Dashboard",
+        title = "Inicio",
         icon = Icons.Outlined.Home,
         iconSelected = Icons.Filled.Home
     )
@@ -76,7 +76,7 @@ sealed class Screen(
 
     object Logs : Screen(
         route = "logs",
-        title = "Logs",
+        title = "Registros",
         icon = Icons.Outlined.Terminal,
         iconSelected = Icons.Filled.Terminal
     )

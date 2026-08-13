@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -286,7 +287,7 @@ private fun GhostTopBar(
 ) {
     CenterAlignedTopAppBar(
         title = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
@@ -294,7 +295,7 @@ private fun GhostTopBar(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Encrypted tunnel manager",
+                    text = "VPN protegida · túnel cifrado",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextSecondary
                 )
@@ -304,7 +305,7 @@ private fun GhostTopBar(
             IconButton(onClick = onMenuClick) {
                 Icon(
                     imageVector = Icons.Filled.Menu,
-                    contentDescription = "Open navigation",
+                    contentDescription = "Abrir navegación",
                     tint = NeonCyan
                 )
             }
@@ -330,17 +331,18 @@ private fun GhostTopBar(
 
 private fun screenTitle(route: String?): String = when {
     route == null -> "Ghost Nexora VPN"
-    route == Screen.Dashboard.route -> "Dashboard"
-    route == Screen.Profiles.route -> "VPN Profiles"
-    route == Screen.CreateProfile.route -> "New Profile"
-    route.startsWith("edit_profile") -> "Edit Profile"
-    route == Screen.AppRouting.route -> "Application Routing"
-    route == Screen.Compatibility.route -> "Compatibility"
-    route == Screen.Import.route -> "Import Profiles"
-    route == Screen.Export.route -> "Export Profiles"
-    route == Screen.History.route -> "History"
-    route == Screen.Logs.route -> "Logs"
-    route == Screen.Settings.route -> "Settings"
-    route == Screen.About.route -> "About"
+    route == Screen.Dashboard.route -> "Inicio"
+    route == Screen.Profiles.route -> "Perfiles VPN"
+    route == Screen.CreateProfile.route -> "Nuevo perfil"
+    route.startsWith("edit_profile") -> "Editar perfil"
+    route == Screen.AppRouting.route -> "Enrutamiento de aplicaciones"
+    route == Screen.Compatibility.route -> "Compatibilidad"
+    route == Screen.Import.route -> "Importar perfiles"
+    route == Screen.Export.route -> "Exportar perfiles"
+    route == Screen.History.route -> "Historial"
+    route == Screen.Logs.route -> "Registros"
+    route == Screen.Settings.route -> "Ajustes"
+    route == Screen.Documentation.route -> "Documentación"
+    route == Screen.About.route -> "Acerca de"
     else -> "Ghost Nexora VPN"
 }

@@ -2,6 +2,22 @@
 
 All notable changes to Ghost Nexora VPN are documented here. The project follows semantic versioning for public releases, while draft PR builds may contain a newer internal `versionCode` before release.
 
+## 1.0.52
+
+### Fixed
+
+- Only the optional SSH authentication banner delivered through `UserInfo.showMessage` is displayed as the server message. The client no longer opens a shell channel or prints the VPS operating-system MOTD.
+- A connection can publish at most one server banner. Servers without an authentication banner produce no placeholder or synthetic message.
+- Injector-style HTML and common ANSI terminal colors are preserved, sanitized, and rendered as rich text without JavaScript, WebView execution, remote images, or network loading.
+
+### Changed
+
+- Redesigned the dashboard with a unified connection hero, clearer action state, segmented navigation, improved session metrics, and consistent Spanish labels.
+- Replaced gray log text and per-entry cards with one accessible console: normal events are white, successes green, warnings amber, and errors red, with explicit labels in addition to color.
+- Added a default `Resumen` log view that hides low-level JSch negotiation noise while keeping `Todos` available for complete diagnostics.
+- Unified the dashboard and full Logs screen around the same console, with search, safe copy/export, automatic tail following, and a dedicated rich server-banner block.
+- Bumped the application to `1.0.52 (52)`.
+
 ## 1.0.51
 
 ### Fixed

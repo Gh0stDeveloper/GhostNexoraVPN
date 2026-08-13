@@ -71,8 +71,9 @@ CI success alone is labeled **CI verified**.
 | SSH session closes | passive monitor enters protected reconnection | Device pending |
 | Disconnect during real traffic | core/TUN/SSH teardown completes; UI reaches Disconnected | Device pending |
 | Reconnect succeeds | `Connected` is republished only after Android VPN registration | Device pending |
-| SSH authentication banner | complete sanitized message appears in the log | Device pending |
-| Server MOTD without auth banner | short-lived shell channel on the same SSH session captures the message | Device pending |
+| SSH authentication banner | one complete sanitized rich-text message appears in the log | Device pending |
+| Server without authentication banner | no server-message entry is created | CI verified / device pending |
+| VPS shell/MOTD | no shell channel is opened and operating-system details are not shown | CI verified |
 
 ## Routing matrix
 
