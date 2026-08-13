@@ -12,14 +12,17 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Opens transport sockets on a real Android network instead of letting the
  * process default decide after the VPN TUN is active.
  *
- * The application UID is already excluded from the TUN by GhostVpnService.
- * Binding every SSH/proxy socket to a NOT_VPN network adds a second routing
- * guarantee and also lets DNS resolution use that same physical network.
+ * Every SSH/proxy socket is first excluded explicitly with
+ * VpnService.protect(Socket) through [OutboundSocketProtection]. It is then
+ * bound to a NOT_VPN network when Android exposes one. The application UID is
+ * also excluded from the TUN by GhostVpnService, providing three independent
+ * loop-prevention layers. A failed protect call aborts the connection.
  */
 internal class PhysicalNetworkSocketConnector(
     context: Context?,
@@ -29,6 +32,7 @@ internal class PhysicalNetworkSocketConnector(
         ?.applicationContext
         ?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
     private val knownPhysicalNetworks = ConcurrentHashMap.newKeySet<Network>()
+    private val protectionReported = AtomicBoolean(false)
 
     private val physicalNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -89,7 +93,7 @@ internal class PhysicalNetworkSocketConnector(
                 val remainingMs = remainingTimeoutMs(deadlineNanos)
                 if (remainingMs <= 0) break
 
-                val socket = configuredSocket()
+                val socket = configuredAndProtectedSocket()
                 try {
                     network.bindSocket(socket)
                     onStatus(
@@ -117,22 +121,22 @@ internal class PhysicalNetworkSocketConnector(
             }
         }
 
-        // Defensive fallback for devices whose vendor connectivity service does
-        // not expose a NOT_VPN Network object. The app UID remains disallowed
-        // from the VPN, so this socket still cannot recurse through the TUN.
+        // Some vendor stacks do not expose a usable NOT_VPN Network object.
+        // The fallback is still safe because protect(Socket) is mandatory and
+        // the application UID is excluded from the VPN builder.
         val fallbackAddresses = resolve(network = null, host = host, failures = failures)
         for ((index, address) in fallbackAddresses.withIndex()) {
             val remainingMs = remainingTimeoutMs(deadlineNanos)
             if (remainingMs <= 0) break
 
-            val socket = configuredSocket()
+            val socket = configuredAndProtectedSocket()
             try {
                 onStatus(
-                    "[NETWORK] Intento TCP con bypass de aplicación ${index + 1} · " +
+                    "[NETWORK] Intento TCP protegido ${index + 1} · " +
                         "${address.hostAddress}:$port"
                 )
                 socket.connect(InetSocketAddress(address, port), remainingMs)
-                onStatus("[NETWORK] Socket TCP conectado por bypass propio · ${address.hostAddress}:$port")
+                onStatus("[NETWORK] Socket TCP conectado con protect(Socket) · ${address.hostAddress}:$port")
                 return socket
             } catch (error: Throwable) {
                 failures += error
@@ -190,6 +194,21 @@ internal class PhysicalNetworkSocketConnector(
             capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "Ethernet"
             else -> "red física"
         }
+    }
+
+    private fun configuredAndProtectedSocket(): Socket {
+        val socket = configuredSocket()
+        if (!OutboundSocketProtection.protect(socket)) {
+            runCatching { socket.close() }
+            throw IOException(
+                "[VPN-LOOP-001] Android rechazó VpnService.protect(Socket); " +
+                    "el transporte se detuvo para evitar un bucle hacia el TUN"
+            )
+        }
+        if (protectionReported.compareAndSet(false, true)) {
+            onStatus("[NETWORK] Sockets de transporte excluidos del TUN con VpnService.protect(Socket)")
+        }
+        return socket
     }
 
     private fun configuredSocket(): Socket = Socket().apply {

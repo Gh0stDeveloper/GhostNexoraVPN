@@ -8,15 +8,27 @@ import java.io.File
 /** Guards the Injector-compatible distinction between SSH/TCP identity and TLS SNI. */
 class PhysicalNetworkSocketArchitectureTest {
     @Test
-    fun connectorResolvesAndBindsEveryAttemptToANonVpnNetwork() {
+    fun connectorProtectsThenBindsEveryAttemptToANonVpnNetwork() {
         val source = sourceFile(
             "src/main/java/com/ghostnexora/vpn/tunnel/PhysicalNetworkSocketConnector.kt"
         )
+        val firstSocketCreation = source.indexOf("val socket = configuredAndProtectedSocket()")
+        val firstPhysicalBind = source.indexOf("network.bindSocket(socket)")
+        val protectionHelper = source
+            .substringAfter("private fun configuredAndProtectedSocket()")
+            .substringBefore("private fun configuredSocket()")
 
         assertTrue(source.contains("NetworkCapabilities.NET_CAPABILITY_NOT_VPN"))
         assertTrue(source.contains("manager.registerNetworkCallback"))
         assertTrue(source.contains("network.getAllByName(host)"))
-        assertTrue(source.contains("network.bindSocket(socket)"))
+        assertTrue(firstSocketCreation >= 0)
+        assertTrue(firstPhysicalBind >= 0)
+        assertTrue(
+            "A protected socket must be created before Network.bindSocket",
+            firstSocketCreation < firstPhysicalBind
+        )
+        assertTrue(protectionHelper.contains("OutboundSocketProtection.protect(socket)"))
+        assertTrue(protectionHelper.contains("[VPN-LOOP-001]"))
         assertTrue(source.contains("for ((addressIndex, address) in addresses.withIndex())"))
         assertTrue(source.contains("sortedBy { if (it is Inet4Address) 0 else 1 }"))
         assertTrue(source.contains("[TCP-ALL-FAILED]"))
@@ -24,6 +36,18 @@ class PhysicalNetworkSocketArchitectureTest {
             "Deprecated global network enumeration must not return",
             source.contains("manager.allNetworks")
         )
+    }
+
+    @Test
+    fun vpnServiceOwnsTheSocketProtectionLifecycle() {
+        val source = sourceFile(
+            "src/main/java/com/ghostnexora/vpn/service/GhostVpnService.kt"
+        )
+
+        assertTrue(source.contains("OutboundSocketProtection.install { socket -> protect(socket) }"))
+        assertTrue(source.contains("cleanupTunnel(closeTun = true)\n        OutboundSocketProtection.clear()"))
+        assertTrue(source.contains("check(protect(socket))"))
+        assertTrue(source.contains("underlyingNetwork?.bindSocket(socket)"))
     }
 
     @Test

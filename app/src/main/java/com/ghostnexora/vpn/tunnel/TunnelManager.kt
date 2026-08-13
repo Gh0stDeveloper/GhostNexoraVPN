@@ -35,6 +35,7 @@ class TunnelManager(
         require(profile.selectedMode.supported) {
             "Mode ${profile.connectionModeLabel} is not enabled"
         }
+        reportRuntimePlan(profile.selectedMode)
         onCoreStatus("[NETWORK] Preflight iniciado · ${profile.host}:${profile.port}")
         onCoreStatus("[SETTINGS] ${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · ${preferences.dnsMode.label}")
 
@@ -78,6 +79,7 @@ class TunnelManager(
         require(profile.selectedMode.supported) {
             "Mode ${profile.connectionModeLabel} is not enabled"
         }
+        reportRuntimePlan(profile.selectedMode)
         onCoreStatus("[TUN] Adjuntando descriptor Android al core")
 
         return if (profile.selectedMode.isSsh) {
@@ -136,7 +138,7 @@ class TunnelManager(
     ): TunnelRuntime {
         onCoreStatus("[XRAY] ${StableXrayConfigFactory.summary(profile, preferences)}")
         onCoreStatus("[DNS] ${preferences.dnsMode.label} · ${preferences.dnsServers().joinToString()}")
-        onCoreStatus("[ROUTING] Regla explícita TUN → proxy · TCP/UDP")
+        onCoreStatus("[ROUTING] Regla explícita TUN → proxy · TCP/UDP según capacidad del runtime")
         xrayEngine.start(config, tunFd, healthCheckPort)
         onCoreStatus("[TUN] Xray Core conectado a la interfaz Android")
         onCoreStatus("[NETWORK] Core activo · verificación de salida programada en segundo plano")
@@ -159,6 +161,12 @@ class TunnelManager(
             onCoreStatus("[PAYLOAD] Inyección HTTP preparada · contenido protegido")
         }
         onCoreStatus("[SSH] Iniciando intercambio de claves y autenticación")
+    }
+
+    private fun reportRuntimePlan(mode: ConnectionMode) {
+        val plan = NativeRuntimeArchitecture.plan(mode)
+        onCoreStatus("[CORE] ${NativeRuntimeArchitecture.statusLine(mode)}")
+        onCoreStatus("[ROUTING] ${plan.limitations}")
     }
 
     /**
@@ -197,7 +205,8 @@ class TunnelManager(
     }
 
     fun coreVersion(): String = xrayEngine.version()
-    fun isSupported(mode: ConnectionMode): Boolean = mode.supported
+    fun isSupported(mode: ConnectionMode): Boolean =
+        mode.supported && runCatching { NativeRuntimeArchitecture.plan(mode) }.isSuccess
 }
 
 data class TunnelRuntime(

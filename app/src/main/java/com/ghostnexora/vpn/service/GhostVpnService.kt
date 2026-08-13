@@ -27,6 +27,7 @@ import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.tunnel.ConnectionErrorCatalog
+import com.ghostnexora.vpn.tunnel.OutboundSocketProtection
 import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory
 import com.ghostnexora.vpn.tunnel.TunnelLogEvent
 import com.ghostnexora.vpn.tunnel.TunnelLogEventParser
@@ -171,6 +172,7 @@ class GhostVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        OutboundSocketProtection.install { socket -> protect(socket) }
         tunnelLogWriterJob = serviceScope.launch {
             for (pending in tunnelLogChannel) {
                 logSafe(
@@ -245,6 +247,7 @@ class GhostVpnService : VpnService() {
         healthJob?.cancel()
         statsJob?.cancel()
         cleanupTunnel(closeTun = true)
+        OutboundSocketProtection.clear()
         logRedactionProfile = null
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
         runCatching { setUnderlyingNetworks(null) }
@@ -985,7 +988,11 @@ class GhostVpnService : VpnService() {
     private fun measureTcpLatency(host: String, port: Int): Long {
         val start = System.nanoTime()
         return runCatching {
-            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), 2_000) }
+            Socket().use { socket ->
+                check(protect(socket)) { "Android rechazó protect(Socket) para la medición TCP" }
+                underlyingNetwork?.bindSocket(socket)
+                socket.connect(InetSocketAddress(host, port), 2_000)
+            }
             ((System.nanoTime() - start) / 1_000_000).coerceAtLeast(1)
         }.getOrDefault(0L)
     }
