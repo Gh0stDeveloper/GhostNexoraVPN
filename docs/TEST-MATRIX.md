@@ -64,13 +64,14 @@ CI success alone is labeled **CI verified**.
 | Scenario | Expected result | Status |
 |---|---|---|
 | Xray starts but Android has no owned VPN network | startup fails; UI never publishes false `Connected` | CI/source review pending |
-| Android exposes owned `TRANSPORT_VPN` and runtime is alive | UI publishes `Connected` and system indicator is active | Device pending |
-| Normal SSH session is idle | no Cloudflare/Google probe, latency socket, or extra SSH session is created | CI/source review pending |
-| First routed application packet | one `direct-tcpip` channel opens inside the existing SSH session | Device pending |
+| Android exposes owned `TRANSPORT_VPN`, but the outbound cannot return data | qualification reports `ROUTE-DATA-204`; UI never publishes false `Connected` | Device pending |
+| Exact VPN network returns the single HTTPS qualification response | UI publishes `Connected` and system indicator remains active | Device pending |
+| Normal SSH startup | exactly one qualification `direct-tcpip` flow opens inside the existing SSH session; no second login or `1/2` fallback | CI/source review pending |
+| Accepted SSH session remains idle | no periodic endpoint probe, latency socket, or extra SSH session is created | CI/source review pending |
 | Android removes VPN registration | passive monitor enters protected reconnection | Device pending |
 | SSH session closes | passive monitor enters protected reconnection | Device pending |
 | Disconnect during real traffic | core/TUN/SSH teardown completes; UI reaches Disconnected | Device pending |
-| Reconnect succeeds | `Connected` is republished only after Android VPN registration | Device pending |
+| Reconnect succeeds | `Connected` is republished only after Android registration and one new qualification response | Device pending |
 | SSH authentication banner | one complete sanitized rich-text message appears in the log | Device pending |
 | Server without authentication banner | no server-message entry is created | CI verified / device pending |
 | VPS shell/MOTD | no shell channel is opened and operating-system details are not shown | CI verified |
@@ -149,6 +150,6 @@ The startup-state fix additionally requires recorded proof that:
 
 1. the VPN package is excluded from its own TUN;
 2. Android displays its VPN indicator before the app publishes `Connected`;
-3. an idle session creates no automatic `1/2` probe or latency socket;
+3. startup creates exactly one VPN-bound qualification flow, never a `1/2` fallback pair, and an accepted idle session creates no periodic probe socket;
 4. manual disconnect can tear down active real traffic;
 5. no captured application traffic falls back directly.

@@ -39,18 +39,19 @@ Each result includes:
 - stable error code;
 - corrective action.
 
-### System-confirmed normal startup
+### Data-plane-confirmed normal startup
 
-The normal Dashboard connection path does not reuse the diagnostic preflight as a synchronous gate. Its sequence is:
+The normal Dashboard connection path does not start a second diagnostic runtime. Its sequence is:
 
 1. establish strict application-routing rules and the fail-closed TUN;
 2. authenticate SSH and start the local bridge when required;
 3. start Xray against the TUN descriptor;
 4. require Android to expose an owned `TRANSPORT_VPN` network while the TUN descriptor remains valid;
-5. recheck the existing transport/core and publish `Connected`;
-6. start passive registration/runtime health and statistics monitoring.
+5. bind one request to that exact VPN network and require a bidirectional response through the existing outbound;
+6. recheck the existing transport/core and publish `Connected`;
+7. start passive registration/runtime health and statistics monitoring.
 
-No initial probe, periodic endpoint probe, or latency socket runs in this path. SSH forwarding channels are opened only for actual device traffic; disconnect and core shutdown remain available.
+The single acceptance request reuses the existing Xray/SOCKS/SSH runtime and opens no second VPN or SSH login. There is no fallback pair or `1/2` sequence. No periodic endpoint probe runs after acceptance; disconnect and core shutdown remain available.
 
 ### Application self-bypass
 
@@ -180,9 +181,10 @@ A normal connection follows this sequence:
 7. Start one SSH/Xray runtime against the TUN descriptor.
 8. Confirm the native Xray loop is running.
 9. Confirm the TUN descriptor is valid and Android exposes an owned `TRANSPORT_VPN` network.
-10. Publish `Connected` to the UI process and start passive health monitoring.
+10. Require one HTTPS response over a socket bound to that exact VPN network.
+11. Publish `Connected` to the UI process and start passive health monitoring.
 
-A failure before step 6 does not change the device's routes. A transport or Android VPN-registration failure after step 6 closes the TUN unless Kill Switch protection is intentionally retaining blocked routing during recovery. No normal-session remote probe or silent direct fallback exists.
+A failure before step 6 does not change the device's routes. A transport, Android VPN-registration, or initial data-plane failure after step 6 closes the TUN unless Kill Switch protection is intentionally retaining blocked routing during recovery. No silent direct fallback or periodic remote probe exists.
 
 ## Runtime validation still required
 

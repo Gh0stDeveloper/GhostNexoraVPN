@@ -152,6 +152,22 @@ class ConnectionErrorCatalogTest {
     }
 
     @Test
+    fun mapsOwnedVpnDataPlaneFailureToTheSshRoute() {
+        val failure = ConnectionErrorCatalog.classify(
+            IllegalStateException(
+                "La ruta de datos activa no entregó acceso a Internet " +
+                    "[ROUTE-DATA-204]: Read timed out"
+            ),
+            sshProfile
+        )
+
+        assertEquals("SSH-ROUTE-204", failure.code)
+        assertEquals("SSH", failure.stage)
+        assertTrue(failure.solution.contains("direct-tcpip", ignoreCase = true))
+        assertTrue(!failure.solution.contains("UUID", ignoreCase = true))
+    }
+
+    @Test
     fun mapsClosedPipeToSshBridgeInsteadOfGenericXrayFields() {
         val failure = ConnectionErrorCatalog.classify(
             IllegalStateException(

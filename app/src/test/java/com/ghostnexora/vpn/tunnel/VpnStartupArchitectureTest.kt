@@ -8,24 +8,43 @@ import java.io.File
 /** Guards startup ordering across the Java VpnService and native runtime. */
 class VpnStartupArchitectureTest {
     @Test
-    fun tunnelStartDoesNotRunAnActiveOutboundProbe() {
-        val source = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.java")
-        val startSection = source.substringAfter("public synchronized TunnelRuntime start").substringBefore("private TunnelRuntime startCore")
-        assertFalse(startSection.contains("verifyActiveOutbound") || startSection.contains("verifyActive()"))
-        assertTrue(source.substringAfter("private TunnelRuntime startCore").contains("xrayEngine.start"))
+    fun tunnelStartDefersQualificationUntilTheExistingRuntimeIsActive() {
+        val manager = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.java")
+        val startSection = manager.substringAfter("public synchronized TunnelRuntime start")
+            .substringBefore("private TunnelRuntime startCore")
+        val qualificationSection = manager.substringAfter(
+            "public OutboundCheck verifyActiveDataPlane(Network vpnNetwork)"
+        )
+            .substringBefore("public synchronized void stop")
+
+        assertFalse(startSection.contains("verifyActiveDataPlane"))
+        assertTrue(manager.substringAfter("private TunnelRuntime startCore").contains("xrayEngine.start"))
+        assertTrue(qualificationSection.contains("AndroidVpnDataPlaneProbe.verify(vpnNetwork)"))
+        assertFalse(qualificationSection.contains("sshEngine.connectWithSocks"))
     }
 
     @Test
     fun javaServicePublishesConnectedOnlyAfterAndroidRegistersOwnedVpn() {
         val source = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
         val connectSection = source.substringAfter("private void handleConnect").substringBefore("private void handleDisconnect")
-        val connectedIndex = connectSection.indexOf("publishState(connected)")
+        val qualificationIndex = connectSection.indexOf("beginDataPlaneVerification(")
         val registrationIndex = connectSection.indexOf("awaitAndroidVpnRegistration(profile)")
-        assertTrue(connectedIndex >= 0)
+        assertTrue(qualificationIndex >= 0)
         assertTrue(registrationIndex >= 0)
-        assertTrue(registrationIndex < connectedIndex)
+        assertTrue(registrationIndex < qualificationIndex)
+        assertFalse(connectSection.contains("publishState(connected)"))
+
+        val completionSection = source.substringAfter("private void completeDataPlaneVerification")
+            .substringBefore("private void failDataPlaneVerification")
+        assertTrue(completionSection.contains("claimDataPlaneVerification"))
+        assertTrue(
+            completionSection.indexOf("claimDataPlaneVerification") <
+                completionSection.indexOf("publishState(connected)")
+        )
         assertTrue(source.contains("NetworkCapabilities.TRANSPORT_VPN"))
-        assertTrue(source.contains("capabilities.getOwnerUid() != ownUid"))
+        assertTrue(source.contains("capabilities.getOwnerUid() != Process.myUid()"))
+        assertTrue(source.contains("\"10.20.0.2\".equals"))
+        assertTrue(source.contains("route.isDefaultRoute()"))
         assertTrue(source.contains(".setConfigureIntent(PendingIntent.getActivity("))
         assertTrue(source.contains("builder.setUnderlyingNetworks(new Network[]{physicalNetwork})"))
     }
@@ -41,18 +60,34 @@ class VpnStartupArchitectureTest {
     }
 
     @Test
-    fun normalVpnSessionCreatesNoAutonomousProbeConnections() {
+    fun normalVpnSessionRunsOneQualificationAndKeepsPeriodicHealthPassive() {
         val managerSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.java")
-        assertFalse(managerSource.contains("public synchronized OutboundCheck verifyActive()"))
         assertFalse(managerSource.contains("healthCheckPort"))
+        assertTrue(
+            managerSource.contains("public OutboundCheck verifyActiveDataPlane(Network vpnNetwork)")
+        )
 
-        val coreSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/XrayCoreEngine.java")
-        assertFalse(coreSource.contains("public synchronized OutboundCheck verifyActiveOutbound()"))
+        val probeSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/AndroidVpnDataPlaneProbe.java")
+        assertTrue(probeSource.contains("vpnNetwork.bindSocket(transport)"))
+        assertTrue(probeSource.contains("sendSingleRequest"))
+        assertFalse(probeSource.contains("OutboundSocketProtection.protect"))
+        assertFalse(probeSource.contains("for ("))
 
         val serviceSource = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
         assertFalse(serviceSource.contains("startInitialOutboundVerification"))
         assertFalse(serviceSource.contains("measureTcpLatency"))
-        assertFalse(serviceSource.contains("tunnelManager.verifyActive()"))
+        val healthMonitor = serviceSource.substringAfter("private void startHealthMonitor")
+            .substringBefore("private void startStatsTicker")
+        assertFalse(healthMonitor.contains("verifyActiveDataPlane"))
+        assertTrue(serviceSource.contains("DATA_PLANE_VERIFICATION_TIMEOUT_MS"))
+        assertTrue(serviceSource.contains("tunnelManager.verifyActiveDataPlane(verificationNetwork)"))
+        assertTrue(serviceSource.contains("beginDataPlaneVerification(profile, tunnelRuntime, false, 0)"))
+        val failureSection = serviceSource.substringAfter("private void failDataPlaneVerification")
+            .substringBefore("private boolean isCurrentDataPlaneVerification")
+        assertTrue(failureSection.contains("cleanupTunnel(true)"))
+        assertTrue(failureSection.contains("repositoryBridge.setVpnDesiredConnected(false)"))
+        assertTrue(failureSection.contains("[ROUTE-DATA-204]"))
+        assertFalse(failureSection.contains("publishState(connected)"))
 
         val configSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/StableXrayConfigFactory.kt")
         assertFalse(configSource.contains("health-check"))

@@ -169,7 +169,7 @@ Root or hook detection must not be described as infallible and should not automa
 - No unbounded input or delays.
 - No direct fallback route.
 - No self-routing loop for the VPN package or its private process.
-- No automatic remote probe before or after Connected-state publication.
+- Only one bounded, credential-free remote qualification before Connected-state publication; no periodic probe afterward.
 - No passive health check opening a remote socket or holding a teardown lock.
 - No exported Android component without need.
 - No new reflection-dependent runtime class without R8 verification.

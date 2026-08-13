@@ -73,4 +73,14 @@ class TunnelLogEventParserTest {
             TunnelLogEventParser.parse("[SSH] INFO · Authentication succeeded (password).")?.level
         )
     }
+
+    @Test
+    fun marksActiveDataPlaneQualificationAsSuccess() {
+        val event = TunnelLogEventParser.parse(
+            "[NETWORK] Ruta de datos bidireccional verificada · 123 ms"
+        )
+
+        assertEquals(LogLevel.SUCCESS, event?.level)
+        assertEquals("NETWORK", event?.tag)
+    }
 }

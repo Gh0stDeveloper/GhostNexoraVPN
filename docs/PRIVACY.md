@@ -20,7 +20,7 @@ Ghost Nexora VPN stores locally:
 
 When a VPN is connected, selected application traffic is sent through the configured remote server. The remote server operator and upstream providers may observe traffic according to the protocol and destination encryption. Ghost Nexora VPN does not make an untrusted server private.
 
-The app performs connectivity checks against HTTP 204 endpoints through the configured outbound. Update checks contact GitHub Releases for this repository.
+Before publishing `Connected`, the app sends one HTTPS `HEAD` request to `one.one.one.one` through the configured VPN outbound. The request contains no profile credentials, server address, payload, browsing destination, or user content. It is repeated only when a runtime must be accepted after startup or reconnection; no periodic connectivity request runs afterward. Explicit Diagnostics may perform its separately requested connectivity checks. Update checks contact GitHub Releases for this repository.
 
 ## Logs
 

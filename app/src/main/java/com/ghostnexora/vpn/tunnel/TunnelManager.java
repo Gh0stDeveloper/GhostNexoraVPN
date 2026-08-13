@@ -1,6 +1,7 @@
 package com.ghostnexora.vpn.tunnel;
 
 import android.content.Context;
+import android.net.Network;
 
 import com.ghostnexora.vpn.data.model.ConnectionMode;
 import com.ghostnexora.vpn.data.model.NetworkPreferences;
@@ -92,7 +93,7 @@ public final class TunnelManager {
         status("[ROUTING] Regla explícita TUN → proxy · TCP/UDP según capacidad del runtime");
         xrayEngine.start(config, tunFd);
         status("[TUN] Xray Core conectado a la interfaz Android");
-        status("[NETWORK] Core activo · sin conexiones de prueba adicionales");
+        status("[NETWORK] Core activo · pendiente de validar la ruta de datos");
         return new TunnelRuntime(profile.getSelectedMode(), sshHandle);
     }
 
@@ -117,6 +118,25 @@ public final class TunnelManager {
     }
 
     public XrayTrafficDelta drainTraffic() { return xrayEngine.drainProxyTraffic(); }
+
+    public OutboundCheck verifyActiveDataPlane(Network vpnNetwork) {
+        if (!xrayEngine.isRunning()) {
+            throw new IllegalStateException("Xray Core no está activo para validar la ruta de datos");
+        }
+        status("[NETWORK] Validando un único flujo por VPN Android → TUN → Xray → outbound");
+        try {
+            OutboundCheck check = AndroidVpnDataPlaneProbe.verify(vpnNetwork);
+            status("[NETWORK] Ruta de datos bidireccional verificada · HTTP " +
+                    check.getStatusCode() + " · " + check.getLatencyMs() + " ms");
+            return check;
+        } catch (Throwable error) {
+            throw new IllegalStateException(
+                    "La ruta de datos activa no entregó acceso a Internet: " +
+                            shortMessage(error, 180),
+                    error
+            );
+        }
+    }
 
     public synchronized void stop(TunnelRuntime runtime) {
         if (runtime == null && !xrayEngine.isRunning()) return;

@@ -124,8 +124,8 @@ For the next device qualification cycle:
 
 1. Install the newest validation APK on the device that reproduced the SSH + SSL freeze.
 2. Confirm Android displays its VPN indicator before the UI reaches `Connected`.
-3. Leave the session idle and confirm no `Prueba real 1/2`, Cloudflare/Google request, or periodic latency socket appears.
-4. Generate browser traffic and confirm the existing SSH session opens `direct-tcpip` channels on demand.
+3. Confirm startup opens exactly one qualification flow through the existing SSH session, with no `Prueba real 1/2` fallback or second login.
+4. Leave the accepted session idle and confirm no periodic probe or latency socket appears; then generate browser traffic and confirm additional `direct-tcpip` channels open on demand.
 5. Disconnect manually while real traffic is active and confirm teardown completes.
 6. Verify the application UID and JSch socket use the physical network in all-app and exclude-selected modes.
 7. Verify only-selected mode excludes the VPN package by omission.

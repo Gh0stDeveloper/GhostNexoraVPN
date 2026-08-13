@@ -61,6 +61,11 @@ Supported local SOCKS behavior:
 - TCP CONNECT;
 - per-client channel cleanup.
 
+After authentication and Xray startup, connection acceptance opens one
+short-lived `direct-tcpip` flow through this same SSH session. Its sole purpose
+is to prove that the Android TUN can send and receive data before the UI says
+`Connected`; it does not create another TCP/TLS/SSH login or a shell channel.
+
 Not claimed:
 
 - SOCKS UDP ASSOCIATE through SSH;
