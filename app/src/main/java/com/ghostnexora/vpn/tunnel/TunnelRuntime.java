@@ -7,16 +7,13 @@ import com.jcraft.jsch.Session;
 public final class TunnelRuntime {
     private final ConnectionMode mode;
     private final SshTunnelHandle sshHandle;
-    private final long verifiedLatencyMs;
 
-    TunnelRuntime(ConnectionMode mode, SshTunnelHandle sshHandle, long verifiedLatencyMs) {
+    TunnelRuntime(ConnectionMode mode, SshTunnelHandle sshHandle) {
         this.mode = mode;
         this.sshHandle = sshHandle;
-        this.verifiedLatencyMs = verifiedLatencyMs;
     }
 
     public ConnectionMode getMode() { return mode; }
-    public long getVerifiedLatencyMs() { return verifiedLatencyMs; }
 
     SshTunnelHandle sshHandle() { return sshHandle; }
 

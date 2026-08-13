@@ -11,6 +11,7 @@ import com.ghostnexora.vpn.util.PayloadContext;
 import com.ghostnexora.vpn.util.PayloadEngine;
 import com.ghostnexora.vpn.util.PayloadPlan;
 import com.jcraft.jsch.ChannelDirectTCPIP;
+import com.jcraft.jsch.ChannelShell;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
@@ -40,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
@@ -47,6 +49,14 @@ import kotlin.jvm.functions.Function1;
 
 /** Java SSH engine for direct, TLS/SNI, payload and upstream-proxy VPN modes. */
 public final class SshTunnelEngine {
+    private static final int MAX_SERVER_MESSAGE_BYTES = 8 * 1024;
+    private static final int MAX_SERVER_MESSAGE_CHARS = 8 * 1024;
+    private static final long SERVER_MESSAGE_TIMEOUT_MS = 1_200L;
+    private static final Pattern ANSI_CSI =
+            Pattern.compile("\\u001B\\[[0-?]*[ -/]*[@-~]");
+    private static final Pattern ANSI_OSC =
+            Pattern.compile("\\u001B\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)");
+
     private final Context context;
     private final Function1<? super String, Unit> onStatus;
     private final PhysicalNetworkSocketConnector socketConnector;
@@ -81,7 +91,8 @@ public final class SshTunnelEngine {
         try {
             Session session = jsch.getSession(profile.getUsername().trim(), transportHost, transportPort);
             session.setPassword(password);
-            session.setUserInfo(new ProfileUserInfo(password));
+            ProfileUserInfo userInfo = new ProfileUserInfo(password, onStatus);
+            session.setUserInfo(userInfo);
             session.setConfig("StrictHostKeyChecking", "ask");
             session.setConfig("PreferredAuthentications", "password,keyboard-interactive");
             session.setConfig("MaxAuthTries", "3");
@@ -97,6 +108,7 @@ public final class SshTunnelEngine {
                 status("[SSH] Abriendo sesión y negociando algoritmos");
                 session.connect(25_000);
                 status("[SSH] Autenticación completada · sesión cifrada activa");
+                capturePostLoginMessage(session, userInfo);
             } catch (JSchException error) {
                 String message = error.getMessage() != null ? error.getMessage() : "";
                 if (message.toLowerCase(Locale.US).contains("auth fail")) {
@@ -142,6 +154,76 @@ public final class SshTunnelEngine {
 
     private void status(String message) {
         onStatus.invoke(message);
+    }
+
+    /**
+     * OpenSSH normally sends /etc/motd only when a session channel is opened.
+     * This reuses the authenticated SSH transport; it does not create a second
+     * TCP, TLS or SSH connection and never sends a synthetic Internet request.
+     */
+    private static void capturePostLoginMessage(Session session, ProfileUserInfo userInfo) {
+        ChannelShell channel = null;
+        try {
+            channel = (ChannelShell) session.openChannel("shell");
+            channel.setPty(false);
+            InputStream input = channel.getInputStream();
+            channel.connect(2_000);
+
+            ByteArrayOutputStream message = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1_024];
+            long deadline = System.nanoTime() + SERVER_MESSAGE_TIMEOUT_MS * 1_000_000L;
+            long quietSince = 0L;
+            while (System.nanoTime() < deadline && message.size() < MAX_SERVER_MESSAGE_BYTES) {
+                int available = input.available();
+                if (available > 0) {
+                    int count = input.read(
+                            buffer,
+                            0,
+                            Math.min(buffer.length, Math.min(available,
+                                    MAX_SERVER_MESSAGE_BYTES - message.size()))
+                    );
+                    if (count < 0) break;
+                    if (count > 0) {
+                        message.write(buffer, 0, count);
+                        quietSince = System.nanoTime();
+                    }
+                    continue;
+                }
+                if (message.size() > 0 && quietSince > 0L
+                        && System.nanoTime() - quietSince >= 200_000_000L) {
+                    break;
+                }
+                if (channel.isClosed()) break;
+                Thread.sleep(25L);
+            }
+            userInfo.publishServerMessage(message.toString(StandardCharsets.UTF_8.name()));
+        } catch (Throwable ignored) {
+            // A restricted account may deny shell channels. The VPN transport
+            // remains valid and authentication banners are still captured.
+        } finally {
+            if (channel != null) {
+                try { channel.disconnect(); } catch (Throwable ignored) { }
+            }
+        }
+    }
+
+    static String normalizeServerMessage(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "";
+        String withoutAnsi = ANSI_OSC.matcher(ANSI_CSI.matcher(raw).replaceAll("")).replaceAll("");
+        StringBuilder clean = new StringBuilder(Math.min(withoutAnsi.length(), MAX_SERVER_MESSAGE_CHARS));
+        boolean pendingSpace = false;
+        for (int index = 0; index < withoutAnsi.length() && clean.length() < MAX_SERVER_MESSAGE_CHARS; index++) {
+            char value = withoutAnsi.charAt(index);
+            if (value == '\r' || value == '\n' || value == '\t' || Character.isWhitespace(value)) {
+                pendingSpace = clean.length() > 0;
+                continue;
+            }
+            if (Character.isISOControl(value)) continue;
+            if (pendingSpace && clean.length() > 0) clean.append(' ');
+            clean.append(value);
+            pendingSpace = false;
+        }
+        return clean.toString().trim();
     }
 
     private static int clampPort(int port) {
@@ -779,8 +861,17 @@ final class SshIoBridge {
 
 final class ProfileUserInfo implements UserInfo {
     private final String password;
+    private final Function1<? super String, Unit> onStatus;
+    private final AtomicBoolean serverMessageShown = new AtomicBoolean(false);
 
-    ProfileUserInfo(String password) { this.password = password; }
+    ProfileUserInfo(String password) {
+        this(password, ignored -> Unit.INSTANCE);
+    }
+
+    ProfileUserInfo(String password, Function1<? super String, Unit> onStatus) {
+        this.password = password;
+        this.onStatus = onStatus != null ? onStatus : ignored -> Unit.INSTANCE;
+    }
 
     @Override public String getPassword() { return password; }
 
@@ -795,5 +886,14 @@ final class ProfileUserInfo implements UserInfo {
     @Override public String getPassphrase() { return null; }
     @Override public boolean promptPassphrase(String message) { return false; }
     @Override public boolean promptPassword(String message) { return password != null && !password.isEmpty(); }
-    @Override public void showMessage(String message) { }
+    @Override public void showMessage(String message) { publishServerMessage(message); }
+
+    boolean hasServerMessage() { return serverMessageShown.get(); }
+
+    void publishServerMessage(String message) {
+        String normalized = SshTunnelEngine.normalizeServerMessage(message);
+        if (normalized.isEmpty()) return;
+        serverMessageShown.set(true);
+        onStatus.invoke("[SSH] Mensaje del servidor · " + normalized);
+    }
 }

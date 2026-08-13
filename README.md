@@ -10,9 +10,9 @@
 
 Ghost Nexora VPN is a native Android SSH/Xray VPN client focused on verified routing, strict security defaults, encrypted profile management, actionable diagnostics, and transparent compatibility status.
 
-The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts, publishes `Connected` only after the transport, native core, and TUN are active, and then verifies the active outbound in the background.
+The isolated VPN service keeps the TUN fail-closed while SSH/Xray starts and publishes `Connected` only after the transport and native core are active and Android exposes the application's `TRANSPORT_VPN` network. Normal sessions do not create synthetic Internet probes.
 
-Current development version: **1.0.50 (50)**.
+Current development version: **1.0.51 (51)**.
 
 > The project targets a professional feature set comparable to injector-style Android VPN clients. It does not claim to be better than HTTP Injector or HTTP Custom until protocol, recovery, leak, performance, battery, and usability benchmarks are recorded.
 
@@ -23,7 +23,8 @@ Current development version: **1.0.50 (50)**.
 - Android `VpnService` TUN routing.
 - Private `:vpn` process isolation for the native core, separate from the application interface.
 - Physical network tracking for cellular, Wi-Fi, and Ethernet.
-- Fail-closed TUN startup, core-ready `Connected` state, and independent background outbound verification.
+- Fail-closed TUN startup and system-confirmed `Connected` state tied to Android's owned VPN network.
+- Passive runtime health checks with no automatic Cloudflare/Google probes or periodic latency sockets.
 - Bounded native-process recovery without closing the application interface.
 - IPv4-only, IPv4-preferred, and dual-stack modes.
 - MTU presets from 1280 to 1500 shared by Android and Xray.
@@ -46,6 +47,7 @@ Current development version: **1.0.50 (50)**.
 ### SSH and payloads
 
 - Direct SSH.
+- SSH authentication banner and optional post-login MOTD display from the same authenticated session.
 - SSH over strict TLS/SNI or per-profile HTTP Custom-compatible SNI.
 - SSH with HTTP payload.
 - SSH with TLS and payload.
@@ -140,9 +142,9 @@ A normal connection must complete:
 4. Private VPN-process startup and persisted recovery intent.
 5. Fail-closed Android TUN creation.
 6. Single SSH/Xray startup against the TUN descriptor.
-7. Connected-state publication to the UI process after native core readiness.
-8. Active outbound Internet verification in the background.
-9. Health and session-statistics monitoring.
+7. Android-owned `TRANSPORT_VPN` registration and a still-valid TUN descriptor.
+8. Connected-state publication to the UI process only after steps 6 and 7 succeed.
+9. Passive transport/VPN-registration health and session-statistics monitoring.
 
 A failure before TUN creation does not change device default routes. A startup failure after TUN creation closes the interface; during an established-session recovery, Kill Switch may intentionally retain blocked routing.
 

@@ -71,11 +71,12 @@ A mode reaches the UI `Connected` state after:
 5. fail-closed TUN establishment;
 6. one SSH/Xray runtime start;
 7. a successful Xray native-loop startup signal;
-8. immediate connected-state publication and background health-monitor startup.
+8. a valid TUN descriptor and an Android `TRANSPORT_VPN` network owned by the app;
+9. connected-state publication and passive health-monitor startup.
 
-The initial HTTP/TLS/SOCKS outbound verification starts after step 8 on an I/O coroutine. It does not delay the UI. A failed first probe is logged and retried; repeated health failures invoke protected reconnection or Kill Switch handling.
+Normal sessions do not start HTTP/TLS/SOCKS verification or latency sockets. The health monitor observes only the existing transport/core and Android VPN registration; loss invokes protected reconnection or Kill Switch handling.
 
-`Connected` therefore means **transport/core/TUN active**, not that a remote endpoint has already answered the optional verification probe. Device verification still requires sustained upload/download evidence.
+`Connected` therefore means **transport/core/TUN active and registered by Android**, not that synthetic traffic has been generated. Device verification still requires sustained upload/download evidence from real application traffic.
 
 DNS configuration and TUN routes are deterministic, but full per-protocol DNS-query inspection remains part of the extended physical test matrix.
 

@@ -6,9 +6,6 @@ import com.ghostnexora.vpn.data.model.ConnectionMode;
 import com.ghostnexora.vpn.data.model.NetworkPreferences;
 import com.ghostnexora.vpn.data.model.VpnProfile;
 
-import java.net.InetAddress;
-import java.net.ServerSocket;
-
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
 
@@ -42,7 +39,7 @@ public final class TunnelManager {
             try {
                 status("[SSH] Autenticación completada");
                 status("[SOCKS] Bridge local listo · 127.0.0.1:" + sshHandle.getSocksPort());
-                String config = StableXrayConfigFactory.INSTANCE.build(profile, sshHandle.getSocksPort(), preferences, null);
+                String config = StableXrayConfigFactory.INSTANCE.build(profile, sshHandle.getSocksPort(), preferences);
                 status("[XRAY] Configuración preflight · " + StableXrayConfigFactory.INSTANCE.summary(profile, preferences));
                 OutboundCheck result = xrayEngine.verifyOutbound(config);
                 status("[NETWORK] Salida remota verificada · " + result.getLatencyMs() + " ms");
@@ -52,7 +49,7 @@ public final class TunnelManager {
                 status("[SSH] Sesión preflight cerrada");
             }
         }
-        String config = StableXrayConfigFactory.INSTANCE.build(profile, null, preferences, null);
+        String config = StableXrayConfigFactory.INSTANCE.build(profile, null, preferences);
         status("[XRAY] Configuración preflight · " + StableXrayConfigFactory.INSTANCE.summary(profile, preferences));
         OutboundCheck result = xrayEngine.verifyOutbound(config);
         status("[NETWORK] Salida remota verificada · " + result.getLatencyMs() + " ms");
@@ -69,9 +66,8 @@ public final class TunnelManager {
             try {
                 status("[SSH] Sesión autenticada y cifrada");
                 status("[SOCKS] Bridge SSH activo · 127.0.0.1:" + sshHandle.getSocksPort());
-                int healthCheckPort = reserveLoopbackPort();
-                String config = StableXrayConfigFactory.INSTANCE.build(profile, sshHandle.getSocksPort(), preferences, healthCheckPort);
-                return startCore(profile, config, tunFd, sshHandle, preferences, healthCheckPort);
+                String config = StableXrayConfigFactory.INSTANCE.build(profile, sshHandle.getSocksPort(), preferences);
+                return startCore(profile, config, tunFd, sshHandle, preferences);
             } catch (Throwable error) {
                 xrayEngine.stop();
                 sshHandle.close();
@@ -79,9 +75,9 @@ public final class TunnelManager {
                 throw rethrow(error);
             }
         }
-        String config = StableXrayConfigFactory.INSTANCE.build(profile, null, preferences, null);
+        String config = StableXrayConfigFactory.INSTANCE.build(profile, null, preferences);
         try {
-            return startCore(profile, config, tunFd, null, preferences, null);
+            return startCore(profile, config, tunFd, null, preferences);
         } catch (Throwable error) {
             xrayEngine.stop();
             status("[ERROR] Xray/TUN detenido · " + shortMessage(error, 180));
@@ -90,14 +86,14 @@ public final class TunnelManager {
     }
 
     private TunnelRuntime startCore(VpnProfile profile, String config, int tunFd, SshTunnelHandle sshHandle,
-                                    NetworkPreferences preferences, Integer healthCheckPort) {
+                                    NetworkPreferences preferences) {
         status("[XRAY] " + StableXrayConfigFactory.INSTANCE.summary(profile, preferences));
         status("[DNS] " + preferences.getDnsMode().getLabel() + " · " + String.join(", ", preferences.dnsServers()));
         status("[ROUTING] Regla explícita TUN → proxy · TCP/UDP según capacidad del runtime");
-        xrayEngine.start(config, tunFd, healthCheckPort);
+        xrayEngine.start(config, tunFd);
         status("[TUN] Xray Core conectado a la interfaz Android");
-        status("[NETWORK] Core activo · verificación de salida programada en segundo plano");
-        return new TunnelRuntime(profile.getSelectedMode(), sshHandle, 0L);
+        status("[NETWORK] Core activo · sin conexiones de prueba adicionales");
+        return new TunnelRuntime(profile.getSelectedMode(), sshHandle);
     }
 
     private void prepareSshRuntime(VpnProfile profile) {
@@ -120,15 +116,6 @@ public final class TunnelManager {
         status("[ROUTING] " + plan.getLimitations());
     }
 
-    private int reserveLoopbackPort() {
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByAddress(new byte[]{127, 0, 0, 1}))) {
-            return server.getLocalPort();
-        } catch (Exception error) {
-            throw new IllegalStateException("No se pudo reservar el puerto de comprobación local", error);
-        }
-    }
-
-    public OutboundCheck verifyActive() { return xrayEngine.verifyActiveOutbound(); }
     public XrayTrafficDelta drainTraffic() { return xrayEngine.drainProxyTraffic(); }
 
     public synchronized void stop(TunnelRuntime runtime) {

@@ -50,7 +50,7 @@ The feature appears only in the roadmap/documentation and must not be shown as o
 
 ## Connection-state interpretation
 
-The Dashboard `Connected` state means the selected transport, Xray native loop, and Android TUN are active. The initial Internet/TLS/SOCKS probe runs afterward in the background. This avoids a UI deadlock and does not weaken captured-traffic routing: the TUN has no silent direct fallback while verification is pending or failing.
+The Dashboard `Connected` state means the selected transport and Xray native loop are active, the TUN descriptor remains valid, and Android exposes a `TRANSPORT_VPN` network owned by this application. Normal sessions do not run an Internet/TLS/SOCKS probe afterward. Sustained real traffic and leak tests are still required before a protocol/device combination is promoted to device verified.
 
 A feature is not promoted to device verified merely because the UI says `Connected`. The evidence record must include successful real traffic, health verification, leak checks, and teardown/recovery behavior.
 

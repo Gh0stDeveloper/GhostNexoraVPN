@@ -35,7 +35,6 @@ public final class XrayCoreEngine {
     private final Context appContext;
     private final Function1<? super String, Unit> onStatus;
     private CoreController controller;
-    private Integer activeHealthCheckPort;
 
     public XrayCoreEngine(Context context, Function1<? super String, Unit> onStatus) {
         if (context == null) throw new IllegalArgumentException("context == null");
@@ -58,11 +57,8 @@ public final class XrayCoreEngine {
         return measureAcrossEndpoints(url -> Libv2ray.measureOutboundDelay(config, url));
     }
 
-    public synchronized void start(String config, int tunFd, Integer healthCheckPort) {
+    public synchronized void start(String config, int tunFd) {
         if (tunFd <= 0) throw new IllegalArgumentException("Descriptor TUN inválido");
-        if (healthCheckPort != null && (healthCheckPort < 1 || healthCheckPort > 65_535)) {
-            throw new IllegalArgumentException("Puerto de comprobación Xray inválido");
-        }
         if (isRunning()) throw new IllegalStateException("Xray Core ya está ejecutándose");
 
         initializeCore();
@@ -73,35 +69,12 @@ public final class XrayCoreEngine {
             status("[TUN] Entregando la interfaz Android al core nativo");
             newController.startLoop(config, tunFd);
             if (!newController.getIsRunning()) throw new IllegalStateException("Xray Core no pudo iniciar el loop TUN");
-            activeHealthCheckPort = healthCheckPort;
             status("[CORE] Xray Core activo");
         } catch (Throwable error) {
             controller = null;
-            activeHealthCheckPort = null;
             try { newController.stopLoop(); } catch (Throwable ignored) { }
             throw new IllegalStateException(firstMessage(error, "Fallo iniciando Xray Core"), error);
         }
-    }
-
-    public void start(String config, int tunFd) {
-        start(config, tunFd, null);
-    }
-
-    /** Remote I/O happens outside the monitor so stop() remains immediately available. */
-    public OutboundCheck verifyActiveOutbound() {
-        CoreController activeController;
-        Integer healthCheckPort;
-        synchronized (this) {
-            CoreController current = controller;
-            if (current == null || !current.getIsRunning()) {
-                throw new IllegalStateException("Xray Core no está activo para validar la salida");
-            }
-            activeController = current;
-            healthCheckPort = activeHealthCheckPort;
-        }
-        if (healthCheckPort != null) return verifySshSocksOutbound(healthCheckPort);
-        status("[NETWORK] Comprobando Internet a través del outbound activo");
-        return measureAcrossEndpoints(activeController::measureDelay);
     }
 
     public synchronized XrayTrafficDelta drainProxyTraffic() {
@@ -118,34 +91,11 @@ public final class XrayCoreEngine {
         CoreController activeController = controller;
         if (activeController == null) return;
         controller = null;
-        activeHealthCheckPort = null;
         try { if (activeController.getIsRunning()) activeController.stopLoop(); } catch (Throwable ignored) { }
     }
 
     public String version() {
         try { return Libv2ray.checkVersionX(); } catch (Throwable ignored) { return "desconocida"; }
-    }
-
-    private OutboundCheck verifySshSocksOutbound(int healthCheckPort) {
-        Throwable lastError = null;
-        status("[NETWORK] Comprobando ruta Xray → SOCKS → direct-tcpip SSH");
-        for (int index = 0; index < Socks5OutboundProbe.targets.size(); index++) {
-            SocksProbeTarget target = Socks5OutboundProbe.targets.get(index);
-            try {
-                status("[SOCKS] Prueba real " + (index + 1) + "/" + Socks5OutboundProbe.targets.size() + " · TLS remoto por SSH");
-                SocksProbeResult result = Socks5OutboundProbe.measure(healthCheckPort, target);
-                status("[SOCKS] Ruta bidireccional verificada · " + result.getTlsProtocol() + " · " +
-                        result.getCipherSuite() + " · " + result.getLatencyMs() + " ms");
-                return new OutboundCheck(result.getLatencyMs(), target.getEndpoint());
-            } catch (Throwable error) {
-                lastError = error;
-                status("[SOCKS] WARN · prueba " + (index + 1) + " falló · " + truncate(firstMessage(error, error.getClass().getSimpleName()), 180));
-            }
-        }
-        throw new IllegalStateException(
-                "La ruta Xray → SOCKS → SSH no completó el handshake TLS remoto: " + truncate(firstMessage(lastError, "sin detalle"), 180),
-                lastError
-        );
     }
 
     private OutboundCheck measureAcrossEndpoints(EndpointMeasure measure) {

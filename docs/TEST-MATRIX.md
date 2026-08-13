@@ -38,7 +38,7 @@ CI success alone is labeled **CI verified**.
 | SSH + Proxy | HTTP CONNECT | tunnel established | Pending |
 | SSH + Proxy | SOCKS5 | tunnel established | Pending |
 | SSH + Proxy | partial response | deterministic timeout/failure | Pending |
-| SSH + SSL + Payload | TLS → payload → SSH | Internet verified in background | Pending |
+| SSH + SSL + Payload | TLS → payload → SSH | one SSH session; real traffic forwarded on demand | Pending |
 | SSH + SSL + Payload | custom SNI → HTTP 200 → SSH | HTTP Custom-compatible Internet | Pending |
 
 ## Xray matrix
@@ -59,20 +59,20 @@ CI success alone is labeled **CI verified**.
 | Hysteria2 | QUIC + TLS | Experimental |
 | Hysteria2 | obfuscation | Experimental |
 
-## Startup concurrency matrix
+## Startup and registration matrix
 
 | Scenario | Expected result | Status |
 |---|---|---|
-| Xray native loop starts | UI changes to `Connected` without waiting for a remote probe | CI/source review pending |
-| SSH probe endpoint responds | background verification records latency and keeps `Connected` | Device pending |
-| First SSH probe stalls | UI remains responsive; second target or timeout proceeds in background | Device pending |
-| Both SSH probe targets fail | warning is logged; no synchronous startup failure or direct fallback | Device pending |
-| Xray HTTP 204 endpoints fail | warning is logged; health monitor retries | Device pending |
-| Disconnect during `Prueba real 1/2` | core/TUN/SSH teardown completes; UI reaches Disconnected | Device pending |
-| Reconnect succeeds | `Connected` is published after core restart; verification runs in background | Device pending |
-| Probe result arrives after runtime replacement | stale result is ignored | Source review pending |
-| Health monitor overlaps startup check | periodic check waits; no duplicate concurrent probe | Source review pending |
-| Probe exceeds 30 seconds | startup job records timeout warning; UI stays Connected | Device pending |
+| Xray starts but Android has no owned VPN network | startup fails; UI never publishes false `Connected` | CI/source review pending |
+| Android exposes owned `TRANSPORT_VPN` and runtime is alive | UI publishes `Connected` and system indicator is active | Device pending |
+| Normal SSH session is idle | no Cloudflare/Google probe, latency socket, or extra SSH session is created | CI/source review pending |
+| First routed application packet | one `direct-tcpip` channel opens inside the existing SSH session | Device pending |
+| Android removes VPN registration | passive monitor enters protected reconnection | Device pending |
+| SSH session closes | passive monitor enters protected reconnection | Device pending |
+| Disconnect during real traffic | core/TUN/SSH teardown completes; UI reaches Disconnected | Device pending |
+| Reconnect succeeds | `Connected` is republished only after Android VPN registration | Device pending |
+| SSH authentication banner | complete sanitized message appears in the log | Device pending |
+| Server MOTD without auth banner | short-lived shell channel on the same SSH session captures the message | Device pending |
 
 ## Routing matrix
 
@@ -103,8 +103,8 @@ CI success alone is labeled **CI verified**.
 - Remote server close.
 - Xray core exit.
 - SSH session close.
-- health endpoint delay/outage.
-- manual disconnect during background verification.
+- Android VPN-registration loss.
+- manual disconnect during real traffic.
 - screen off for 15/60 minutes.
 - process recreation.
 - device reboot with reconnect policy.
@@ -137,17 +137,17 @@ Planned reproducible fixtures:
 - TLS: valid, expired, wrong hostname, incomplete handshake;
 - SSH: valid password, invalid password, incomplete banner, close during key exchange;
 - payload endpoint: 101, 200, delayed fragments;
-- connectivity endpoints: success, refusal, read timeout, indefinite server hold;
+- explicit Diagnostics endpoints: success, refusal, read timeout, indefinite server hold;
 - network impairment: latency, jitter, packet loss, disconnect.
 
 ## Release gate
 
 A stable release requires all automated checks green and no unresolved critical device regression. A marketing claim such as “supports VLESS gRPC REALITY” requires at least one recorded device/server test for that exact combination.
 
-The startup-deadlock fix additionally requires recorded proof that:
+The startup-state fix additionally requires recorded proof that:
 
 1. the VPN package is excluded from its own TUN;
-2. `Connected` is published after Xray startup without waiting for `Prueba real`;
-3. a failed or delayed probe does not freeze the UI;
-4. manual disconnect can tear down a running probe;
-5. no captured application traffic falls back directly while verification is unresolved.
+2. Android displays its VPN indicator before the app publishes `Connected`;
+3. an idle session creates no automatic `1/2` probe or latency socket;
+4. manual disconnect can tear down active real traffic;
+5. no captured application traffic falls back directly.
