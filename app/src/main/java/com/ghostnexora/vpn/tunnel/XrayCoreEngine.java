@@ -49,7 +49,7 @@ public final class XrayCoreEngine {
 
     public synchronized boolean isRunning() {
         CoreController current = controller;
-        return current != null && current.isRunning();
+        return current != null && current.getIsRunning();
     }
 
     public synchronized OutboundCheck verifyOutbound(String config) {
@@ -72,7 +72,7 @@ public final class XrayCoreEngine {
         try {
             status("[TUN] Entregando la interfaz Android al core nativo");
             newController.startLoop(config, tunFd);
-            if (!newController.isRunning()) throw new IllegalStateException("Xray Core no pudo iniciar el loop TUN");
+            if (!newController.getIsRunning()) throw new IllegalStateException("Xray Core no pudo iniciar el loop TUN");
             activeHealthCheckPort = healthCheckPort;
             status("[CORE] Xray Core activo");
         } catch (Throwable error) {
@@ -93,7 +93,7 @@ public final class XrayCoreEngine {
         Integer healthCheckPort;
         synchronized (this) {
             CoreController current = controller;
-            if (current == null || !current.isRunning()) {
+            if (current == null || !current.getIsRunning()) {
                 throw new IllegalStateException("Xray Core no está activo para validar la salida");
             }
             activeController = current;
@@ -106,7 +106,7 @@ public final class XrayCoreEngine {
 
     public synchronized XrayTrafficDelta drainProxyTraffic() {
         CoreController activeController = controller;
-        if (activeController == null || !activeController.isRunning()) return new XrayTrafficDelta();
+        if (activeController == null || !activeController.getIsRunning()) return new XrayTrafficDelta();
         long received = 0L;
         long sent = 0L;
         try { received = Math.max(0L, activeController.queryStats("proxy", "downlink")); } catch (Throwable ignored) { }
@@ -119,7 +119,7 @@ public final class XrayCoreEngine {
         if (activeController == null) return;
         controller = null;
         activeHealthCheckPort = null;
-        try { if (activeController.isRunning()) activeController.stopLoop(); } catch (Throwable ignored) { }
+        try { if (activeController.getIsRunning()) activeController.stopLoop(); } catch (Throwable ignored) { }
     }
 
     public String version() {
