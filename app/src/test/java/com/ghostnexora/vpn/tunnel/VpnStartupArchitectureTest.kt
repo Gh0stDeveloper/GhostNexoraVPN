@@ -48,6 +48,24 @@ class VpnStartupArchitectureTest {
         assertFalse(coreSource.contains("public synchronized OutboundCheck verifyActiveOutbound()"))
     }
 
+    @Test
+    fun nativeCallbacksQueuePersistenceAwayFromTheStartupThread() {
+        val source = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
+        val onCreate = source.substringAfter("public void onCreate()")
+            .substringBefore("public IBinder onBind")
+        val logSection = source.substringAfter("private void log(")
+            .substringBefore("private String friendlyConnectionError")
+        val enqueueIndex = logSection.indexOf("logExecutor.execute")
+        val persistenceIndex = logSection.indexOf("repositoryBridge.log")
+
+        assertTrue(source.contains("Executors.newSingleThreadExecutor"))
+        assertTrue(source.contains("ghost-vpn-log-writer"))
+        assertTrue(onCreate.contains("log(LogLevel.INFO, status"))
+        assertTrue(enqueueIndex >= 0)
+        assertTrue(persistenceIndex > enqueueIndex)
+        assertFalse(onCreate.contains("repositoryBridge.log"))
+    }
+
     private fun sourceFile(relativePath: String): String {
         val candidates = listOf(File(relativePath), File("app/$relativePath"), File("../app/$relativePath"))
         val file = candidates.firstOrNull(File::isFile) ?: error("Unable to locate source file: $relativePath")
