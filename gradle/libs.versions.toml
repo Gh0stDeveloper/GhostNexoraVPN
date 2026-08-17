@@ -11,7 +11,7 @@ hiltNavigationCompose = "1.2.0"
 ksp = "2.0.0-1.0.21"
 room = "2.6.1"
 datastore = "1.1.1"
-gson = "2.11.0"
+gson = "2.14.0"
 # Coroutines 1.10+ is compiled with a newer Kotlin metadata level. Keep this
 # aligned with Kotlin 2.0 until the Kotlin/KSP/Compose toolchain is upgraded as
 # one tested change.
