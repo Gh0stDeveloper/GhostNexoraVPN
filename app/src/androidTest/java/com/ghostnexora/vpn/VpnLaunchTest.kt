@@ -1,6 +1,8 @@
 package com.ghostnexora.vpn
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.ParcelFileDescriptor
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -50,8 +52,18 @@ class VpnLaunchTest {
                 compose.onNodeWithText("Conectar").performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }
 
-                shell("input keyevent KEYCODE_BACK")
-                compose.waitUntil(10_000) { activeWindowPackage() == app.packageName }
+                val serviceInfo = uiAutomation.serviceInfo
+                serviceInfo.flags = serviceInfo.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                uiAutomation.serviceInfo = serviceInfo
+                val cancel = uiAutomation.rootInActiveWindow
+                    ?.findAccessibilityNodeInfosByViewId("android:id/button2")
+                    ?.singleOrNull()
+                assertTrue("The system VPN dialog must allow Cancel",
+                    cancel?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithText("Permiso VPN requerido para conectar")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
                 assertNoVpnService()
             }
         } finally {
