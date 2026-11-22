@@ -111,3 +111,23 @@ When Xray starts but Internet is unavailable, verify in order:
 8. Remote server outbound policy.
 
 Export a sanitized diagnostic report containing the structured error code and stages.
+
+### Import compatibility in 1.0.55
+
+You can open a local or pasted Base64 subscription list (standard or URL-safe
+Base64) without a remote subscription fetch. Standard Xray JSON imports one
+profile per supported outbound, including the flat address/port/credential
+schema and single-endpoint legacy vnext/servers objects. Common fields such as
+gRPC multi-mode, legacy WebSocket Host, and the REALITY public key are mapped
+to the app profile. XHTTP imports selected scalar options and uses the original
+host/path. Full Xray documents with custom routing, balancers, or nested XHTTP
+download transports cannot be replayed through profile import.
+
+The runtime uses [2dust/AndroidLibXrayLite v26.5.19](https://github.com/2dust/AndroidLibXrayLite/tree/v26.5.19),
+a Go mobile binding for Xray core. GhostVpnService, TunnelManager and
+XrayCoreEngine run in Java. Profile import, configuration mapping and Compose
+screens use Kotlin. The C++ JNI helper clears mutable import buffers and
+supports GNX runtime checks. It does not implement the network protocols.
+
+Fast DNS and Slow DNS require an identified compatible server and wire
+protocol. System DNS and DoH in Xray do not implement those tunnel modes.

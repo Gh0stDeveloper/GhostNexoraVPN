@@ -9,7 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +61,7 @@ import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
+import com.ghostnexora.vpn.util.JsonManager
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.launch
 
@@ -133,41 +132,17 @@ fun ImportScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceLG)
         ) {
             item {
-                GhostCard(
-                    backgroundColor = NeonCyan.copy(alpha = 0.10f),
-                    borderColor = NeonCyan,
-                    contentPadding = PaddingValues(Dimens.SpaceMD)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-                            Icon(Icons.Filled.Lock, null, tint = NeonCyan)
-                            Text("Importación protegida y verificable", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-                        }
-                        Text(
-                            "Admite perfiles individuales GNX3, GNX2, vmess://, vless://, trojan://, hysteria2://, hy2://, ssh://, JSON Xray, QR, portapapeles y archivos. Siempre muestra una vista previa antes de guardar.",
-                            color = TextSecondary,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-
-            item {
-                OutlinedTextField(
-                    value = state.password,
-                    onValueChange = viewModel::setImportPassword,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Contraseña del archivo (si tiene)") },
-                    supportingText = { Text("GNX3 administrado por la app no requiere escribir contraseña.") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
+                Text(
+                    "Abre un perfil .gnx, un JSON de Xray o una lista de enlaces. Revisa la vista previa antes de guardar.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
                 )
             }
 
             item {
                 GhostButton(
                     text = if (state.isLoading) "Procesando…" else "Seleccionar archivo",
-                    onClick = { picker.launch(arrayOf("application/octet-stream", "application/json", "text/plain", "*/*")) },
+                    onClick = { picker.launch(arrayOf(JsonManager.MIME_GNX, "application/octet-stream", "application/json", "text/plain", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
                     containerColor = NeonCyan,
@@ -193,8 +168,8 @@ fun ImportScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
-                    containerColor = NeonGreen,
-                    contentColor = TextOnAccent
+                    containerColor = SurfaceVariant,
+                    contentColor = TextPrimary
                 )
             }
 
@@ -209,8 +184,8 @@ fun ImportScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
-                    containerColor = NeonAmber,
-                    contentColor = TextOnAccent
+                    containerColor = SurfaceVariant,
+                    contentColor = TextPrimary
                 )
             }
 
@@ -219,8 +194,20 @@ fun ImportScreen(
                 (state.selectedUri != null || state.selectedRawText != null)
             ) {
                 item {
+                    OutlinedTextField(
+                        value = state.password,
+                        onValueChange = viewModel::setImportPassword,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Contraseña del archivo") },
+                        supportingText = { Text("El creador exige una contraseña para abrir este archivo.") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        enabled = !state.isLoading,
+                        singleLine = true
+                    )
+                }
+                item {
                     GhostButton(
-                        text = "Descifrar de nuevo",
+                        text = "Desbloquear archivo",
                         onClick = viewModel::retryEncryptedImport,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = state.password.length >= 10 && !state.isLoading,

@@ -44,7 +44,8 @@ import com.ghostnexora.vpn.ui.theme.TextTertiary
 enum class CompatibilityStatus(val label: String) {
     CI_VERIFIED("Verificado por CI"),
     DEVICE_PENDING("Prueba física pendiente"),
-    EXPERIMENTAL("Experimental")
+    EXPERIMENTAL("Experimental"),
+    NOT_AVAILABLE("Sin implementar")
 }
 
 data class CompatibilityEntry(
@@ -65,6 +66,7 @@ private val compatibilityEntries = listOf(
     CompatibilityEntry("Xray", "VMess", "TCP · WS · gRPC · TLS", CompatibilityStatus.DEVICE_PENDING, "Estructura y routing verificados por pruebas unitarias."),
     CompatibilityEntry("Xray", "Trojan", "TCP/TLS · WS · gRPC", CompatibilityStatus.DEVICE_PENDING, "TLS estricto y SNI obligatorio."),
     CompatibilityEntry("Xray", "Hysteria2", "QUIC · UDP · TLS · obfs", CompatibilityStatus.EXPERIMENTAL, "Requiere pruebas de cambios de red y pérdida de paquetes."),
+    CompatibilityEntry("DNS", "Fast DNS / Slow DNS", "Túnel mediante DNS", CompatibilityStatus.NOT_AVAILABLE, "Se necesita confirmar el protocolo y contar con un perfil y servidor compatibles."),
     CompatibilityEntry("Core", "TUN Android", "IPv4 · IPv4 preferido · dual stack", CompatibilityStatus.CI_VERIFIED, "MTU, DNS, rutas y clases runtime se verifican en Debug y Release/R8."),
     CompatibilityEntry("Producto", "Split tunneling", "Todas · solo seleccionadas · excluir", CompatibilityStatus.CI_VERIFIED, "Las reglas se aplican con VpnService.Builder y se validan antes del TUN.")
 )
@@ -77,7 +79,6 @@ fun CompatibilityScreen(onBack: () -> Unit) {
                 title = {
                     Column {
                         Text("Compatibilidad", fontWeight = FontWeight.SemiBold)
-                        Text("Estado real, sin afirmar pruebas inexistentes", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                 },
                 navigationIcon = {
@@ -118,7 +119,8 @@ fun CompatibilityScreen(onBack: () -> Unit) {
                 val color = when (entry.status) {
                     CompatibilityStatus.CI_VERIFIED -> NeonGreen
                     CompatibilityStatus.DEVICE_PENDING -> NeonAmber
-                    CompatibilityStatus.EXPERIMENTAL -> Color.Red.copy(alpha = 0.8f)
+                    CompatibilityStatus.EXPERIMENTAL -> NeonAmber
+                    CompatibilityStatus.NOT_AVAILABLE -> TextSecondary
                 }
                 GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {

@@ -288,9 +288,17 @@ data class CreateEditUiState(
         get() = TlsVerificationMode.fromStored(tlsVerificationMode)
     val isVmess: Boolean
         get() = tags.split(',').any { it.trim().equals("vmess", ignoreCase = true) } ||
-            payload.contains("protocol=vmess", ignoreCase = true)
+            usesXrayOption("protocol", "vmess")
     val isReality: Boolean
-        get() = payload.contains("security=reality", ignoreCase = true)
+        get() = usesXrayOption("security", "reality")
+
+    private fun usesXrayOption(key: String, value: String): Boolean {
+        if (payload.trimStart().startsWith("{")) {
+            return runCatching { org.json.JSONObject(payload).optString(key).equals(value, true) }
+                .getOrDefault(false)
+        }
+        return payload.split('|', ';', '\n').any { it.trim().equals("$key=$value", true) }
+    }
 }
 
 val PROXY_TYPES = listOf("", "http", "socks5")
