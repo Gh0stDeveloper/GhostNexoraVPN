@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  XRAY_LIB_TAG: v26.5.19
+  XRAY_LIB_TAG: v26.11.9
+  XRAY_LIB_SHA256: cdfef146218233a31a8b52c8b1016557730d3b63fc121d4c84cacea50e669155
   ANDROID_NDK_VERSION: 27.0.12077973
   CMAKE_VERSION: 3.22.1
   ANDROID_BUILD_TOOLS_VERSION: 35.0.0
@@ -76,7 +77,7 @@ jobs:
 
       - name: Verify native dependencies
         run: |
-          test -s app/libs/libv2ray.aar
+          printf '%s  %s\n' "$XRAY_LIB_SHA256" app/libs/libv2ray.aar | sha256sum -c -
           test -s app/src/main/cpp/CMakeLists.txt
           test -s app/src/main/cpp/native_guard.cpp
           unzip -l app/libs/libv2ray.aar | grep -Fq 'assets/geoip.dat'

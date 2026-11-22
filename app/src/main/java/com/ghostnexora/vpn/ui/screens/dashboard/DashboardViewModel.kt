@@ -1,10 +1,13 @@
 package com.ghostnexora.vpn.ui.screens.dashboard
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
+import android.os.Build
 import android.os.IBinder
 import android.os.RemoteException
 import android.os.SystemClock
@@ -22,6 +25,7 @@ import com.ghostnexora.vpn.service.VpnServiceContract
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,6 +37,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -62,7 +67,7 @@ class DashboardViewModel @Inject constructor(
                     if (state is VpnConnectionState.Disconnected) {
                         clearRuntimeLifetime()
                         handleServiceState(state)
-                    } else if (watchRuntimeLifetime(lifetime)) {
+                    } else if (watchRuntimeLifetime(lifetime, VpnServiceContract.runtimePidFrom(event))) {
                         handleServiceState(state)
                     }
                 }
@@ -255,12 +260,13 @@ class DashboardViewModel @Inject constructor(
         )
     }
 
-    private fun watchRuntimeLifetime(lifetime: IBinder): Boolean {
+    private fun watchRuntimeLifetime(lifetime: IBinder, pid: Int): Boolean {
         if (runtimeLifetime == lifetime) return true
         clearRuntimeLifetime()
+        val observedAt = System.currentTimeMillis()
         val recipient = IBinder.DeathRecipient {
             viewModelScope.launch {
-                if (runtimeLifetime == lifetime) resetAfterRuntimeDeath()
+                if (runtimeLifetime == lifetime) resetAfterRuntimeDeath(pid, observedAt)
             }
         }
         return try {
@@ -269,7 +275,7 @@ class DashboardViewModel @Inject constructor(
             runtimeDeathRecipient = recipient
             true
         } catch (_: RemoteException) {
-            resetAfterRuntimeDeath()
+            resetAfterRuntimeDeath(pid, observedAt)
             false
         }
     }
@@ -281,7 +287,7 @@ class DashboardViewModel @Inject constructor(
         runtimeDeathRecipient = null
     }
 
-    private fun resetAfterRuntimeDeath() {
+    private fun resetAfterRuntimeDeath(pid: Int, observedAt: Long) {
         clearRuntimeLifetime()
         _uiState.update { it.copy(traffic = VpnTrafficStats()) }
         val state = _uiState.value.connectionState
@@ -289,11 +295,49 @@ class DashboardViewModel @Inject constructor(
             handleServiceState(VpnConnectionState.Disconnected)
         } else if (state !is VpnConnectionState.Error) {
             val message = "El motor VPN se cerró inesperadamente. Vuelve a intentar. [VPN-ENGINE-EXIT]"
-            handleServiceState(VpnConnectionState.Error(message, _uiState.value.activeProfile?.name.orEmpty()))
+            val profile = _uiState.value.activeProfile
+            val error = VpnConnectionState.Error(message, profile?.name.orEmpty())
+            handleServiceState(error)
             viewModelScope.launch {
-                repository.log(LogLevel.ERROR, message, _uiState.value.activeProfile?.id, "VPN")
+                repository.log(LogLevel.ERROR, message, profile?.id, "VPN")
+                val reason = readRuntimeExitReason(pid, observedAt) ?: return@launch
+                val diagnosis = "$message · $reason"
+                repository.log(LogLevel.ERROR, diagnosis, profile?.id, "VPN")
+                if (_uiState.value.connectionState === error) {
+                    handleServiceState(error.copy(message = diagnosis))
+                }
             }
         }
+    }
+
+    private suspend fun readRuntimeExitReason(pid: Int, observedAt: Long): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || pid <= 0) return null
+        val manager = context.getSystemService(ActivityManager::class.java) ?: return null
+        repeat(6) { attempt ->
+            val exit = withContext(Dispatchers.IO) {
+                runCatching {
+                    manager.getHistoricalProcessExitReasons(context.packageName, pid, 4).firstOrNull {
+                        it.processName == "${context.packageName}:vpn" &&
+                            it.timestamp >= observedAt - 2_000L
+                    }
+                }.getOrNull()
+            }
+            if (exit != null) {
+                val reason = when (exit.reason) {
+                    ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo nativo"
+                    ApplicationExitInfo.REASON_CRASH -> "excepción de la aplicación"
+                    ApplicationExitInfo.REASON_SIGNALED -> "terminación por señal"
+                    ApplicationExitInfo.REASON_ANR -> "el proceso no respondió (ANR)"
+                    ApplicationExitInfo.REASON_LOW_MEMORY -> "memoria insuficiente"
+                    ApplicationExitInfo.REASON_USER_REQUESTED -> "cierre solicitado"
+                    else -> "motivo del sistema ${exit.reason}"
+                }
+                return "Android: $reason · estado ${exit.status}"
+            }
+            // ActivityManager can publish the exit record after Binder reports the death.
+            if (attempt < 5) delay(400)
+        }
+        return null
     }
 
     private fun handleServiceState(state: VpnConnectionState) {
