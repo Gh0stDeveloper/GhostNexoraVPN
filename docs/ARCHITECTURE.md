@@ -24,7 +24,7 @@ GhostVpnService — private :vpn process
   ├─ physical-network tracking
   ├─ fail-closed VpnService.Builder routes and strict app rules
   ├─ exact Android-owned VPN registration and data-plane gate
-  ├─ native-core ownership and bounded process recovery
+  ├─ native-core ownership and network reconnection
   ├─ health monitoring and reconnection
   └─ session statistics
           │
@@ -41,7 +41,7 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 1. Validate the selected profile.
 2. Confirm a non-VPN physical network.
 3. Load IP, DNS, MTU, reconnect, and application-routing preferences.
-4. Persist the desired connected state for bounded process recovery.
+4. Keep the connection owned by the running VPN service. A new session after process termination requires Connect.
 5. Configure application allow/exclude rules. The VPN package is excluded from full-device/exclusion routing with `addDisallowedApplication(packageName)`; only-selected mode excludes it by omitting it from the allowlist because Android forbids mixing both list types.
 6. Establish the Android TUN in fail-closed mode.
 7. Start one SSH/Xray runtime against the TUN descriptor.

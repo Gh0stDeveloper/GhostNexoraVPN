@@ -2,6 +2,8 @@ package com.ghostnexora.vpn.service
 
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import android.os.IBinder
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 
@@ -14,6 +16,7 @@ object VpnServiceContract {
     const val ACTION_TRAFFIC_STATS = "com.ghostnexora.vpn.TRAFFIC_STATS"
     const val ACTION_QUERY_RUNTIME = "com.ghostnexora.vpn.QUERY_RUNTIME"
 
+    private const val EXTRA_RUNTIME_LIFETIME = "runtime_lifetime"
     private const val EXTRA_KIND = "runtime_kind"
     private const val EXTRA_PROFILE_NAME = "runtime_profile_name"
     private const val EXTRA_MESSAGE = "runtime_message"
@@ -31,10 +34,11 @@ object VpnServiceContract {
     private const val EXTRA_NETWORK_TYPE = "traffic_network_type"
     private const val EXTRA_PROTOCOL = "traffic_protocol"
 
-    fun stateIntent(context: Context, state: VpnConnectionState): Intent {
+    fun stateIntent(context: Context, state: VpnConnectionState, lifetime: IBinder): Intent {
         val snapshot = VpnStateSnapshot.from(state)
         return Intent(ACTION_RUNTIME_STATE)
             .setPackage(context.packageName)
+            .putExtras(Bundle().apply { putBinder(EXTRA_RUNTIME_LIFETIME, lifetime) })
             .putExtra(EXTRA_KIND, snapshot.kind.id)
             .putExtra(EXTRA_PROFILE_NAME, snapshot.profileName.take(MAX_PROFILE_NAME_LENGTH))
             .putExtra(EXTRA_MESSAGE, snapshot.message.take(MAX_MESSAGE_LENGTH))
@@ -43,6 +47,9 @@ object VpnServiceContract {
             .putExtra(EXTRA_ATTEMPT, snapshot.attempt)
             .putExtra(EXTRA_NEXT_RETRY_MS, snapshot.nextRetryMs)
     }
+
+    fun runtimeLifetimeFrom(intent: Intent): IBinder? =
+        intent.extras?.getBinder(EXTRA_RUNTIME_LIFETIME)
 
     fun stateFrom(intent: Intent): VpnConnectionState? {
         if (intent.action != ACTION_RUNTIME_STATE) return null

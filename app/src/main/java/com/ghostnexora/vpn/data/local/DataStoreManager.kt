@@ -67,8 +67,6 @@ class DataStoreManager @Inject constructor(
 
     companion object Keys {
         private const val PREFERENCES_NAME = "ghost_nexora_prefs"
-        private const val RECOVERY_WINDOW_MS = 2 * 60 * 1_000L
-        private const val MAX_RECOVERY_ATTEMPTS = 3
 
         val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
         val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
@@ -76,7 +74,6 @@ class DataStoreManager @Inject constructor(
         val FLOATING_WINDOW = booleanPreferencesKey("floating_window_enabled")
         val NOTIFICATIONS = booleanPreferencesKey("notifications_enabled")
         val DARK_THEME = booleanPreferencesKey("dark_theme")
-        val RECONNECT_ON_BOOT = booleanPreferencesKey("reconnect_on_boot")
         val LAST_CONNECTED_TIME = longPreferencesKey("last_connected_time")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val SHOW_FLOATING_HINT = booleanPreferencesKey("show_floating_hint")
@@ -92,9 +89,6 @@ class DataStoreManager @Inject constructor(
         val RECONNECT_MAX_ATTEMPTS = intPreferencesKey("reconnect_max_attempts")
         val APP_ROUTING_MODE = stringPreferencesKey("app_routing_mode")
         val APP_ROUTING_PACKAGES = stringSetPreferencesKey("app_routing_packages")
-        val VPN_DESIRED_CONNECTED = booleanPreferencesKey("vpn_desired_connected")
-        val VPN_RECOVERY_ATTEMPTS = intPreferencesKey("vpn_recovery_attempts")
-        val VPN_RECOVERY_WINDOW_STARTED_AT = longPreferencesKey("vpn_recovery_window_started_at")
     }
 
     val activeProfileId: Flow<String> = dataStore.data.safeCatch().map { it[ACTIVE_PROFILE_ID] ?: "" }
@@ -103,12 +97,9 @@ class DataStoreManager @Inject constructor(
     val floatingWindowEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[FLOATING_WINDOW] ?: false }
     val notificationsEnabled: Flow<Boolean> = dataStore.data.safeCatch().map { it[NOTIFICATIONS] ?: true }
     val darkTheme: Flow<Boolean> = dataStore.data.safeCatch().map { it[DARK_THEME] ?: true }
-    val reconnectOnBoot: Flow<Boolean> = dataStore.data.safeCatch().map { it[RECONNECT_ON_BOOT] ?: false }
     val showFloatingHint: Flow<Boolean> = dataStore.data.safeCatch().map { it[SHOW_FLOATING_HINT] ?: true }
     val logsMaxEntries: Flow<Int> = dataStore.data.safeCatch().map { it[LOGS_MAX_ENTRIES] ?: 500 }
     val isFirstLaunch: Flow<Boolean> = dataStore.data.safeCatch().map { it[FIRST_LAUNCH] ?: true }
-    val vpnDesiredConnected: Flow<Boolean> =
-        dataStore.data.safeCatch().map { it[VPN_DESIRED_CONNECTED] ?: false }
     val lastUpdateCheckAt: Flow<Long> = dataStore.data.safeCatch().map { it[LAST_UPDATE_CHECK_AT] ?: 0L }
     val dismissedUpdateIdentity: Flow<String> = dataStore.data.safeCatch().map { it[DISMISSED_UPDATE_IDENTITY].orEmpty() }
     val networkPreferences: Flow<NetworkPreferences> = dataStore.data.safeCatch().map { values ->
@@ -135,7 +126,6 @@ class DataStoreManager @Inject constructor(
     suspend fun setFloatingWindowEnabled(enabled: Boolean) = edit { it[FLOATING_WINDOW] = enabled }
     suspend fun setNotificationsEnabled(enabled: Boolean) = edit { it[NOTIFICATIONS] = enabled }
     suspend fun setDarkTheme(enabled: Boolean) = edit { it[DARK_THEME] = enabled }
-    suspend fun setReconnectOnBoot(enabled: Boolean) = edit { it[RECONNECT_ON_BOOT] = enabled }
     suspend fun setLastConnectedTime(time: Long) = edit { it[LAST_CONNECTED_TIME] = time }
     suspend fun setShowFloatingHint(show: Boolean) = edit { it[SHOW_FLOATING_HINT] = show }
     suspend fun setLogsMaxEntries(max: Int) = edit { it[LOGS_MAX_ENTRIES] = max }
@@ -158,41 +148,6 @@ class DataStoreManager @Inject constructor(
     suspend fun setAppRoutingPackages(value: Set<String>) = edit {
         it[APP_ROUTING_PACKAGES] = AppRoutingPreferences(packages = value).normalizedPackages
     }
-    suspend fun setVpnDesiredConnected(value: Boolean) = edit {
-        it[VPN_DESIRED_CONNECTED] = value
-    }
-
-    suspend fun resetVpnRecovery() = edit {
-        it.remove(VPN_RECOVERY_ATTEMPTS)
-        it.remove(VPN_RECOVERY_WINDOW_STARTED_AT)
-    }
-
-    /**
-     * Claims one bounded automatic process-recovery attempt.
-     *
-     * A fatal abort in libgojni cannot be caught by Kotlin. Keeping this
-     * counter in the multi-process store lets Android restart the VPN process
-     * without creating an endless crash loop.
-     *
-     * @return the 1-based attempt number, or null when the recovery budget is exhausted.
-     */
-    suspend fun claimVpnRecoveryAttempt(now: Long = System.currentTimeMillis()): Int? {
-        var claimedAttempt: Int? = null
-        edit { values ->
-            val windowStartedAt = values[VPN_RECOVERY_WINDOW_STARTED_AT] ?: 0L
-            val inCurrentWindow = windowStartedAt > 0L && now - windowStartedAt in 0L..RECOVERY_WINDOW_MS
-            val attempts = if (inCurrentWindow) values[VPN_RECOVERY_ATTEMPTS] ?: 0 else 0
-
-            if (attempts < MAX_RECOVERY_ATTEMPTS) {
-                val nextAttempt = attempts + 1
-                values[VPN_RECOVERY_ATTEMPTS] = nextAttempt
-                if (!inCurrentWindow) values[VPN_RECOVERY_WINDOW_STARTED_AT] = now
-                claimedAttempt = nextAttempt
-            }
-        }
-        return claimedAttempt
-    }
-
     suspend fun clearActiveProfile() = edit { it.remove(ACTIVE_PROFILE_ID) }
 
     suspend fun clearAll() {

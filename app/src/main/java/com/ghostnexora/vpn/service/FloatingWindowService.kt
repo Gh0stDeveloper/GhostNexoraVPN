@@ -91,7 +91,7 @@ class FloatingWindowService : android.app.Service(),
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         showBubble()
         observeVpnState()
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -37,17 +38,18 @@ class VpnLaunchTest {
         runBlocking {
             repository.saveProfile(profile)
             repository.setActiveProfileId(profile.id)
-            repository.setVpnDesiredConnected(true)
         }
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(MainActivity::class.java).use { activity ->
                 compose.waitUntil(10_000) {
                     compose.onAllNodesWithText(profile.name).fetchSemanticsNodes().isNotEmpty()
                 }
                 compose.waitUntil(10_000) { runBlocking { !repository.isFirstLaunch.first() } }
                 assertEquals(app.packageName, activeWindowPackage())
                 assertNoVpnService()
-                assertTrue(runBlocking { repository.vpnDesiredConnected.first() })
+                activity.moveToState(Lifecycle.State.CREATED)
+                activity.moveToState(Lifecycle.State.RESUMED)
+                assertNoVpnService()
 
                 compose.onNodeWithText(app.getString(R.string.btn_connect)).performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }
@@ -68,7 +70,6 @@ class VpnLaunchTest {
             }
         } finally {
             runBlocking {
-                repository.setVpnDesiredConnected(false)
                 repository.setActiveProfileId("")
                 repository.deleteProfile(profile)
             }

@@ -297,11 +297,6 @@ fun SettingsScreen(
 
             SettingsSection("General") {
                 SwitchSetting(
-                    "Reconnect on boot",
-                    "Restore the VPN after Android restarts the service",
-                    state.reconnectOnBoot
-                ) { viewModel.toggleReconnectOnBoot() }
-                SwitchSetting(
                     "Floating control",
                     "Show the optional connection overlay",
                     state.floatingWindow

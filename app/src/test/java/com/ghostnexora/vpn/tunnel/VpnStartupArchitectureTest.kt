@@ -85,8 +85,8 @@ class VpnStartupArchitectureTest {
         assertTrue(serviceSource.contains("beginDataPlaneVerification(profile, tunnelRuntime, false, 0)"))
         val failureSection = serviceSource.substringAfter("private void failDataPlaneVerification")
             .substringBefore("private boolean isCurrentDataPlaneVerification")
-        assertTrue(failureSection.contains("cleanupTunnel(true)"))
-        assertTrue(failureSection.contains("repositoryBridge.setVpnDesiredConnected(false)"))
+        assertTrue(failureSection.contains("cleanupTunnel()"))
+        assertTrue(failureSection.contains("stopAfterCommand()"))
         assertTrue(failureSection.contains("[ROUTE-DATA-204]"))
         assertFalse(failureSection.contains("publishState(connected)"))
 
@@ -133,16 +133,32 @@ class VpnStartupArchitectureTest {
         val stop = service.substringAfter("private void stopAfterCommand()")
             .substringBefore("private void submit(")
         val disconnect = service.substringAfter("private void handleDisconnect()")
-            .substringBefore("private void handleSystemRestart()")
+            .substringBefore("private void triggerReconnect(")
 
         assertTrue(command.contains("commandStartId = startId;"))
-        assertTrue(disconnect.contains("cleanupTunnel(true)"))
-        assertTrue(disconnect.indexOf("cleanupTunnel(true)") < disconnect.indexOf("stopAfterCommand()"))
+        assertTrue(disconnect.contains("cleanupTunnel()"))
+        assertTrue(disconnect.indexOf("cleanupTunnel()") < disconnect.indexOf("stopAfterCommand()"))
         assertFalse(service.contains("stopSelf();"))
         assertTrue(stop.contains("int finishedStartId = commandStartId;"))
         assertTrue(stop.contains("mainHandler.post("))
         assertTrue(stop.contains("if (!destroyed && stopSelfResult(finishedStartId))"))
         assertTrue(stop.indexOf("stopSelfResult(") < stop.indexOf("stopForeground("))
+    }
+
+    @Test
+    fun runtimeStopsWithoutRestartingWhenAndroidEndsTheService() {
+        val service = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
+        val overlay = sourceFile("src/main/java/com/ghostnexora/vpn/service/FloatingWindowService.kt")
+        val manifest = sourceFile("src/main/AndroidManifest.xml")
+        val dashboard = sourceFile("src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardViewModel.kt")
+
+        assertTrue(service.contains("return START_NOT_STICKY"))
+        assertTrue(overlay.contains("return START_NOT_STICKY"))
+        assertFalse(service.contains("handleSystemRestart"))
+        assertFalse(manifest.contains("android.intent.action.BOOT_COMPLETED"))
+        assertTrue(manifest.contains("android:stopWithTask=\"false\""))
+        assertTrue(manifest.contains("android.net.VpnService.SUPPORTS_ALWAYS_ON"))
+        assertTrue(dashboard.contains("lifetime.linkToDeath"))
     }
 
     private fun sourceFile(relativePath: String): String {

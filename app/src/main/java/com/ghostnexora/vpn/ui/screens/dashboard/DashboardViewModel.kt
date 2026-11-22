@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
+import android.os.IBinder
+import android.os.RemoteException
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -47,13 +49,23 @@ class DashboardViewModel @Inject constructor(
     private var lastConnectRequestElapsed: Long = 0L
     private var pendingPermissionProfileId: String? = null
     private var runtimeReceiverRegistered = false
+    private var runtimeLifetime: IBinder? = null
+    private var runtimeDeathRecipient: IBinder.DeathRecipient? = null
 
     private val runtimeReceiver = object : BroadcastReceiver() {
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
             val event = intent ?: return
             when (event.action) {
-                VpnServiceContract.ACTION_RUNTIME_STATE ->
-                    VpnServiceContract.stateFrom(event)?.let(::handleServiceState)
+                VpnServiceContract.ACTION_RUNTIME_STATE -> {
+                    val state = VpnServiceContract.stateFrom(event) ?: return
+                    val lifetime = VpnServiceContract.runtimeLifetimeFrom(event) ?: return
+                    if (state is VpnConnectionState.Disconnected) {
+                        clearRuntimeLifetime()
+                        handleServiceState(state)
+                    } else if (watchRuntimeLifetime(lifetime)) {
+                        handleServiceState(state)
+                    }
+                }
                 VpnServiceContract.ACTION_TRAFFIC_STATS ->
                     VpnServiceContract.trafficFrom(event)?.let { stats ->
                         _uiState.update { it.copy(traffic = stats) }
@@ -224,6 +236,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        clearRuntimeLifetime()
         connectJob?.cancel()
         stopSessionTimer()
         if (runtimeReceiverRegistered) {
@@ -251,6 +264,38 @@ class DashboardViewModel @Inject constructor(
         context.sendBroadcast(
             Intent(VpnServiceContract.ACTION_QUERY_RUNTIME).setPackage(context.packageName)
         )
+    }
+
+    private fun watchRuntimeLifetime(lifetime: IBinder): Boolean {
+        if (runtimeLifetime == lifetime) return true
+        clearRuntimeLifetime()
+        val recipient = IBinder.DeathRecipient {
+            viewModelScope.launch {
+                if (runtimeLifetime == lifetime) resetAfterRuntimeDeath()
+            }
+        }
+        return try {
+            lifetime.linkToDeath(recipient, 0)
+            runtimeLifetime = lifetime
+            runtimeDeathRecipient = recipient
+            true
+        } catch (_: RemoteException) {
+            resetAfterRuntimeDeath()
+            false
+        }
+    }
+
+    private fun clearRuntimeLifetime() {
+        val recipient = runtimeDeathRecipient
+        if (recipient != null) runCatching { runtimeLifetime?.unlinkToDeath(recipient, 0) }
+        runtimeLifetime = null
+        runtimeDeathRecipient = null
+    }
+
+    private fun resetAfterRuntimeDeath() {
+        clearRuntimeLifetime()
+        _uiState.update { it.copy(traffic = VpnTrafficStats()) }
+        handleServiceState(VpnConnectionState.Disconnected)
     }
 
     private fun handleServiceState(state: VpnConnectionState) {
