@@ -108,7 +108,11 @@ class StableXrayConfigFactoryTest {
         val dns = (0 until outbounds.length())
             .map(outbounds::getJSONObject)
             .first { it.getString("tag") == "dns-out" }
-        assertEquals("proxy", dns.getJSONObject("proxySettings").getString("tag"))
+        assertTrue(!dns.has("proxySettings"))
+        assertEquals(
+            "proxy",
+            dns.getJSONObject("streamSettings").getJSONObject("sockopt").getString("dialerProxy")
+        )
     }
 
     @Test

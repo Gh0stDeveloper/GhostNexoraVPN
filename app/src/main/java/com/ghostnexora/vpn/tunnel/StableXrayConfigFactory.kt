@@ -149,7 +149,10 @@ object StableXrayConfigFactory {
         )
         .apply {
             if (detourThroughProxy) {
-                put("proxySettings", JSONObject().put("tag", "proxy"))
+                put(
+                    "streamSettings",
+                    JSONObject().put("sockopt", JSONObject().put("dialerProxy", "proxy"))
+                )
             }
         }
 
