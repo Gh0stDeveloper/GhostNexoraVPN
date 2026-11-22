@@ -2,9 +2,9 @@
 
 ## Design goals
 
-Ghost Nexora VPN separates profile storage, transport creation, Android routing, explicit diagnostics, passive health monitoring, and UI state. A transport cannot mark the VPN connected by itself: the authoritative state belongs to `GhostVpnService` after Android establishes the TUN, exposes the application's exact VPN network, Xray reports that its native loop is running, and the data plane returns a real response.
+Ghost Nexora VPN separates profile storage, transport creation, Android routing, explicit diagnostics, passive health monitoring, and UI state. A transport cannot mark the VPN connected by itself: the authoritative state belongs to `GhostVpnService` after Android establishes the TUN, exposes the application's exact VPN network, Xray reports that its native loop is running, and the active Xray outbound returns a real response.
 
-`Connected` means that the selected SSH/Xray transport, local bridge where required, native core, valid TUN descriptor, Android-owned `TRANSPORT_VPN` network, and one bidirectional Internet flow through that exact network are active. A single bounded acceptance request runs at startup or reconnection; health monitoring is passive afterward.
+`Connected` means that the selected SSH/Xray transport, local bridge where required, native core, valid TUN descriptor, Android-owned `TRANSPORT_VPN` network, and a bidirectional response from the selected Xray outbound are active. A single bounded acceptance request runs at startup or reconnection; health monitoring is passive afterward.
 
 ## Runtime layers
 
@@ -46,12 +46,12 @@ Remote SSH / VLESS / VMess / Trojan / Hysteria2 server
 6. Establish the Android TUN in fail-closed mode.
 7. Start one SSH/Xray runtime against the TUN descriptor.
 8. Require the TUN descriptor to remain valid and `ConnectivityManager` to expose an owned `TRANSPORT_VPN` network.
-9. Bind one socket to that exact VPN `Network` and require an HTTPS response through TUN → Xray → selected outbound.
+9. Require an HTTPS response through the active Xray dispatcher and its default profile outbound.
 10. Recheck the SSH/Xray transport, then publish `Connected` to the UI process.
 11. Start passive transport, VPN-registration, and statistics monitoring. These checks do not open remote sockets.
 12. On transport or Android VPN-registration loss, reconnect and repeat the single qualification, or close/retain the TUN according to Kill Switch policy.
 
-Exactly one bounded HTTPS request qualifies each startup or restored runtime. It uses the existing VPN/Xray/SSH chain, has no fallback target or retry counter, and is canceled by teardown. No periodic Internet, TLS, SOCKS, ping, or latency probe is permitted after acceptance.
+One bounded qualification runs per startup or recovery against a fixed HTTPS endpoint through the already-running Xray dispatcher. The bundled core can attempt the request twice within 12 seconds. Teardown stops the instance and invalidates pending results. Android TUN registration is verified separately because the VPN package is excluded from its own TUN. No periodic Internet, TLS, SOCKS, ping, or latency probe is permitted after acceptance.
 
 ## Data model
 
