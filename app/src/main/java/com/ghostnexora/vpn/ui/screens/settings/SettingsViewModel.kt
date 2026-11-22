@@ -221,7 +221,6 @@ data class SettingsUiState(
     val networkPreferences: NetworkPreferences = NetworkPreferences(),
     val knownHostCount: Int = 0,
     val permissionStatus: PermissionStatus = PermissionStatus(
-        vpn = false,
         overlay = false,
         notification = false,
         battery = false

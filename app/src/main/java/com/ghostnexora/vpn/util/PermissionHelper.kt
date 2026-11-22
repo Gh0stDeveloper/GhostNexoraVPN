@@ -1,15 +1,12 @@
 package com.ghostnexora.vpn.util
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.VpnService
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
-import androidx.activity.result.ActivityResultLauncher
 import androidx.core.app.NotificationManagerCompat
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -18,23 +15,6 @@ import androidx.core.app.NotificationManagerCompat
 // ══════════════════════════════════════════════════════════════════════════
 
 object PermissionHelper {
-
-    // ── VPN ───────────────────────────────────────────────────────────────
-
-    /**
-     * Verifica si ya se concedió permiso VPN.
-     * Si prepare() devuelve null, el permiso ya fue otorgado.
-     */
-    fun hasVpnPermission(context: Context): Boolean =
-        VpnService.prepare(context) == null
-
-    /**
-     * Devuelve el Intent para solicitar permiso VPN.
-     * Debe lanzarse con startActivityForResult o ActivityResultLauncher.
-     * Devuelve null si el permiso ya fue concedido.
-     */
-    fun vpnPermissionIntent(context: Context): Intent? =
-        VpnService.prepare(context)
 
     // ── Overlay (Ventana flotante) ─────────────────────────────────────────
 
@@ -109,7 +89,6 @@ object PermissionHelper {
      */
     fun permissionStatus(context: Context): PermissionStatus =
         PermissionStatus(
-            vpn          = hasVpnPermission(context),
             overlay      = hasOverlayPermission(context),
             notification = hasNotificationPermission(context),
             battery      = isBatteryOptimizationIgnored(context),
@@ -140,21 +119,16 @@ object PermissionHelper {
  * Estado resumido de todos los permisos necesarios.
  */
 data class PermissionStatus(
-    val vpn: Boolean,
     val overlay: Boolean,
     val notification: Boolean,
     val battery: Boolean,
     val unknownSources: Boolean = false
 ) {
-    /** True si todos los permisos críticos están concedidos */
-    val allGranted: Boolean get() = vpn && notification
-
     /** True si los permisos opcionales también están concedidos */
     val allOptionalGranted: Boolean get() = overlay && battery && unknownSources
 
     /** Descripción de qué falta */
     fun missingList(): List<String> = buildList {
-        if (!vpn)            add("Permiso VPN")
         if (!notification)    add("Notificaciones")
         if (!overlay)        add("Ventana flotante (overlay)")
         if (!battery)        add("Optimización de batería")

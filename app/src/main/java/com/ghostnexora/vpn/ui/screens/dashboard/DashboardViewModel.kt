@@ -1,6 +1,5 @@
 package com.ghostnexora.vpn.ui.screens.dashboard
 
-import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -46,6 +45,7 @@ class DashboardViewModel @Inject constructor(
     private var connectJob: Job? = null
     private var sessionStartTime: Long = 0L
     private var lastConnectRequestElapsed: Long = 0L
+    private var pendingPermissionProfileId: String? = null
     private var runtimeReceiverRegistered = false
 
     private val runtimeReceiver = object : BroadcastReceiver() {
@@ -90,10 +90,10 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun onMainAction(activity: Activity) {
+    fun onMainAction(launchVpnPermission: (Intent) -> Unit) {
         when (_uiState.value.connectionState) {
             is VpnConnectionState.Disconnected,
-            is VpnConnectionState.Error -> requestConnect(activity)
+            is VpnConnectionState.Error -> requestConnect(launchVpnPermission)
             is VpnConnectionState.Connecting -> cancelConnect()
             is VpnConnectionState.Reconnecting,
             is VpnConnectionState.Connected -> disconnect()
@@ -101,30 +101,32 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private fun requestConnect(activity: Activity) {
+    private fun requestConnect(launchVpnPermission: (Intent) -> Unit) {
+        if (pendingPermissionProfileId != null) return
         val profile = _uiState.value.activeProfile
         if (profile == null) {
             _uiState.update { it.copy(snackbarMessage = "Selecciona un perfil primero") }
             return
         }
-        val permissionIntent = VpnService.prepare(activity)
+        val permissionIntent = VpnService.prepare(context)
         if (permissionIntent != null) {
-            _uiState.update { it.copy(pendingVpnPermissionIntent = permissionIntent) }
+            pendingPermissionProfileId = profile.id
+            launchVpnPermission(permissionIntent)
             return
         }
         connect(profile)
     }
 
     fun onVpnPermissionGranted() {
-        val profile = _uiState.value.activeProfile ?: return
-        _uiState.update { it.copy(pendingVpnPermissionIntent = null) }
-        connect(profile)
+        val profileId = pendingPermissionProfileId ?: return
+        pendingPermissionProfileId = null
+        val profile = _uiState.value.activeProfile
+        if (profile?.id == profileId) connect(profile)
     }
 
     fun onVpnPermissionDenied() {
-        _uiState.update {
-            it.copy(pendingVpnPermissionIntent = null, snackbarMessage = "Permiso VPN requerido para conectar")
-        }
+        pendingPermissionProfileId = null
+        _uiState.update { it.copy(snackbarMessage = "Permiso VPN requerido para conectar") }
     }
 
     private fun connect(profile: VpnProfile) {
@@ -246,13 +248,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun requestRuntimeSnapshot() {
-        runCatching {
-            context.startService(
-                Intent(context, GhostVpnService::class.java).apply {
-                    action = VpnServiceContract.ACTION_QUERY_RUNTIME
-                }
-            )
-        }
+        context.sendBroadcast(
+            Intent(VpnServiceContract.ACTION_QUERY_RUNTIME).setPackage(context.packageName)
+        )
     }
 
     private fun handleServiceState(state: VpnConnectionState) {
@@ -292,7 +290,6 @@ data class DashboardUiState(
     val sessionElapsed: Long = 0L,
     val traffic: VpnTrafficStats = VpnTrafficStats(),
     val snackbarMessage: String? = null,
-    val pendingVpnPermissionIntent: Intent? = null,
     val recentLogs: List<LogEntry> = emptyList()
 ) {
     val isConnected: Boolean get() = connectionState is VpnConnectionState.Connected

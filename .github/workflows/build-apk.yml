@@ -25,7 +25,7 @@ env:
 jobs:
   build:
     name: Build, test and validate product hardening
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -38,17 +38,17 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android toolchain
         shell: bash
         run: |
+          set -euo pipefail
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
-          test -n "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --licenses < <(yes) >/dev/null
           "$SDKMANAGER" --install \
+            "platforms;android-35" \
+            "platform-tools" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
             "ndk;${ANDROID_NDK_VERSION}" \
             "cmake;${CMAKE_VERSION}"
@@ -261,6 +261,7 @@ jobs:
           ./gradlew assembleDebug --stacktrace --warning-mode all 2>&1 | tee gradle-debug.log
 
       - name: Verify native ABIs in Debug APK
+        id: verify_debug_abis
         shell: bash
         run: |
           set -euo pipefail
@@ -357,6 +358,24 @@ jobs:
           fi
           echo "Hardened runtime classes survived R8."
 
+      - name: Build VPN launch instrumentation APK
+        run: ./gradlew assembleDebugAndroidTest --stacktrace
+
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify manual VPN launch on Android
+        uses: reactivecircus/android-emulator-runner@1dcd0090116d15e7c562f8db72807de5e036a4ed # v2.34.0
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/test-vpn-launch.sh
+
       - name: Upload Gradle diagnostics
         if: always()
         uses: actions/upload-artifact@v6
@@ -366,6 +385,8 @@ jobs:
             gradle-test.log
             gradle-lint.log
             gradle-debug.log
+            emulator-vpn-launch.log
+            emulator-vpn-logcat.log
             gradle-release.log
             dependency-inventory.txt
             debug-apk-contents.txt
@@ -375,6 +396,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Debug APK
+        if: success() || (failure() && steps.verify_debug_abis.outcome == 'success')
         uses: actions/upload-artifact@v6
         with:
           name: GhostNexoraVPN-debug-${{ github.run_number }}

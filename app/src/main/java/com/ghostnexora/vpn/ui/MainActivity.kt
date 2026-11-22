@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -17,12 +16,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -68,7 +64,6 @@ import com.ghostnexora.vpn.ui.theme.GhostNexoraTheme
 import com.ghostnexora.vpn.ui.theme.NeonCyan
 import com.ghostnexora.vpn.ui.theme.SurfaceDark
 import com.ghostnexora.vpn.ui.theme.TextPrimary
-import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.neonGlow
 import com.ghostnexora.vpn.update.UpdateViewModel
 import com.ghostnexora.vpn.util.PermissionHelper
@@ -230,17 +225,11 @@ private fun NativePermissionBootstrap(
         settingsViewModel.refreshPermissions()
         step = 1
     }
-    val vpnLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        settingsViewModel.refreshPermissions()
-        step = 2
-    }
     val batteryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         settingsViewModel.refreshPermissions()
-        step = 3
+        step = 2
     }
 
     LaunchedEffect(enabled, step) {
@@ -260,17 +249,12 @@ private fun NativePermissionBootstrap(
             }
 
             1 -> {
-                val vpnIntent = VpnService.prepare(context)
-                if (vpnIntent != null) vpnLauncher.launch(vpnIntent) else step = 2
-            }
-
-            2 -> {
                 if (PermissionHelper.isBatteryOptimizationIgnored(context)) {
-                    step = 3
+                    step = 2
                 } else {
                     runCatching {
                         batteryLauncher.launch(PermissionHelper.batteryOptimizationIntent(context))
-                    }.onFailure { step = 3 }
+                    }.onFailure { step = 2 }
                 }
             }
 
@@ -287,19 +271,12 @@ private fun GhostTopBar(
 ) {
     CenterAlignedTopAppBar(
         title = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "VPN protegida · túnel cifrado",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
         },
         navigationIcon = {
             IconButton(onClick = onMenuClick) {
@@ -310,20 +287,11 @@ private fun GhostTopBar(
                 )
             }
         },
-        actions = {
-            Icon(
-                imageVector = Icons.Filled.Security,
-                contentDescription = null,
-                tint = NeonCyan,
-                modifier = Modifier.padding(end = 16.dp)
-            )
-        },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = SurfaceDark,
             scrolledContainerColor = SurfaceDark,
             navigationIconContentColor = NeonCyan,
-            titleContentColor = TextPrimary,
-            actionIconContentColor = NeonCyan
+            titleContentColor = TextPrimary
         ),
         modifier = Modifier.neonGlow(NeonCyan, radius = 4.dp, alpha = 0.08f)
     )
