@@ -37,7 +37,7 @@ sealed class VpnConnectionState {
 
     val actionLabelRes: Int get() = when (this) {
         is Disconnected -> R.string.btn_connect
-        is Connecting -> R.string.btn_cancel_action
+        is Connecting -> R.string.status_connecting
         is Reconnecting, is Connected -> R.string.btn_disconnect
         is Disconnecting -> R.string.status_closing
         is Error -> R.string.btn_retry
@@ -45,16 +45,16 @@ sealed class VpnConnectionState {
 
     fun label(): String = when (this) {
         is Disconnected -> "Desconectado"
-        is Connecting -> "Conectando…"
+        is Connecting -> "Verificando…"
         is Reconnecting -> "Reconectando…"
-        is Connected -> "Protegido"
+        is Connected -> "Conectado"
         is Disconnecting -> "Desconectando…"
         is Error -> "Error"
     }
 
     fun actionLabel(): String = when (this) {
         is Disconnected -> "Conectar"
-        is Connecting -> "Cancelar"
+        is Connecting -> "Verificando…"
         is Reconnecting -> "Desconectar"
         is Connected -> "Desconectar"
         is Disconnecting -> "Cerrando…"

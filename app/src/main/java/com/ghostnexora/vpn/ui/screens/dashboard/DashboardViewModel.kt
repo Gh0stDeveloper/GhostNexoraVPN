@@ -105,7 +105,7 @@ class DashboardViewModel @Inject constructor(
         when (_uiState.value.connectionState) {
             is VpnConnectionState.Disconnected,
             is VpnConnectionState.Error -> requestConnect(launchVpnPermission)
-            is VpnConnectionState.Connecting -> cancelConnect()
+            is VpnConnectionState.Connecting -> Unit
             is VpnConnectionState.Reconnecting,
             is VpnConnectionState.Connected -> disconnect()
             is VpnConnectionState.Disconnecting -> Unit
@@ -193,17 +193,6 @@ class DashboardViewModel @Inject constructor(
             action = GhostVpnService.ACTION_DISCONNECT
             putExtra(GhostVpnService.EXTRA_DISCONNECT_SOURCE, "panel principal")
         })
-    }
-
-    private fun cancelConnect() {
-        if (connectJob?.isActive == true) {
-            connectJob?.cancel()
-            connectJob = null
-            updateState(VpnConnectionState.Disconnected)
-            _uiState.update { it.copy(snackbarMessage = "Conexión cancelada; la red normal sigue activa") }
-        } else {
-            disconnect()
-        }
     }
 
     private fun startSessionTimer() {
@@ -295,7 +284,16 @@ class DashboardViewModel @Inject constructor(
     private fun resetAfterRuntimeDeath() {
         clearRuntimeLifetime()
         _uiState.update { it.copy(traffic = VpnTrafficStats()) }
-        handleServiceState(VpnConnectionState.Disconnected)
+        val state = _uiState.value.connectionState
+        if (state is VpnConnectionState.Disconnected || state is VpnConnectionState.Disconnecting) {
+            handleServiceState(VpnConnectionState.Disconnected)
+        } else if (state !is VpnConnectionState.Error) {
+            val message = "El motor VPN se cerró inesperadamente. Vuelve a intentar. [VPN-ENGINE-EXIT]"
+            handleServiceState(VpnConnectionState.Error(message, _uiState.value.activeProfile?.name.orEmpty()))
+            viewModelScope.launch {
+                repository.log(LogLevel.ERROR, message, _uiState.value.activeProfile?.id, "VPN")
+            }
+        }
     }
 
     private fun handleServiceState(state: VpnConnectionState) {

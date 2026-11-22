@@ -13,13 +13,14 @@ class VpnStartupArchitectureTest {
         val startSection = manager.substringAfter("public synchronized TunnelRuntime start")
             .substringBefore("private TunnelRuntime startCore")
         val qualificationSection = manager.substringAfter(
-            "public OutboundCheck verifyActiveDataPlane()"
+            "public OutboundCheck verifyActiveDataPlane(TunnelRuntime runtime)"
         )
             .substringBefore("public synchronized void stop")
 
         assertFalse(startSection.contains("verifyActiveDataPlane"))
         assertTrue(manager.substringAfter("private TunnelRuntime startCore").contains("xrayEngine.start"))
         assertTrue(qualificationSection.contains("xrayEngine.verifyActiveOutbound()"))
+        assertTrue(qualificationSection.contains("SshOutboundProbe.verify(ssh.getSocksPort())"))
         assertFalse(qualificationSection.contains("sshEngine.connectWithSocks"))
     }
 
@@ -64,7 +65,7 @@ class VpnStartupArchitectureTest {
         val managerSource = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/TunnelManager.java")
         assertFalse(managerSource.contains("healthCheckPort"))
         assertTrue(
-            managerSource.contains("public OutboundCheck verifyActiveDataPlane()")
+            managerSource.contains("public OutboundCheck verifyActiveDataPlane(TunnelRuntime runtime)")
         )
 
         val engine = sourceFile("src/main/java/com/ghostnexora/vpn/tunnel/XrayCoreEngine.java")
@@ -81,7 +82,7 @@ class VpnStartupArchitectureTest {
             .substringBefore("private void startStatsTicker")
         assertFalse(healthMonitor.contains("verifyActiveDataPlane"))
         assertTrue(serviceSource.contains("DATA_PLANE_VERIFICATION_TIMEOUT_MS"))
-        assertTrue(serviceSource.contains("tunnelManager.verifyActiveDataPlane()"))
+        assertTrue(serviceSource.contains("tunnelManager.verifyActiveDataPlane(expectedRuntime)"))
         assertTrue(serviceSource.contains("beginDataPlaneVerification(profile, tunnelRuntime, false, 0)"))
         val failureSection = serviceSource.substringAfter("private void failDataPlaneVerification")
             .substringBefore("private boolean isCurrentDataPlaneVerification")

@@ -267,6 +267,7 @@ public final class GhostVpnService extends VpnService {
     @Override
     public void onDestroy() {
         destroyed = true;
+        boolean requestedStop = intentionalDisconnect;
         mainHandler.removeCallbacksAndMessages(null);
         unregisterReceiver(runtimeQueryReceiver);
         intentionalDisconnect = true;
@@ -281,7 +282,13 @@ public final class GhostVpnService extends VpnService {
         if (!(previousState instanceof VpnConnectionState.Disconnected)
                 && !(previousState instanceof VpnConnectionState.Error)) {
             publishTraffic(emptyTraffic());
-            publishState(VpnConnectionState.Disconnected.INSTANCE);
+            if (requestedStop || previousState instanceof VpnConnectionState.Disconnecting) {
+                publishState(VpnConnectionState.Disconnected.INSTANCE);
+            } else {
+                String message = "Android detuvo el motor VPN antes de finalizar la sesión [VPN-ENGINE-EXIT]";
+                publishState(new VpnConnectionState.Error(message, ""));
+                log(LogLevel.ERROR, message, profileId(), "VPN");
+            }
         }
         OutboundSocketProtection.clear();
         try {
@@ -552,8 +559,8 @@ public final class GhostVpnService extends VpnService {
     }
 
     /**
-     * Keeps the UI in Connecting/Reconnecting until the active Xray outbound
-     * proves bidirectional Internet access. The check reuses the existing core,
+     * Keeps the UI in verification until the active transport proves
+     * bidirectional Internet access. The check reuses the existing core,
      * SOCKS bridge and SSH session; it never establishes a second VPN or SSH
      * login. Completion is posted back to the serialized service executor.
      */
@@ -594,7 +601,7 @@ public final class GhostVpnService extends VpnService {
         );
         dataPlaneVerificationTask = scheduler.submit(() -> {
             try {
-                OutboundCheck check = tunnelManager.verifyActiveDataPlane();
+                OutboundCheck check = tunnelManager.verifyActiveDataPlane(expectedRuntime);
                 submit(() -> completeDataPlaneVerification(
                         profile,
                         expectedRuntime,
@@ -628,7 +635,8 @@ public final class GhostVpnService extends VpnService {
             return;
         }
         Network vpn = activeVpnNetwork;
-        if (vpn == null || !isExpectedOwnedVpnNetwork(vpn)) {
+        ParcelFileDescriptor tun = tunInterface;
+        if (tun == null || !tun.getFileDescriptor().valid() || vpn == null || !isExpectedOwnedVpnNetwork(vpn)) {
             failDataPlaneVerification(
                     profile,
                     expectedRuntime,
@@ -663,7 +671,6 @@ public final class GhostVpnService extends VpnService {
         if (afterReconnect) {
             reconnectCount++;
         }
-        repositoryBridge.markLastUsed(profile.getId());
         sessionConnectedSince = System.currentTimeMillis();
         VpnConnectionState.Connected connected = connectedState(profile);
         publishState(connected);
@@ -678,6 +685,11 @@ public final class GhostVpnService extends VpnService {
         startStatsTicker(profile);
         startHealthMonitor(profile);
         maybeStartFloatingWindow();
+        try {
+            repositoryBridge.markLastUsed(profile.getId());
+        } catch (Exception error) {
+            log(LogLevel.WARNING, "No se pudo actualizar el último uso del perfil", profile.getId(), "VPN");
+        }
     }
 
     private void failDataPlaneVerification(
@@ -696,8 +708,6 @@ public final class GhostVpnService extends VpnService {
                 "una respuesta real: " + detail + " [ROUTE-DATA-204]";
 
         if (!afterReconnect) {
-            cleanupTunnel();
-            activeProfile = null;
             VpnConnectionState.Error state = new VpnConnectionState.Error(
                     message + " [" + profile.getConnectionModeLabel() + "]",
                     profile.getName()
@@ -705,6 +715,8 @@ public final class GhostVpnService extends VpnService {
             publishState(state);
             VpnNotificationHelper.update(this, state);
             log(LogLevel.ERROR, message, profile.getId(), "VPN");
+            cleanupTunnel();
+            activeProfile = null;
             stopAfterCommand();
             return;
         }
@@ -739,15 +751,12 @@ public final class GhostVpnService extends VpnService {
             long generation
     ) {
         VpnProfile currentProfile = activeProfile;
-        ParcelFileDescriptor tun = tunInterface;
         return !destroyed
                 && !intentionalDisconnect
                 && generation == dataPlaneVerificationGeneration
                 && currentProfile != null
                 && currentProfile.getId().equals(profile.getId())
-                && tunnelRuntime == expectedRuntime
-                && tun != null
-                && tun.getFileDescriptor().valid();
+                && tunnelRuntime == expectedRuntime;
     }
 
     private boolean claimDataPlaneVerification(

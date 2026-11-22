@@ -330,7 +330,10 @@ private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
             .clip(CircleShape)
             .background(color.copy(alpha = 0.08f))
             .border(1.dp, color.copy(alpha = 0.32f), CircleShape)
-            .clickable(onClick = onAction),
+            .clickable(
+                enabled = state !is VpnConnectionState.Connecting && state !is VpnConnectionState.Disconnecting,
+                onClick = onAction
+            ),
         contentAlignment = Alignment.Center
     ) {
         Box(
@@ -588,7 +591,7 @@ private fun stateColor(state: VpnConnectionState): Color = when (state) {
 private fun connectionSubtitle(state: DashboardUiState): String = when (val connection = state.connectionState) {
     is VpnConnectionState.Connected -> "${state.serverIp} · ${state.traffic.protocol}"
     is VpnConnectionState.Reconnecting -> "Recuperando transporte sin liberar el TUN"
-    is VpnConnectionState.Connecting -> "Preparando túnel seguro"
+    is VpnConnectionState.Connecting -> "Verificando el servidor y la ruta de datos"
     is VpnConnectionState.Disconnecting -> "Cerrando rutas y transporte"
     is VpnConnectionState.Error -> connection.message
     VpnConnectionState.Disconnected -> state.activeProfile?.connectionModeLabel ?: "VPN lista para conectar"
@@ -596,7 +599,7 @@ private fun connectionSubtitle(state: DashboardUiState): String = when (val conn
 
 private fun VpnConnectionState.actionHint(): String = when (this) {
     is VpnConnectionState.Connected -> "Toca el botón para cerrar el túnel de forma segura"
-    is VpnConnectionState.Connecting -> "Toca el botón si deseas cancelar el intento"
+    is VpnConnectionState.Connecting -> "Espera a que termine la verificación"
     is VpnConnectionState.Reconnecting -> "La aplicación mantiene protegida la ruta durante la recuperación"
     is VpnConnectionState.Disconnecting -> "Liberando la interfaz VPN de Android"
     is VpnConnectionState.Error -> "Revisa el registro y toca para volver a intentar"

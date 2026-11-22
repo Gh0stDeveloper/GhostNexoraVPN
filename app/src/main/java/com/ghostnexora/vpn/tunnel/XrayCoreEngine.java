@@ -27,7 +27,7 @@ public final class XrayCoreEngine {
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
     private static final Object INITIALIZATION_LOCK = new Object();
     private static final List<String> REQUIRED_ASSETS = Arrays.asList("geoip.dat", "geosite.dat");
-    private static final List<String> CONNECTIVITY_TEST_URLS = Arrays.asList(
+    static final List<String> CONNECTIVITY_TEST_URLS = Arrays.asList(
             "https://cp.cloudflare.com/generate_204",
             "https://www.gstatic.com/generate_204"
     );

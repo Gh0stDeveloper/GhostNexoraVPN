@@ -16,7 +16,7 @@
 
     <!-- Dashboard -->
     <string name="status_disconnected">Desconectado</string>
-    <string name="status_connecting">Conectando…</string>
+    <string name="status_connecting">Verificando…</string>
     <string name="status_connected">Conectado</string>
     <string name="status_error">Error de conexión</string>
     <string name="btn_connect">Conectar</string>
@@ -158,7 +158,7 @@
     <string name="nav_open">Abrir navegación</string>
     <string name="status_reconnecting">Reconectando…</string>
     <string name="status_disconnecting">Desconectando…</string>
-    <string name="status_protected">Protegido</string>
+    <string name="status_protected">Conectado</string>
     <string name="status_error_short">Error</string>
     <string name="status_closing">Cerrando…</string>
     <string name="settings_language_device">Idioma de la app</string>

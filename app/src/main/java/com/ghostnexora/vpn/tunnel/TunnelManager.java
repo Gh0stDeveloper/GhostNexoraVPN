@@ -118,10 +118,15 @@ public final class TunnelManager {
 
     public XrayTrafficDelta drainTraffic() { return xrayEngine.drainProxyTraffic(); }
 
-    public OutboundCheck verifyActiveDataPlane() {
-        status("[NETWORK] Validando salida desde el Xray activo → proxy del perfil");
+    public OutboundCheck verifyActiveDataPlane(TunnelRuntime runtime) {
+        SshTunnelHandle ssh = runtime.sshHandle();
+        status(ssh == null
+                ? "[NETWORK] Validando salida desde el Xray activo → proxy del perfil"
+                : "[NETWORK] Verificando respuesta HTTPS por el bridge SSH autenticado");
         try {
-            OutboundCheck check = xrayEngine.verifyActiveOutbound();
+            OutboundCheck check = ssh == null
+                    ? xrayEngine.verifyActiveOutbound()
+                    : SshOutboundProbe.verify(ssh.getSocksPort());
             status("[NETWORK] Salida del perfil verificada · " + check.getLatencyMs() + " ms");
             return check;
         } catch (Exception error) {

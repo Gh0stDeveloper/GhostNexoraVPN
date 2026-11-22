@@ -18,7 +18,7 @@
     <string name="settings_language">Language</string>
     <string name="settings_title">Settings</string>
     <string name="status_disconnected">Disconnected</string>
-    <string name="status_connecting">Connecting…</string>
+    <string name="status_connecting">Verifying…</string>
     <string name="btn_connect">Connect</string>
     <string name="btn_disconnect">Disconnect</string>
     <string name="btn_cancel_action">Cancel</string>
@@ -63,7 +63,7 @@
     <string name="nav_open">Open navigation</string>
     <string name="status_reconnecting">Reconnecting…</string>
     <string name="status_disconnecting">Disconnecting…</string>
-    <string name="status_protected">Protected</string>
+    <string name="status_protected">Connected</string>
     <string name="status_error_short">Error</string>
     <string name="status_closing">Closing…</string>
     <string name="settings_language_device">App language</string>
