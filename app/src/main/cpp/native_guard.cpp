@@ -80,16 +80,14 @@ Java_com_ghostnexora_vpn_security_NativeGuard_nativeWipe(
     const jsize length = env->GetArrayLength(buffer);
     if (length <= 0) return;
 
-    jboolean isCopy = JNI_FALSE;
-    jbyte* data = env->GetByteArrayElements(buffer, &isCopy);
-    if (data == nullptr) return;
-
-    volatile jbyte* cursor = data;
-    for (jsize i = 0; i < length; ++i) {
-        cursor[i] = 0;
+    // Wipe the Java array without asking JNI to copy its sensitive contents.
+    constexpr std::array<jbyte, 4096> zeros{};
+    for (jsize offset = 0; offset < length;) {
+        const auto count = std::min(length - offset, static_cast<jsize>(zeros.size()));
+        env->SetByteArrayRegion(buffer, offset, count, zeros.data());
+        if (env->ExceptionCheck()) return;
+        offset += count;
     }
-
-    env->ReleaseByteArrayElements(buffer, data, 0);
 }
 
 extern "C"

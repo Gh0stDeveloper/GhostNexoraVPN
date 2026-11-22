@@ -100,6 +100,12 @@ object ProfileTechnicalSummaries {
     }
 
     private fun parseOptions(raw: String): Map<String, String> {
+        if (raw.trimStart().startsWith("{")) {
+            return runCatching {
+                val json = org.json.JSONObject(raw)
+                json.keys().asSequence().associateWith(json::optString)
+            }.getOrDefault(emptyMap())
+        }
         if (raw.isBlank() || !raw.contains('=')) return emptyMap()
         return raw
             .split('|', ';', '\n')

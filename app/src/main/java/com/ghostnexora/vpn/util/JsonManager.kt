@@ -47,7 +47,11 @@ class JsonManager @Inject constructor(
             val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
                 input.readBytesLimited(MAX_IMPORT_BYTES)
             } ?: return ImportResult.Error("No se pudo abrir el archivo")
-            parseImportBytes(bytes, passphrase)
+            try {
+                parseImportBytes(bytes, passphrase)
+            } finally {
+                NativeGuard.wipe(bytes)
+            }
         } catch (error: Throwable) {
             ImportResult.Error("Error al leer el archivo: ${safeError(error)}")
         }
@@ -149,7 +153,7 @@ class JsonManager @Inject constructor(
             val password = passphrase ?: return ImportResult.PasswordRequired("Este archivo .gnx requiere contraseña")
             parseEncrypted(bytes, password)
         } else {
-            parseImportText(bytes.toString(Charsets.UTF_8))
+            importFromString(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"), passphrase)
         }
     }
 
@@ -260,7 +264,7 @@ class JsonManager @Inject constructor(
                 rawText.contains("trojan://", true) -> "Enlaces Trojan"
                 rawText.contains("hysteria2://", true) || rawText.contains("hy2://", true) -> "Enlaces Hysteria2"
                 rawText.contains("ssh://", true) -> "Enlaces SSH"
-                else -> "Enlaces compatibles"
+                else -> "Lista de enlaces compatible"
             }
             return ImportResult.Success(protocolProfiles, source)
         }

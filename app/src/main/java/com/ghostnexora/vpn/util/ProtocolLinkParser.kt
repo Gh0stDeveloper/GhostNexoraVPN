@@ -16,16 +16,29 @@ import java.util.UUID
 object ProtocolLinkParser {
     fun parseText(rawText: String): List<VpnProfile> {
         if (rawText.isBlank()) return emptyList()
-        val trimmed = rawText.trim()
+        val trimmed = rawText.trim().removePrefix("\uFEFF").trimStart()
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             parseXrayJson(trimmed).takeIf(List<VpnProfile>::isNotEmpty)?.let { return it }
         }
-        return rawText.lineSequence()
+        val links = parseLines(trimmed)
+        if (links.isNotEmpty()) return links
+
+        // Subscription files are frequently a Base64-encoded list of share links.
+        val encoded = trimmed.filterNot(Char::isWhitespace)
+        if (!subscriptionBase64.matches(encoded)) return emptyList()
+        val decoded = decodeBase64ToString(encoded) ?: return emptyList()
+        return parseLines(decoded, includeSsh = false)
+    }
+
+    private val subscriptionBase64 = Regex("[A-Za-z0-9+/_-]+={0,2}")
+
+    private fun parseLines(text: String, includeSsh: Boolean = true): List<VpnProfile> =
+        text.lineSequence()
             .map(String::trim)
             .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .filter { includeSsh || !it.startsWith("ssh://", true) }
             .flatMap { parseLine(it).asSequence() }
             .toList()
-    }
 
     fun supportsProtocolLinks(rawText: String): Boolean = parseText(rawText).isNotEmpty()
 
@@ -61,14 +74,16 @@ object ProtocolLinkParser {
     }
 
     private fun parseVmess(link: String): VpnProfile? {
-        val decoded = decodeBase64ToString(link.substringAfter("vmess://").trim()) ?: return null
+        val decoded = decodeBase64ToString(link.substringAfter("://").trim()) ?: return null
         val json = runCatching { JSONObject(decoded) }.getOrNull() ?: return null
         val host = json.optString("add").trim()
-        val port = json.optString("port").toIntOrNull() ?: json.optInt("port", 443)
+        val port = json.optString("port", "443").toIntOrNull() ?: return null
         val uuid = json.optString("id").trim()
         if (host.isBlank() || port !in 1..65535 || uuid.isBlank()) return null
 
+        if (!supportsXrayTransport(json.optString("net"))) return null
         val security = json.optString("tls").trim().lowercase()
+        if (security !in setOf("", "none", "tls", "reality")) return null
         val sni = json.optString("sni").ifBlank { json.optString("host") }.ifBlank { host }
         return VpnProfile(
             id = UUID.randomUUID().toString(),
@@ -107,17 +122,20 @@ object ProtocolLinkParser {
 
     private fun parseVless(link: String): VpnProfile? {
         val uri = safeUri(link) ?: return null
-        val userId = decodeQueryComponent(uri.rawUserInfo.orEmpty()).trim()
+        val userId = decodeUriComponent(uri.rawUserInfo.orEmpty())
         val host = uri.host.orEmpty().trim()
-        val port = uri.port.takeIf { it in 1..65535 } ?: 443
+        val port = if (uri.port == -1) 443 else uri.port
+        if (port !in 1..65535) return null
         if (userId.isBlank() || host.isBlank()) return null
 
-        val query = parseQuery(uri.rawQuery)
+        val query = parseQuery(uri.rawQuery, ::decodeUriComponent)
+        if (!supportsXrayTransport(query["type"].orEmpty())) return null
         val security = query["security"].orEmpty().lowercase()
+        if (security !in setOf("", "none", "tls", "reality")) return null
         val sni = query["sni"].orEmpty().ifBlank { query["host"].orEmpty() }.ifBlank { host }
         return VpnProfile(
             id = UUID.randomUUID().toString(),
-            name = decodeQueryComponent(uri.rawFragment.orEmpty()).ifBlank { "VLESS $host:$port" },
+            name = decodeUriComponent(uri.rawFragment.orEmpty()).ifBlank { "VLESS $host:$port" },
             host = host,
             port = port,
             username = userId,
@@ -142,6 +160,9 @@ object ProtocolLinkParser {
                 "serviceName" to query["serviceName"].orEmpty(),
                 "authority" to query["authority"].orEmpty(),
                 "mode" to query["mode"].orEmpty(),
+                "extra" to safeXhttpExtra(query["extra"]),
+                "pcs" to query["pcs"].orEmpty(),
+                "vcn" to query["vcn"].orEmpty(),
                 "headerType" to query["headerType"].orEmpty(),
                 "seed" to query["seed"].orEmpty(),
                 "packetEncoding" to query["packetEncoding"].orEmpty()
@@ -155,16 +176,20 @@ object ProtocolLinkParser {
 
     private fun parseTrojan(link: String): VpnProfile? {
         val uri = safeUri(link) ?: return null
-        val password = decodeQueryComponent(uri.rawUserInfo.orEmpty()).trim()
+        val password = decodeUriComponent(uri.rawUserInfo.orEmpty())
         val host = uri.host.orEmpty().trim()
-        val port = uri.port.takeIf { it in 1..65535 } ?: 443
+        val port = if (uri.port == -1) 443 else uri.port
+        if (port !in 1..65535) return null
         if (password.isBlank() || host.isBlank()) return null
 
-        val query = parseQuery(uri.rawQuery)
+        val query = parseQuery(uri.rawQuery, ::decodeUriComponent)
+        if (!supportsXrayTransport(query["type"].orEmpty())) return null
+        val security = query["security"].orEmpty().lowercase()
+        if (security !in setOf("", "tls", "reality")) return null
         val sni = query["sni"].orEmpty().ifBlank { query["host"].orEmpty() }.ifBlank { host }
         return VpnProfile(
             id = UUID.randomUUID().toString(),
-            name = decodeQueryComponent(uri.rawFragment.orEmpty()).ifBlank { "Trojan $host:$port" },
+            name = decodeUriComponent(uri.rawFragment.orEmpty()).ifBlank { "Trojan $host:$port" },
             host = host,
             port = port,
             password = password,
@@ -176,13 +201,19 @@ object ProtocolLinkParser {
                 "net" to query["type"].orEmpty(),
                 "host" to query["host"].orEmpty(),
                 "path" to query["path"].orEmpty(),
-                "security" to query["security"].orEmpty().ifBlank { "tls" },
+                "security" to security.ifBlank { "tls" },
+                "pbk" to query["pbk"].orEmpty(),
+                "sid" to query["sid"].orEmpty(),
+                "spx" to query["spx"].orEmpty(),
                 "sni" to sni,
                 "fp" to query["fp"].orEmpty(),
                 "alpn" to query["alpn"].orEmpty(),
                 "serviceName" to query["serviceName"].orEmpty(),
                 "authority" to query["authority"].orEmpty(),
                 "mode" to query["mode"].orEmpty(),
+                "extra" to safeXhttpExtra(query["extra"]),
+                "pcs" to query["pcs"].orEmpty(),
+                "vcn" to query["vcn"].orEmpty(),
                 "headerType" to query["headerType"].orEmpty()
             ),
             proxy = ProxyConfig(),
@@ -194,16 +225,17 @@ object ProtocolLinkParser {
 
     private fun parseHysteria2(link: String): VpnProfile? {
         val uri = safeUri(link) ?: return null
-        val auth = decodeQueryComponent(uri.rawUserInfo.orEmpty()).trim()
+        val auth = decodeUriComponent(uri.rawUserInfo.orEmpty())
         val host = uri.host.orEmpty().trim()
-        val port = uri.port.takeIf { it in 1..65535 } ?: 443
+        val port = if (uri.port == -1) 443 else uri.port
+        if (port !in 1..65535) return null
         if (auth.isBlank() || host.isBlank()) return null
 
-        val query = parseQuery(uri.rawQuery)
+        val query = parseQuery(uri.rawQuery, ::decodeUriComponent)
         val sni = query["sni"].orEmpty().ifBlank { host }
         return VpnProfile(
             id = UUID.randomUUID().toString(),
-            name = decodeQueryComponent(uri.rawFragment.orEmpty()).ifBlank { "Hysteria2 $host:$port" },
+            name = decodeUriComponent(uri.rawFragment.orEmpty()).ifBlank { "Hysteria2 $host:$port" },
             host = host,
             port = port,
             password = auth,
@@ -296,6 +328,11 @@ object ProtocolLinkParser {
         val protocol = outbound.optString("protocol").trim().lowercase()
         val settings = outbound.optJSONObject("settings") ?: JSONObject()
         val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
+        val network = stream.optString("network")
+        if (!supportsXrayTransport(network)) return null
+        val security = stream.optString("security").lowercase()
+        if (security !in setOf("", "none", "tls", "reality")) return null
+        if (protocol == "trojan" && security == "none") return null
         return when (protocol) {
             "vless", "vmess" -> parseXrayVnext(protocol, outbound, settings, stream)
             "trojan" -> parseXrayTrojan(outbound, settings, stream)
@@ -310,8 +347,11 @@ object ProtocolLinkParser {
         settings: JSONObject,
         stream: JSONObject
     ): VpnProfile? {
-        val server = settings.optJSONArray("vnext")?.optJSONObject(0) ?: return null
-        val user = server.optJSONArray("users")?.optJSONObject(0) ?: return null
+        val flat = settings.has("address")
+        val server = if (flat) settings else settings.optJSONArray("vnext")
+            ?.takeIf { it.length() == 1 }?.optJSONObject(0) ?: return null
+        val user = if (flat) settings else server.optJSONArray("users")
+            ?.takeIf { it.length() == 1 }?.optJSONObject(0) ?: return null
         val host = server.optString("address").trim()
         val port = server.optInt("port", 443)
         val uuid = user.optString("id").trim()
@@ -348,7 +388,8 @@ object ProtocolLinkParser {
         settings: JSONObject,
         stream: JSONObject
     ): VpnProfile? {
-        val server = settings.optJSONArray("servers")?.optJSONObject(0) ?: return null
+        val server = if (settings.has("address")) settings else settings.optJSONArray("servers")
+            ?.takeIf { it.length() == 1 }?.optJSONObject(0) ?: return null
         val host = server.optString("address").trim()
         val port = server.optInt("port", 443)
         val password = server.optString("password")
@@ -435,7 +476,9 @@ object ProtocolLinkParser {
         val reality = stream.optJSONObject("realitySettings") ?: JSONObject()
         val ws = stream.optJSONObject("wsSettings") ?: JSONObject()
         val grpc = stream.optJSONObject("grpcSettings") ?: JSONObject()
-        val xhttp = stream.optJSONObject("xhttpSettings") ?: JSONObject()
+        val xhttp = stream.optJSONObject("xhttpSettings")
+            ?: stream.optJSONObject("splithttpSettings")
+            ?: JSONObject()
         val upgrade = stream.optJSONObject("httpupgradeSettings") ?: JSONObject()
         val transport = when (network.lowercase()) {
             "ws" -> ws
@@ -444,6 +487,13 @@ object ProtocolLinkParser {
             "httpupgrade" -> upgrade
             else -> JSONObject()
         }
+        val transportHost = transport.optString("host").ifBlank {
+            transport.optJSONObject("headers")?.let { headers ->
+                val hostKey = headers.keys().asSequence().firstOrNull { it.equals("Host", true) }
+                hostKey?.let(headers::optString)
+            }.orEmpty()
+        }
+        val tcp = stream.optJSONObject("rawSettings") ?: stream.optJSONObject("tcpSettings")
         val security = stream.optString("security")
         val sni = reality.optString("serverName")
             .ifBlank { tls.optString("serverName") }
@@ -453,39 +503,80 @@ object ProtocolLinkParser {
             "net" to network,
             "security" to security,
             "sni" to sni,
-            "host" to transport.optString("host").ifBlank { transport.optString("authority") },
+            "host" to transportHost.ifBlank { transport.optString("authority") },
             "path" to transport.optString("path"),
             "serviceName" to grpc.optString("serviceName"),
             "authority" to grpc.optString("authority"),
-            "mode" to transport.optString("mode"),
+            "mode" to if (network.equals("grpc", true) && grpc.optBoolean("multiMode")) {
+                "multi"
+            } else {
+                transport.optString("mode")
+            },
+            "headerType" to tcp?.optJSONObject("header")?.optString("type").orEmpty(),
+            "extra" to safeXhttpExtra(xhttp.optJSONObject("extra")?.toString()),
             "fp" to reality.optString("fingerprint").ifBlank { tls.optString("fingerprint") },
-            "pbk" to reality.optString("publicKey"),
+            "pbk" to reality.optString("password").ifBlank { reality.optString("publicKey") },
             "sid" to reality.optString("shortId"),
             "spx" to reality.optString("spiderX"),
-            "alpn" to alpn
+            "alpn" to alpn,
+            "pcs" to tls.optString("pinnedPeerCertSha256"),
+            "vcn" to tls.optString("verifyPeerCertByName")
         ).filterValues(String::isNotBlank)
     }
+
+    private val importedXhttpOptions = setOf(
+        "xPaddingBytes", "noGRPCHeader", "noSSEHeader", "scMaxEachPostBytes",
+        "scMinPostsIntervalMs", "scMaxBufferedPosts", "scStreamUpServerSecs"
+    )
+
+    private fun safeXhttpExtra(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        val source = runCatching { JSONObject(raw) }.getOrNull() ?: return ""
+        val supported = JSONObject()
+        for (name in importedXhttpOptions) {
+            val value = source.opt(name)
+            if (value is String || value is Number || value is Boolean) supported.put(name, value)
+        }
+        return if (supported.length() > 0) supported.toString() else ""
+    }
+
+    private val xrayTransports = setOf(
+        "", "tcp", "raw", "ws", "websocket", "grpc", "xhttp", "splithttp", "httpupgrade",
+        "kcp", "mkcp", "hysteria", "hysteria2", "hy2"
+    )
+
+    private fun supportsXrayTransport(value: String) = value.trim().lowercase() in xrayTransports
 
     private fun jsonArrayToCsv(array: JSONArray): String = buildList {
         for (index in 0 until array.length()) array.optString(index).takeIf(String::isNotBlank)?.let(::add)
     }.joinToString(",")
 
-    private fun optionsString(vararg values: Pair<String, String>): String = values
-        .filter { (_, value) -> value.isNotBlank() }
-        .joinToString(" | ") { (key, value) -> "$key=$value" }
+    private fun optionsString(vararg values: Pair<String, String>): String {
+        val present = values.filter { (_, value) -> value.isNotBlank() }
+        if (present.any { (_, value) -> value.any { it in "|;\n\r" } }) {
+            return JSONObject(present.toMap()).toString()
+        }
+        return present.joinToString(" | ") { (key, value) -> "$key=$value" }
+    }
 
     private fun safeUri(link: String): URI? = runCatching { URI(link) }.getOrNull()
         ?: runCatching { URI(URLDecoder.decode(link, StandardCharsets.UTF_8.name())) }.getOrNull()
 
-    private fun parseQuery(rawQuery: String?): Map<String, String> {
+    private fun parseQuery(
+        rawQuery: String?,
+        decode: (String) -> String = ::decodeQueryComponent
+    ): Map<String, String> {
         if (rawQuery.isNullOrBlank()) return emptyMap()
         return rawQuery.split("&").mapNotNull { part ->
             val pieces = part.split("=", limit = 2)
-            val key = pieces.getOrNull(0)?.let(::decodeQueryComponent).orEmpty()
-            val value = pieces.getOrNull(1)?.let(::decodeQueryComponent).orEmpty()
+            val key = pieces.getOrNull(0)?.let(decode).orEmpty()
+            val value = pieces.getOrNull(1)?.let(decode).orEmpty()
             if (key.isBlank()) null else key to value
         }.toMap()
     }
+
+    private fun decodeUriComponent(value: String): String =
+        decodeQueryComponent(value.replace("+", "%2B"))
 
     private fun decodeQueryComponent(value: String): String = runCatching {
         URLDecoder.decode(value, StandardCharsets.UTF_8.name())

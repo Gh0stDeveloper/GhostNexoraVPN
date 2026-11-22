@@ -14,6 +14,9 @@ import com.ghostnexora.vpn.util.ProfileTechnicalSummary
 import com.ghostnexora.vpn.util.ValidationResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,9 +56,12 @@ class ImportExportViewModel @Inject constructor(
         _exportState.update { it.copy(passwordConfirmation = value.take(256), error = null) }
     }
 
-    fun onFilePicked(uri: Uri) {
+    fun onFilePicked(uri: Uri) = loadFile(uri)
+
+    private fun loadFile(uri: Uri, retry: Boolean = false) {
+        if (_importState.value.isLoading) return
         viewModelScope.launch {
-            val password = _importState.value.password.toCharArray()
+            val password = if (retry) _importState.value.password.toCharArray() else charArrayOf()
             try {
                 loadImportResult(
                     fileName = resolveFileName(uri),
@@ -73,17 +79,22 @@ class ImportExportViewModel @Inject constructor(
     fun retryEncryptedImport() {
         val state = _importState.value
         when {
-            state.selectedUri != null -> onFilePicked(state.selectedUri)
-            state.selectedRawText != null -> onTextProvided(
+            state.selectedUri != null -> loadFile(state.selectedUri, retry = true)
+            state.selectedRawText != null -> loadText(
                 state.selectedRawText,
-                state.sourceName.ifBlank { "Texto" }
+                state.sourceName.ifBlank { "Texto" },
+                retry = true
             )
         }
     }
 
-    fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") {
+    fun onTextProvided(rawText: String, sourceLabel: String = "Portapapeles") =
+        loadText(rawText, sourceLabel)
+
+    private fun loadText(rawText: String, sourceLabel: String, retry: Boolean = false) {
+        if (_importState.value.isLoading) return
         viewModelScope.launch {
-            val password = _importState.value.password.toCharArray()
+            val password = if (retry) _importState.value.password.toCharArray() else charArrayOf()
             try {
                 loadImportResult(
                     fileName = "${sourceLabel.lowercase().replace(' ', '_')}.txt",
@@ -100,7 +111,7 @@ class ImportExportViewModel @Inject constructor(
 
     fun confirmImport(merge: Boolean) {
         val profiles = pendingImportProfiles
-        if (profiles.isEmpty()) return
+        if (profiles.isEmpty() || _importState.value.isLoading) return
         viewModelScope.launch {
             _importState.update { it.copy(isLoading = true, error = null) }
             val existing = if (merge) repository.allProfiles.first() else emptyList()
@@ -148,9 +159,13 @@ class ImportExportViewModel @Inject constructor(
         selectedUri: Uri?,
         selectedRawText: String?
     ) {
-        _importState.update { it.copy(isLoading = true, error = null) }
+        val retry = _importState.value.let { state ->
+            state.passwordRequired && state.selectedUri == selectedUri && state.selectedRawText == selectedRawText
+        }
+        pendingImportProfiles = emptyList()
+        _importState.update { it.copy(isLoading = true, error = null, password = "") }
         try {
-            when (val result = loader()) {
+            when (val result = withContext(Dispatchers.IO) { loader() }) {
                 is ImportResult.Success -> {
                     pendingImportProfiles = result.storageProfiles
                     val existing = repository.allProfiles.first()
@@ -206,6 +221,7 @@ class ImportExportViewModel @Inject constructor(
                         fileName = fileName,
                         sourceName = sourceLabel,
                         error = result.message,
+                        passwordRequired = retry,
                         previewProfiles = emptyList(),
                         technicalSummaries = emptyList(),
                         duplicateCount = 0,
@@ -213,7 +229,9 @@ class ImportExportViewModel @Inject constructor(
                     )
                 }
             }
-        } catch (error: Throwable) {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
             _importState.update {
                 it.copy(isLoading = false, error = "Error inesperado: ${error.message?.take(120).orEmpty()}")
             }

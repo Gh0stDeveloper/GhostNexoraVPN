@@ -2,6 +2,9 @@ package com.ghostnexora.vpn.util
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
+import com.ghostnexora.vpn.tunnel.StableXrayConfigFactory
+import java.util.Base64
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -127,4 +130,71 @@ class ProtocolLinkParserTest {
         assertTrue(profile.payload.contains("downmbps=100mbps"))
         assertTrue(profile.payload.contains("udpIdleTimeout=60"))
     }
+
+    @Test
+    fun importsBase64SubscriptionWithCaseInsensitiveSchemeAndLiteralPlus() {
+        val vmess = Base64.getEncoder().encodeToString(
+            """{"ps":"VMess","add":"vmess.example","port":443,"id":"a3482e88-686a-4a58-8126-99c9df64b7bf","tls":"tls"}"""
+                .toByteArray()
+        )
+        val lines = "VMESS://$vmess\ntrojan://alpha+beta@trojan.example:443#Trojan+TLS"
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(lines.toByteArray())
+        val profiles = ProtocolLinkParser.parseText(encoded.chunked(64).joinToString("\n"))
+
+        assertEquals(2, profiles.size)
+        assertEquals("vmess", runtimeOutbound(profiles[0]).getString("protocol"))
+        assertEquals("alpha+beta", profiles[1].password)
+        assertEquals("Trojan+TLS", profiles[1].name)
+        assertEquals("trojan", runtimeOutbound(profiles[1]).getString("protocol"))
+    }
+
+    @Test
+    fun flatXrayOutboundsKeepRealityAndGrpcMultiMode() {
+        val json = """
+            {"outbounds":[
+                {"protocol":"vless","settings":{
+                    "address":"vless.example","port":8443,
+                    "id":"a3482e88-686a-4a58-8126-99c9df64b7bf","encryption":"none"},
+                 "streamSettings":{
+                    "network":"grpc","security":"reality",
+                    "grpcSettings":{"serviceName":"tunnel","multiMode":true},
+                    "realitySettings":{"serverName":"front.example","password":"fixture-key","shortId":"abcd"}
+                 }},
+                {"protocol":"trojan","settings":{"address":"trojan.example","port":443,"password":"test-password"}}
+            ]}
+        """.trimIndent()
+
+        val profiles = ProtocolLinkParser.parseXrayJson(json)
+        assertEquals(2, profiles.size)
+        val stream = runtimeOutbound(profiles.first()).getJSONObject("streamSettings")
+        assertEquals("fixture-key", stream.getJSONObject("realitySettings").getString("publicKey"))
+        assertTrue(stream.getJSONObject("grpcSettings").getBoolean("multiMode"))
+        assertEquals("test-password", profiles[1].password)
+    }
+
+    @Test
+    fun buildsXhttpFromAnImportedLinkWithoutBreakingPathOrNestedOptions() {
+        val link = "vless://a3482e88-686a-4a58-8126-99c9df64b7bf@vpn.example:443" +
+            "?type=xhttp&security=tls&path=%2Fvpn%3Ba%7Cb&mode=packet-up" +
+            "&extra=%7B%22xPaddingBytes%22%3A%22100-500%22%2C%22downloadSettings%22%3A%7B%7D%7D"
+        val profile = ProtocolLinkParser.parseText(link).single()
+        val stream = runtimeOutbound(profile).getJSONObject("streamSettings")
+        val xhttp = stream.getJSONObject("xhttpSettings")
+        assertEquals("/vpn;a|b", xhttp.getString("path"))
+        assertEquals("/vpn;a|b", ProfileTechnicalSummaries.from(profile).path)
+        assertEquals("packet-up", xhttp.getString("mode"))
+        val extra = xhttp.getJSONObject("extra")
+        assertEquals("100-500", extra.getString("xPaddingBytes"))
+        assertEquals(1, extra.length())
+    }
+
+    @Test
+    fun rejectsInvalidExplicitPortsAndUnsupportedTransports() {
+        assertTrue(ProtocolLinkParser.parseText("trojan://test@vpn.example:70000").isEmpty())
+        assertTrue(ProtocolLinkParser.parseText("trojan://test@vpn.example:443?type=quic").isEmpty())
+        assertTrue(ProtocolLinkParser.parseText("trojan://test@vpn.example:443?security=none").isEmpty())
+    }
+
+    private fun runtimeOutbound(profile: com.ghostnexora.vpn.data.model.VpnProfile): JSONObject =
+        JSONObject(StableXrayConfigFactory.build(profile)).getJSONArray("outbounds").getJSONObject(0)
 }
