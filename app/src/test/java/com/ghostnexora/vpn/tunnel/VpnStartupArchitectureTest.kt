@@ -125,6 +125,26 @@ class VpnStartupArchitectureTest {
         assertFalse(onCreate.contains("repositoryBridge.log"))
     }
 
+    @Test
+    fun closingAnOlderCommandCannotStopANewerVpnStart() {
+        val service = sourceFile("src/main/java/com/ghostnexora/vpn/service/GhostVpnService.java")
+        val command = service.substringAfter("public int onStartCommand")
+            .substringBefore("public void onRevoke")
+        val stop = service.substringAfter("private void stopAfterCommand()")
+            .substringBefore("private void submit(")
+        val disconnect = service.substringAfter("private void handleDisconnect()")
+            .substringBefore("private void handleSystemRestart()")
+
+        assertTrue(command.contains("commandStartId = startId;"))
+        assertTrue(disconnect.contains("cleanupTunnel(true)"))
+        assertTrue(disconnect.indexOf("cleanupTunnel(true)") < disconnect.indexOf("stopAfterCommand()"))
+        assertFalse(service.contains("stopSelf();"))
+        assertTrue(stop.contains("int finishedStartId = commandStartId;"))
+        assertTrue(stop.contains("mainHandler.post("))
+        assertTrue(stop.contains("if (!destroyed && stopSelfResult(finishedStartId))"))
+        assertTrue(stop.indexOf("stopSelfResult(") < stop.indexOf("stopForeground("))
+    }
+
     private fun sourceFile(relativePath: String): String {
         val candidates = listOf(File(relativePath), File("app/$relativePath"), File("../app/$relativePath"))
         val file = candidates.firstOrNull(File::isFile) ?: error("Unable to locate source file: $relativePath")

@@ -67,7 +67,6 @@ class DashboardViewModel @Inject constructor(
         observeActiveProfile()
         observeAllProfiles()
         observeRecentLogs()
-        requestRuntimeSnapshot()
     }
 
     private fun observeActiveProfile() {
@@ -180,6 +179,7 @@ class DashboardViewModel @Inject constructor(
         updateState(VpnConnectionState.Disconnecting)
         context.startService(Intent(context, GhostVpnService::class.java).apply {
             action = GhostVpnService.ACTION_DISCONNECT
+            putExtra(GhostVpnService.EXTRA_DISCONNECT_SOURCE, "panel principal")
         })
     }
 
@@ -247,7 +247,7 @@ class DashboardViewModel @Inject constructor(
         runtimeReceiverRegistered = true
     }
 
-    private fun requestRuntimeSnapshot() {
+    fun refreshRuntime() {
         context.sendBroadcast(
             Intent(VpnServiceContract.ACTION_QUERY_RUNTIME).setPackage(context.packageName)
         )

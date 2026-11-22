@@ -14,7 +14,9 @@ import android.net.NetworkRequest;
 import android.net.RouteInfo;
 import android.net.VpnService;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemClock;
@@ -74,6 +76,7 @@ public final class GhostVpnService extends VpnService {
     public static final String ACTION_CONNECT = "com.ghostnexora.vpn.CONNECT";
     public static final String ACTION_DISCONNECT = "com.ghostnexora.vpn.DISCONNECT";
     public static final String EXTRA_PROFILE_ID = "extra_profile_id";
+    public static final String EXTRA_DISCONNECT_SOURCE = "extra_disconnect_source";
 
     private static final long VPN_REGISTRATION_TIMEOUT_MS = 5_000L;
     private static final long DATA_PLANE_VERIFICATION_TIMEOUT_MS = 15_000L;
@@ -87,6 +90,7 @@ public final class GhostVpnService extends VpnService {
     @Inject
     public ProfileRepository repository;
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService serviceExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "ghost-vpn-service");
         thread.setDaemon(false);
@@ -106,6 +110,8 @@ public final class GhostVpnService extends VpnService {
     private final AtomicBoolean reconnecting = new AtomicBoolean(false);
     private final Object tunnelLock = new Object();
 
+    // Written and read on the serialized service executor.
+    private int commandStartId;
     private VpnRepositoryBridge repositoryBridge;
     private ConnectivityManager connectivityManager;
     private TunnelManager tunnelManager;
@@ -223,12 +229,12 @@ public final class GhostVpnService extends VpnService {
             startPreparingForeground("Preparando conexión");
             String profileId = intent.getStringExtra(EXTRA_PROFILE_ID);
             submit(() -> {
+                commandStartId = startId;
                 if (profileId == null || profileId.trim().isEmpty()) {
                     repositoryBridge.setVpnDesiredConnected(false);
                     publishState(new VpnConnectionState.Error("Sin perfil especificado", ""));
                     log(LogLevel.ERROR, "No se especificó un perfil", null, "VPN");
-                    stopForeground(STOP_FOREGROUND_REMOVE);
-                    stopSelf();
+                    stopAfterCommand();
                     return;
                 }
                 repositoryBridge.setVpnDesiredConnected(true);
@@ -236,13 +242,19 @@ public final class GhostVpnService extends VpnService {
                 handleConnect(profileId);
             });
         } else if (ACTION_DISCONNECT.equals(action)) {
+            String source = intent.getStringExtra(EXTRA_DISCONNECT_SOURCE);
             submit(() -> {
-                repositoryBridge.setVpnDesiredConnected(false);
+                commandStartId = startId;
+                log(LogLevel.INFO, "Orden de desconexión recibida · origen: " +
+                        (source != null ? source : "sin identificar"), profileId(), "VPN");
                 handleDisconnect();
             });
         } else if (intent == null || SERVICE_INTERFACE.equals(action)) {
             startPreparingForeground("Restaurando sesión");
-            submit(this::handleSystemRestart);
+            submit(() -> {
+                commandStartId = startId;
+                handleSystemRestart();
+            });
         } else {
             stopSelfResult(startId);
             return START_NOT_STICKY;
@@ -261,6 +273,7 @@ public final class GhostVpnService extends VpnService {
     @Override
     public void onDestroy() {
         destroyed = true;
+        mainHandler.removeCallbacksAndMessages(null);
         unregisterReceiver(runtimeQueryReceiver);
         intentionalDisconnect = true;
         cancelTask(reconnectTask);
@@ -366,8 +379,7 @@ public final class GhostVpnService extends VpnService {
             publishState(state);
             VpnNotificationHelper.update(this, state);
             log(LogLevel.ERROR, message, profile.getId(), "VPN");
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+            stopAfterCommand();
         }
     }
 
@@ -392,8 +404,7 @@ public final class GhostVpnService extends VpnService {
         publishTraffic(emptyTraffic());
         publishState(VpnConnectionState.Disconnected.INSTANCE);
         log(LogLevel.SUCCESS, "VPN desconectada", profileId, "VPN");
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
+        stopAfterCommand();
     }
 
     private void handleSystemRestart() {
@@ -407,8 +418,7 @@ public final class GhostVpnService extends VpnService {
                 repositoryBridge.setVpnDesiredConnected(false);
                 publishState(new VpnConnectionState.Error(message, ""));
                 log(LogLevel.ERROR, message + " [CORE-RECOVERY-003]", null, "CORE");
-                stopForeground(STOP_FOREGROUND_REMOVE);
-                stopSelf();
+                stopAfterCommand();
                 return;
             }
             log(LogLevel.WARNING,
@@ -418,8 +428,7 @@ public final class GhostVpnService extends VpnService {
         } else {
             publishState(VpnConnectionState.Disconnected.INSTANCE);
             publishTraffic(emptyTraffic());
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+            stopAfterCommand();
         }
     }
 
@@ -463,8 +472,7 @@ public final class GhostVpnService extends VpnService {
             } else {
                 cleanupTunnel(true);
                 publishState(new VpnConnectionState.Error("Conexión perdida", profile.getName()));
-                stopForeground(STOP_FOREGROUND_REMOVE);
-                stopSelf();
+                stopAfterCommand();
             }
             return;
         }
@@ -556,8 +564,7 @@ public final class GhostVpnService extends VpnService {
             repositoryBridge.setVpnDesiredConnected(false);
             publishTraffic(emptyTraffic());
             publishState(new VpnConnectionState.Error(exhausted, profile.getName()));
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+            stopAfterCommand();
         }
     }
 
@@ -717,8 +724,7 @@ public final class GhostVpnService extends VpnService {
             publishState(state);
             VpnNotificationHelper.update(this, state);
             log(LogLevel.ERROR, message, profile.getId(), "VPN");
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+            stopAfterCommand();
             return;
         }
 
@@ -1274,8 +1280,7 @@ public final class GhostVpnService extends VpnService {
         String name = profile != null ? profile.getName() : "";
         publishState(new VpnConnectionState.Error(message, name));
         log(LogLevel.ERROR, message, profileId, "SECURITY");
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
+        stopAfterCommand();
     }
 
     private String profileId() {
@@ -1298,6 +1303,16 @@ public final class GhostVpnService extends VpnService {
 
     private static VpnTrafficStats emptyTraffic() {
         return new VpnTrafficStats(0L, 0L, 0L, 0L, 0, 0L, "--", "--");
+    }
+
+    private void stopAfterCommand() {
+        int finishedStartId = commandStartId;
+        mainHandler.post(() -> {
+            // A newer start may have reached Android while the old tunnel was closing.
+            if (!destroyed && stopSelfResult(finishedStartId)) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            }
+        });
     }
 
     private void submit(Runnable runnable) {

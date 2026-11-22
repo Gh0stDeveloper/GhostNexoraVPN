@@ -84,6 +84,8 @@ import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.ui.theme.backgroundGradient
 import com.ghostnexora.vpn.util.vpnLogLine
 import com.ghostnexora.vpn.util.toSessionTime
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -100,6 +102,10 @@ fun DashboardScreen(
     val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) viewModel.onVpnPermissionGranted()
         else viewModel.onVpnPermissionDenied()
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshRuntime()
     }
 
     LaunchedEffect(state.snackbarMessage) {

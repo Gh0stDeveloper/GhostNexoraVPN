@@ -212,6 +212,7 @@ class FloatingWindowService : android.app.Service(),
     private fun sendDisconnectAction() {
         val intent = Intent(this, GhostVpnService::class.java)
         intent.action = GhostVpnService.ACTION_DISCONNECT
+        intent.putExtra(GhostVpnService.EXTRA_DISCONNECT_SOURCE, "control flotante")
         startService(intent)
     }
 
