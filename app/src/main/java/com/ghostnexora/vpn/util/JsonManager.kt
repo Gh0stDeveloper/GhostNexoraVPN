@@ -12,6 +12,7 @@ import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.security.AppManagedConfigKeyProvider
+import com.ghostnexora.vpn.security.DeviceBoundConfigCodec
 import com.ghostnexora.vpn.security.Gnx3ConfigCodec
 import com.ghostnexora.vpn.security.Gnx3ConfigException
 import com.ghostnexora.vpn.security.Gnx3ProtectionKey
@@ -38,7 +39,8 @@ import javax.inject.Singleton
 class JsonManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val appManagedKeyProvider: AppManagedConfigKeyProvider,
-    private val lockedProfileVault: LockedProfileVault
+    private val lockedProfileVault: LockedProfileVault,
+    private val deviceBoundCodec: DeviceBoundConfigCodec
 ) {
     private val gson: Gson = GsonBuilder().serializeNulls().create()
 
@@ -82,27 +84,17 @@ class JsonManager @Inject constructor(
 
     fun exportToDownloads(
         profiles: List<VpnProfile>,
-        passphrase: CharArray,
+        options: BundleExportOptions,
         fileName: String = defaultExportFileName()
-    ): Uri? = runCatching {
-        writeToDownloads(encryptProfiles(profiles, passphrase), fileName)
-    }.getOrNull()
+    ): Uri? = writeToDownloads(encodeBundle(profiles, options), fileName)
 
-    fun exportToUri(uri: Uri, profiles: List<VpnProfile>, passphrase: CharArray): Boolean {
-        return try {
-            val encrypted = encryptProfiles(profiles, passphrase)
-            context.contentResolver.openOutputStream(uri, "w")?.use { output ->
-                output.write(encrypted)
-                output.flush()
-            } ?: return false
+    fun exportToUri(uri: Uri, profiles: List<VpnProfile>, options: BundleExportOptions): Boolean {
+        val encrypted = encodeBundle(profiles, options)
+        return context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+            output.write(encrypted)
             true
-        } catch (_: Throwable) {
-            false
-        }
+        } ?: false
     }
-
-    fun exportToTextEnvelope(profiles: List<VpnProfile>, passphrase: CharArray): String =
-        SecureConfigCodec.encodeTextEnvelope(encryptProfiles(profiles, passphrase))
 
     fun exportIndividualToCache(
         profile: VpnProfile,
@@ -147,7 +139,14 @@ class JsonManager @Inject constructor(
 
     private fun parseImportBytes(bytes: ByteArray, passphrase: CharArray?): ImportResult {
         if (bytes.isEmpty()) return ImportResult.Error("El archivo está vacío")
-        return if (Gnx3ConfigCodec.isEncrypted(bytes)) {
+        return if (DeviceBoundConfigCodec.matches(bytes)) {
+            val plaintext = deviceBoundCodec.decrypt(bytes)
+            try {
+                parseGnx3Bundle(plaintext.toString(Charsets.UTF_8), "GNX · Android Keystore")
+            } finally {
+                NativeGuard.wipe(plaintext)
+            }
+        } else if (Gnx3ConfigCodec.isEncrypted(bytes)) {
             parseGnx3(bytes, passphrase)
         } else if (SecureConfigCodec.isEncrypted(bytes)) {
             val password = passphrase ?: return ImportResult.PasswordRequired("Este archivo .gnx requiere contraseña")
@@ -183,7 +182,7 @@ class JsonManager @Inject constructor(
             val decoded = when (info.protectionMode) {
                 Gnx3ProtectionMode.PASSWORD -> {
                     val password = passphrase ?: return ImportResult.PasswordRequired(
-                        "La configuración individual GNX3 requiere contraseña"
+                        "La configuración GNX3 requiere contraseña"
                     )
                     Gnx3ConfigCodec.decrypt(
                         bytes,
@@ -201,6 +200,11 @@ class JsonManager @Inject constructor(
                         NativeGuard.wipe(appKey)
                     }
                 }
+            }
+            // Older GNX3 exports store one profile under "profile".
+            if (com.google.gson.JsonParser.parseString(decoded.json).asJsonObject.has("profiles")) {
+                require(!decoded.info.locked) { "El paquete de perfiles tiene un bloqueo inválido" }
+                return parseGnx3Bundle(decoded.json, "GNX3")
             }
             val document = gson.fromJson(decoded.json, Gnx3ProfileDocument::class.java)
                 ?: return ImportResult.Error("El paquete GNX3 está vacío")
@@ -293,13 +297,45 @@ class JsonManager @Inject constructor(
         }
     }
 
-    private fun encryptProfiles(profiles: List<VpnProfile>, passphrase: CharArray): ByteArray {
-        val jsonBytes = exportPlainJson(profiles).toByteArray(Charsets.UTF_8)
-        return try {
-            SecureConfigCodec.encrypt(jsonBytes.toString(Charsets.UTF_8), passphrase)
-        } finally {
-            NativeGuard.wipe(jsonBytes)
+    private fun parseGnx3Bundle(json: String, sourceName: String): ImportResult {
+        val bundle = gson.fromJson(json, VpnProfileDocument::class.java)
+        val profiles = bundle?.profiles.orEmpty().map { entry ->
+            val profile = requireNotNull(entry.toVpnProfile()) { "Perfil inválido en el paquete GNX" }
+            profile.copy(
+                id = UUID.randomUUID().toString(),
+                noteHtml = HtmlNoteSanitizer.sanitize(profile.displayNoteHtml)
+            )
         }
+        require(profiles.isNotEmpty()) { "El paquete GNX no contiene perfiles" }
+        return ImportResult.Success(profiles, sourceName)
+    }
+
+    private fun encodeBundle(profiles: List<VpnProfile>, options: BundleExportOptions): ByteArray {
+        require(profiles.isNotEmpty() && profiles.none(VpnProfile::isLocked))
+        val json = exportPlainJson(profiles)
+        val encoded = when (options.mode) {
+            BundleProtection.PASSWORD -> Gnx3ConfigCodec.encrypt(
+                json, Gnx3ProtectionKey.Password(requireNotNull(options.password)), locked = false
+            )
+            BundleProtection.APP_MANAGED -> {
+                val key = appManagedKeyProvider.obtain()
+                try {
+                    Gnx3ConfigCodec.encrypt(json, Gnx3ProtectionKey.AppManaged(key), locked = false)
+                } finally {
+                    NativeGuard.wipe(key)
+                }
+            }
+            BundleProtection.DEVICE_BOUND -> {
+                val bytes = json.toByteArray(Charsets.UTF_8)
+                try {
+                    deviceBoundCodec.encrypt(bytes)
+                } finally {
+                    NativeGuard.wipe(bytes)
+                }
+            }
+        }
+        require(encoded.size <= MAX_IMPORT_BYTES) { "El paquete GNX excede el límite de tamaño" }
+        return encoded
     }
 
     private fun encryptIndividual(
@@ -453,6 +489,13 @@ class JsonManager @Inject constructor(
         private const val SHARED_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000L
     }
 }
+
+enum class BundleProtection { APP_MANAGED, PASSWORD, DEVICE_BOUND }
+
+data class BundleExportOptions(
+    val mode: BundleProtection,
+    val password: CharArray? = null
+)
 
 data class IndividualExportOptions(
     val locked: Boolean,

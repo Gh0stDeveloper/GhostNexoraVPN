@@ -42,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.ghostnexora.vpn.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -99,7 +101,7 @@ private fun GhostNexoraApp() {
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
-    val currentTitle = screenTitle(currentRoute)
+    val currentTitle = stringResource(screenTitle(currentRoute))
 
     SensitiveWindowProtection(currentRoute)
 
@@ -282,7 +284,7 @@ private fun GhostTopBar(
             IconButton(onClick = onMenuClick) {
                 Icon(
                     imageVector = Icons.Filled.Menu,
-                    contentDescription = "Abrir navegación",
+                    contentDescription = stringResource(R.string.nav_open),
                     tint = NeonCyan
                 )
             }
@@ -297,20 +299,9 @@ private fun GhostTopBar(
     )
 }
 
-private fun screenTitle(route: String?): String = when {
-    route == null -> "Ghost Nexora VPN"
-    route == Screen.Dashboard.route -> "Inicio"
-    route == Screen.Profiles.route -> "Perfiles VPN"
-    route == Screen.CreateProfile.route -> "Nuevo perfil"
-    route.startsWith("edit_profile") -> "Editar perfil"
-    route == Screen.AppRouting.route -> "Enrutamiento de aplicaciones"
-    route == Screen.Compatibility.route -> "Compatibilidad"
-    route == Screen.Import.route -> "Importar perfiles"
-    route == Screen.Export.route -> "Exportar perfiles"
-    route == Screen.History.route -> "Historial"
-    route == Screen.Logs.route -> "Registros"
-    route == Screen.Settings.route -> "Ajustes"
-    route == Screen.Documentation.route -> "Documentación"
-    route == Screen.About.route -> "Acerca de"
-    else -> "Ghost Nexora VPN"
+private fun screenTitle(route: String?): Int = when {
+    route == null -> R.string.app_name
+    route.startsWith("edit_profile") -> Screen.EditProfile.title
+    route == Screen.Profiles.route -> R.string.profiles_title
+    else -> Screen.drawerItems.firstOrNull { it.route == route }?.title ?: R.string.app_name
 }

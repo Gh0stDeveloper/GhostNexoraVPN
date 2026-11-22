@@ -49,7 +49,7 @@ class VpnLaunchTest {
                 assertNoVpnService()
                 assertTrue(runBlocking { repository.vpnDesiredConnected.first() })
 
-                compose.onNodeWithText("Conectar").performClick()
+                compose.onNodeWithText(app.getString(R.string.btn_connect)).performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }
 
                 val serviceInfo = uiAutomation.serviceInfo

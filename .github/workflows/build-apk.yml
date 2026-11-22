@@ -27,7 +27,7 @@ jobs:
     name: Build, test and validate product hardening
     runs-on: ubuntu-24.04
     env:
-      PERSISTENT_SIGNING: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/agent/fix-vpn-route-qualification') }}
+      PERSISTENT_SIGNING: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/agent/fix-vpn-route-qualification' || github.ref == 'refs/heads/agent/gnx-export-locales') }}
 
     steps:
       - name: Checkout source
@@ -297,7 +297,7 @@ jobs:
           test -s "$KEYSTORE_PATH"
           CERT_SHA256="$(keytool -exportcert -keystore "$KEYSTORE_PATH" \
             -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" | sha256sum | cut -d ' ' -f 1)"
-          if [[ "$GITHUB_REF" == 'refs/heads/agent/fix-vpn-route-qualification' &&
+          if [[ "$GITHUB_REF" != 'refs/heads/main' &&
                 "$CERT_SHA256" != 'f59e75b8c738dd7d027accee21bd05f80901398729938eb86386f96d3a6d6f3c' ]]; then
             echo "Persistent key differs from the certificate published for Ghost Nexora VPN 1.0.53."
             exit 1

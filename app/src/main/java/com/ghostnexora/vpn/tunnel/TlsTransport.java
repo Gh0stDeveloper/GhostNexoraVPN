@@ -19,14 +19,14 @@ import javax.net.ssl.X509TrustManager;
  *
  * STRICT delegates certificate-chain and hostname verification to Android.
  * CUSTOM_SNI is an explicit, profile-scoped interoperability policy for
- * injector configurations: it keeps TLS encryption and a valid certificate
+ * SSH configurations with a custom SNI: it keeps TLS encryption and a valid certificate
  * time window, but does not require a public trust anchor or an SNI/SAN match.
  * The SSH layer still authenticates the final server identity independently.
  */
 public final class TlsTransport {
     private static final String HTTPS_ENDPOINT_IDENTIFICATION = "HTTPS";
-    private static final X509TrustManager INJECTOR_COMPATIBILITY_TRUST_MANAGER =
-            new InjectorCompatibilityTrustManager();
+    private static final X509TrustManager SSH_COMPATIBILITY_TRUST_MANAGER =
+            new SshCompatibilityTrustManager();
 
     private TlsTransport() {
     }
@@ -112,15 +112,15 @@ public final class TlsTransport {
         if (verificationMode.getVerifiesCertificateChain()) {
             return null;
         }
-        return new TrustManager[]{INJECTOR_COMPATIBILITY_TRUST_MANAGER};
+        return new TrustManager[]{SSH_COMPATIBILITY_TRUST_MANAGER};
     }
 
     /**
-     * Compatibility equivalent to injector-style "accept certificate": the
+     * Compatibility for SSH with a custom SNI: the
      * peer must still present a non-empty, currently valid X.509 leaf, but the
      * chain may be self-signed, private, incomplete, or unrelated to the SNI.
      */
-    private static final class InjectorCompatibilityTrustManager implements X509TrustManager {
+    private static final class SshCompatibilityTrustManager implements X509TrustManager {
         @Override
         public void checkClientTrusted(X509Certificate[] chain, String authType)
                 throws CertificateException {

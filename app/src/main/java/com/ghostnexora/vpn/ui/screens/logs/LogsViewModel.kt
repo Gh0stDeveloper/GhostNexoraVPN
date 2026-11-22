@@ -10,7 +10,7 @@ import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.ui.components.LogPresentation
-import com.ghostnexora.vpn.util.httpInjectorLine
+import com.ghostnexora.vpn.util.vpnLogLine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -107,7 +107,7 @@ class LogsViewModel @Inject constructor(
             appendLine("Secrets: sanitized before storage and export")
             appendLine("============================================================")
             logs.sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id }).forEach { entry ->
-                appendLine(entry.httpInjectorLine())
+                appendLine(entry.vpnLogLine())
             }
             appendLine("============================================================")
             appendLine("End of report")

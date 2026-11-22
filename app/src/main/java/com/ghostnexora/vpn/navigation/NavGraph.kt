@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -269,14 +270,14 @@ private fun GhostDrawerItem(
         icon = {
             Icon(
                 imageVector = icon,
-                contentDescription = screen.title,
+                contentDescription = stringResource(screen.title),
                 modifier = Modifier.size(Dimens.DrawerIconSize),
                 tint = contentColor
             )
         },
         label = {
             Text(
-                text = screen.title,
+                text = stringResource(screen.title),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = contentColor,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal

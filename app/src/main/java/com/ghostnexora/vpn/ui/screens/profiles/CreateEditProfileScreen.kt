@@ -208,7 +208,7 @@ fun CreateEditProfileScreen(
 
                     if (state.selectedMode.isSsh && state.selectedMode.usesTls) {
                         SwitchRow(
-                            title = "Compatibilidad SNI tipo HTTP Custom",
+                            title = "Compatibilidad TLS para SSH",
                             subtitle = if (
                                 state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
                             ) {

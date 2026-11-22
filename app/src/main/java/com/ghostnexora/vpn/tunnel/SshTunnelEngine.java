@@ -186,7 +186,7 @@ public final class SshTunnelEngine {
         return clean.toString().trim();
     }
 
-    /** Converts common terminal SGR colors into legacy HTML understood by Injector-style banners. */
+    /** Converts common terminal SGR colors into legacy HTML understood by SSH banners. */
     private static String ansiSgrToHtml(String raw) {
         java.util.regex.Matcher matcher = ANSI_SGR.matcher(raw);
         StringBuilder converted = new StringBuilder(raw.length() + 64);
@@ -346,7 +346,7 @@ final class TunnelSocketFactory implements SocketFactory {
         boolean payloadAlreadySent = false;
 
         if (mode.getUsesTls() && !sniHost.equals(targetHost)) {
-            status("[TLS] Modo Injector · extremo TCP/SSH " + targetHost + ":" + targetPort +
+            status("[TLS] TLS compatible · extremo TCP/SSH " + targetHost + ":" + targetPort +
                     " · SNI TLS " + sniHost);
         }
         if (mode.getUsesTls() && !verificationMode.getVerifiesCertificateChain()) {
@@ -544,7 +544,7 @@ final class TunnelSocketFactory implements SocketFactory {
                 previous = current;
             }
         } catch (SocketTimeoutException ignored) {
-            // Some injector-compatible endpoints send no HTTP header before SSH.
+            // Some compatible SSH endpoints send no HTTP header before SSH.
         } finally {
             socket.setSoTimeout(previousTimeout);
         }

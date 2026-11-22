@@ -28,7 +28,7 @@ enum class TlsVerificationMode(
     ),
     CUSTOM_SNI(
         id = "custom_sni",
-        label = "Compatible con HTTP Injector/Custom",
+        label = "Compatibilidad TLS para SSH",
         description = "Conecta TCP al servidor SSH y usa el dominio configurado solo como SNI TLS, sin exigir una CA pública ni coincidencia SNI/SAN; TLS cifra el canal y SSH verifica la identidad final.",
         verifiesHostname = false,
         verifiesCertificateChain = false

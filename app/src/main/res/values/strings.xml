@@ -4,7 +4,7 @@
     <string name="app_version">Versión 1.0.0</string>
 
     <!-- Navigation -->
-    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_dashboard">Inicio</string>
     <string name="nav_profiles">Perfiles</string>
     <string name="nav_create_profile">Crear Perfil</string>
     <string name="nav_import">Importar</string>
@@ -118,4 +118,48 @@
     <string name="ok">Aceptar</string>
     <string name="error_generic">Ha ocurrido un error inesperado</string>
     <string name="action_done">Listo</string>
+    <string name="export_encrypted">Exportación cifrada</string>
+    <string name="export_portable">Sin contraseña · compartible</string>
+    <string name="export_portable_detail">Compatible con instalaciones que tengan la misma firma de Ghost Nexora VPN.</string>
+    <string name="export_password">Con contraseña</string>
+    <string name="export_password_detail">La contraseña será obligatoria al abrir el archivo.</string>
+    <string name="export_device">Solo esta instalación · hardware</string>
+    <string name="export_device_detail">Usa Android Keystore con hardware. El archivo depende de la clave de esta instalación.</string>
+    <string name="export_password_label">Contraseña de protección</string>
+    <string name="export_password_rules">Mínimo 10 caracteres.</string>
+    <string name="export_repeat">Confirmar contraseña</string>
+    <string name="export_save">Guardar archivo .gnx cifrado</string>
+    <string name="export_location">Elegir ubicación</string>
+    <string name="export_invalid_selection">Selecciona perfiles editables y confirma la contraseña si la usas.</string>
+    <string name="export_count">Perfiles exportados: %1$d</string>
+    <string name="export_empty">No hay perfiles para exportar</string>
+    <string name="export_all_count">Se exportarán todos los editables (%1$d)</string>
+    <string name="export_selected_count">Seleccionados %1$d de %2$d editables</string>
+    <string name="export_deselect">Deseleccionar</string>
+    <string name="export_select">Seleccionar editables</string>
+    <string name="export_locked">Bloqueado · sin reexportación</string>
+    <string name="import_summary">Abre un perfil .gnx, un JSON de Xray o una lista de enlaces. Revisa la vista previa antes de guardar.</string>
+    <string name="import_processing">Procesando…</string>
+    <string name="import_open">Seleccionar archivo</string>
+    <string name="import_qr">Escanear código QR</string>
+    <string name="import_paste">Importar desde portapapeles</string>
+    <string name="import_password_label">Contraseña del archivo</string>
+    <string name="import_password_required">El creador exige una contraseña para abrir este archivo.</string>
+    <string name="import_unlock">Desbloquear archivo</string>
+    <string name="import_preview_count">Vista previa técnica (%1$d)</string>
+    <string name="import_merge_unique">Fusionar sin duplicados</string>
+    <string name="import_creator_note">Ver nota HTML del creador</string>
+    <string name="import_content">Contenido importado</string>
+    <string name="profile_unnamed">Sin nombre</string>
+    <string name="nav_apps">Aplicaciones</string>
+    <string name="nav_compatibility">Compatibilidad</string>
+    <string name="nav_documentation">Documentación</string>
+    <string name="nav_back">Volver</string>
+    <string name="nav_open">Abrir navegación</string>
+    <string name="status_reconnecting">Reconectando…</string>
+    <string name="status_disconnecting">Desconectando…</string>
+    <string name="status_protected">Protegido</string>
+    <string name="status_error_short">Error</string>
+    <string name="status_closing">Cerrando…</string>
+    <string name="settings_language_device">Idioma de la app</string>
 </resources>

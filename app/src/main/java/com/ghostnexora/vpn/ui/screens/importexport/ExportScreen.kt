@@ -29,6 +29,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.FilterChip
+import com.ghostnexora.vpn.util.BundleProtection
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,6 +43,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
+import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,9 +79,10 @@ fun ExportScreen(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri -> uri?.let { viewModel.exportToUri(it, profiles) } }
 
+    val exportMessage = stringResource(R.string.export_count, state.exportedCount)
     LaunchedEffect(state.exportSuccess) {
         if (state.exportSuccess) {
-            snackbar.showSnackbar("${state.exportedCount} perfil(es) exportado(s) con cifrado GNX2")
+            snackbar.showSnackbar(exportMessage)
             viewModel.clearExportMessage()
         }
     }
@@ -93,10 +98,10 @@ fun ExportScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Exportar configuración") },
+                title = { Text(stringResource(R.string.export_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.nav_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -120,10 +125,14 @@ fun ExportScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Lock, null, tint = NeonGreen)
-                            Text("Exportación cifrada obligatoria", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.export_encrypted), color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                         }
                         Text(
-                            "El archivo .gnx usa una clave de datos aleatoria por exportación, cifrado autenticado y una clave derivada de tu contraseña. No se exportan archivos nuevos en JSON plano.",
+                            stringResource(when (state.protection) {
+                                BundleProtection.APP_MANAGED -> R.string.export_portable_detail
+                                BundleProtection.PASSWORD -> R.string.export_password_detail
+                                BundleProtection.DEVICE_BOUND -> R.string.export_device_detail
+                            }),
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -132,16 +141,16 @@ fun ExportScreen(
             }
 
             if (profiles.isEmpty()) {
-                item { Text("No hay perfiles para exportar", color = TextSecondary) }
+                item { Text(stringResource(R.string.export_empty), color = TextSecondary) }
             } else {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             when {
                                 state.selectedIds.isEmpty() ->
-                                    "Se exportarán todos los editables (${exportableProfiles.size})"
+                                    stringResource(R.string.export_all_count, exportableProfiles.size)
                                 else ->
-                                    "Seleccionados ${state.selectedIds.size} de ${exportableProfiles.size} editables"
+                                    stringResource(R.string.export_selected_count, state.selectedIds.size, exportableProfiles.size)
                             },
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
@@ -152,9 +161,9 @@ fun ExportScreen(
                                     exportableProfiles.isNotEmpty() &&
                                     state.selectedIds.size == exportableProfiles.size
                                 ) {
-                                    "Deseleccionar"
+                                    stringResource(R.string.export_deselect)
                                 } else {
-                                    "Seleccionar editables"
+                                    stringResource(R.string.export_select)
                                 },
                                 color = NeonCyan
                             )
@@ -197,10 +206,10 @@ fun ExportScreen(
                                 }
                             }
                             Column(Modifier.weight(1f)) {
-                                Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary)
+                                Text(profile.name.takeIf(String::isNotBlank) ?: stringResource(R.string.profile_unnamed), color = TextPrimary)
                                 Text(
                                     if (profile.isLocked) {
-                                        "Bloqueado · no se puede reexportar"
+                                        stringResource(R.string.export_locked)
                                     } else {
                                         "${profile.host}:${profile.port} · ${profile.connectionModeLabel}"
                                     },
@@ -213,27 +222,49 @@ fun ExportScreen(
                 }
 
                 item {
-                    OutlinedTextField(
-                        value = state.password,
-                        onValueChange = viewModel::setExportPassword,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Contraseña de protección") },
-                        supportingText = { Text("Mínimo 10 caracteres. No se guarda dentro del archivo.") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
+                        BundleProtection.entries.forEach { mode ->
+                            FilterChip(
+                                selected = state.protection == mode,
+                                onClick = { viewModel.setExportProtection(mode) },
+                                label = {
+                                    Text(stringResource(when (mode) {
+                                        BundleProtection.APP_MANAGED -> R.string.export_portable
+                                        BundleProtection.PASSWORD -> R.string.export_password
+                                        BundleProtection.DEVICE_BOUND -> R.string.export_device
+                                    }))
+                                },
+                                enabled = !state.isLoading
+                            )
+                        }
+                    }
                 }
 
-                item {
-                    OutlinedTextField(
-                        value = state.passwordConfirmation,
-                        onValueChange = viewModel::setExportPasswordConfirmation,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Confirmar contraseña") },
-                        isError = state.passwordConfirmation.isNotEmpty() && state.password != state.passwordConfirmation,
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
-                    )
+                if (state.protection == BundleProtection.PASSWORD) {
+                    item {
+                        OutlinedTextField(
+                            value = state.password,
+                            onValueChange = viewModel::setExportPassword,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.export_password_label)) },
+                            supportingText = { Text(stringResource(R.string.export_password_rules)) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                    }
+
+                    item {
+                        OutlinedTextField(
+                            value = state.passwordConfirmation,
+                            onValueChange = viewModel::setExportPasswordConfirmation,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.export_repeat)) },
+                            isError = state.passwordConfirmation.isNotEmpty() && state.password != state.passwordConfirmation,
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                    }
+
                 }
 
                 if (state.isLoading) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
@@ -241,7 +272,7 @@ fun ExportScreen(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                         GhostButton(
-                            text = "Guardar archivo .gnx cifrado",
+                            text = stringResource(R.string.export_save),
                             onClick = { viewModel.exportSelected(profiles) },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = exportableProfiles.isNotEmpty() &&
@@ -251,7 +282,7 @@ fun ExportScreen(
                             contentColor = TextOnAccent
                         )
                         GhostButton(
-                            text = "Elegir ubicación",
+                            text = stringResource(R.string.export_location),
                             onClick = { manualSave.launch("ghost_nexora_${System.currentTimeMillis()}.gnx") },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = exportableProfiles.isNotEmpty() &&
@@ -259,11 +290,6 @@ fun ExportScreen(
                                 !state.isLoading,
                             containerColor = NeonCyan,
                             contentColor = TextOnAccent
-                        )
-                        Text(
-                            "Guarda la contraseña en un lugar seguro. Sin ella no existe un mecanismo de recuperación del archivo.",
-                            color = NeonAmber,
-                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }

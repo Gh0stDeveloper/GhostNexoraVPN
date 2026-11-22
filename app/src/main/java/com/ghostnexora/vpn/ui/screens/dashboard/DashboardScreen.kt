@@ -48,6 +48,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
+import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,7 +67,7 @@ import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.ui.components.HtmlNoteView
-import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
+import com.ghostnexora.vpn.ui.components.VpnLogConsole
 import com.ghostnexora.vpn.ui.components.LogPresentation
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderSubtle
@@ -80,7 +82,7 @@ import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.ui.theme.backgroundGradient
-import com.ghostnexora.vpn.util.httpInjectorLine
+import com.ghostnexora.vpn.util.vpnLogLine
 import com.ghostnexora.vpn.util.toSessionTime
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -144,7 +146,7 @@ fun DashboardScreen(
                                     compareBy<LogEntry> { it.timestamp }.thenBy { it.id }
                                 )
                             clipboard.setText(
-                                AnnotatedString(ordered.joinToString("\n") { it.httpInjectorLine() })
+                                AnnotatedString(ordered.joinToString("\n") { it.vpnLogLine() })
                             )
                             scope.launch { snackbar.showSnackbar("Registro saneado copiado") }
                         }
@@ -283,7 +285,7 @@ private fun ConnectionHero(state: DashboardUiState, onAction: () -> Unit) {
         ) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(color))
             Text(
-                state.connectionState.label().uppercase(Locale.getDefault()),
+                stringResource(state.connectionState.labelRes).uppercase(Locale.getDefault()),
                 color = color,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold
@@ -341,7 +343,7 @@ private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
                     tint = color,
                     modifier = Modifier.size(38.dp)
                 )
-                Text(state.actionLabel(), color = color, style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(state.actionLabelRes), color = color, style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -558,7 +560,7 @@ private fun LogPage(logs: List<LogEntry>, onCopy: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.Article, "Copiar registro", tint = NeonCyan)
             }
         }
-        HttpInjectorLogConsole(
+        VpnLogConsole(
             logs = logs,
             modifier = Modifier.fillMaxWidth().weight(1f),
             maxHeight = null

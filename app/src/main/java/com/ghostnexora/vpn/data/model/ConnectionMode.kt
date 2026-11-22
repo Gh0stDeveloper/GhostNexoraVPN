@@ -30,7 +30,7 @@ enum class ConnectionMode(
         id = "ssl_sni",
         label = "SSH + SSL",
         family = "ssh",
-        description = "SSH encapsulado en TLS con política SNI estricta o compatible con HTTP Custom.",
+        description = "SSH encapsulado en TLS con política SNI estricta o flexible.",
         usesTls = true,
         requiresSni = true,
         requiredFields = listOf("Host/IP", "Puerto", "Usuario", "Contraseña", "SNI")

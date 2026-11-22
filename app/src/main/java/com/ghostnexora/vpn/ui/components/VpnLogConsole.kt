@@ -69,7 +69,7 @@ import com.ghostnexora.vpn.ui.theme.TextTertiary
 
 /** One accessible, filterable connection console shared by the dashboard and Logs screen. */
 @Composable
-fun HttpInjectorLogConsole(
+fun VpnLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
     maxHeight: Dp? = 460.dp

@@ -46,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -117,7 +119,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Settings", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.settings_title), fontWeight = FontWeight.SemiBold)
                         Text(
                             "Security, permissions and maintenance",
                             style = MaterialTheme.typography.labelSmall,
@@ -144,6 +146,17 @@ fun SettingsScreen(
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXL)
         ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                TextButton(onClick = {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_APP_LOCALE_SETTINGS,
+                        android.net.Uri.fromParts("package", context.packageName, null)
+                    )
+                    context.startActivity(intent)
+                }) {
+                    Text(stringResource(R.string.settings_language_device))
+                }
+            }
             SettingsSection("Protection") {
                 Row(
                     modifier = Modifier

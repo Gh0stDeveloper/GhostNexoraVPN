@@ -75,7 +75,7 @@ class ExportNotesUiArchitectureTest {
         assertTrue(logSection.contains("maxHeight = null"))
 
         val console = sourceFile(
-            "src/main/java/com/ghostnexora/vpn/ui/components/HttpInjectorLogConsole.kt"
+            "src/main/java/com/ghostnexora/vpn/ui/components/VpnLogConsole.kt"
         )
         assertTrue(console.contains("Surface("))
         assertTrue(console.contains("items(orderedLogs"))
