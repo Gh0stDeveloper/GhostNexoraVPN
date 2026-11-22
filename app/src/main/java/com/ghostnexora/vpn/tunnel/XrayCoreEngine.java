@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
+import java.util.Base64;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import go.Seq;
@@ -199,10 +199,12 @@ public final class XrayCoreEngine {
         if (androidId == null || androidId.trim().isEmpty()) androidId = appContext.getPackageName();
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(
                 (appContext.getPackageName() + ':' + androidId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        StringBuilder result = new StringBuilder(32);
-        for (int i = 0; i < 16; i++) result.append(String.format(Locale.US, "%02x", digest[i] & 0xFF));
-        Arrays.fill(digest, (byte) 0);
-        return result.toString();
+        try {
+            // Xray decodes xray.xudp.basekey as unpadded Base64URL and requires 32 bytes.
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } finally {
+            Arrays.fill(digest, (byte) 0);
+        }
     }
 
     private void status(String message) { onStatus.invoke(message); }
