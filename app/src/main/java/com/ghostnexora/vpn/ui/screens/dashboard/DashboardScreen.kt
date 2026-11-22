@@ -54,7 +54,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -92,8 +91,6 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
-    val activity = context as? Activity
     val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -103,9 +100,6 @@ fun DashboardScreen(
         else viewModel.onVpnPermissionDenied()
     }
 
-    LaunchedEffect(state.pendingVpnPermissionIntent) {
-        state.pendingVpnPermissionIntent?.let(vpnPermission::launch)
-    }
     LaunchedEffect(state.snackbarMessage) {
         state.snackbarMessage?.let {
             snackbar.showSnackbar(it)
@@ -137,7 +131,7 @@ fun DashboardScreen(
                 if (page == 0) {
                     OverviewPage(
                         state = state,
-                        onAction = { activity?.let(viewModel::onMainAction) },
+                        onAction = { viewModel.onMainAction { vpnPermission.launch(it) } },
                         onProfiles = onNavigateToProfiles
                     )
                 } else {

@@ -1,8 +1,10 @@
 package com.ghostnexora.vpn.service;
 
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -19,6 +21,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import com.ghostnexora.vpn.BuildConfig;
 import com.ghostnexora.vpn.GhostNexoraApp;
@@ -130,6 +133,15 @@ public final class GhostVpnService extends VpnService {
     private Future<?> statsTask;
     private Future<?> reconnectTask;
 
+    private final BroadcastReceiver runtimeQueryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (VpnServiceContract.ACTION_QUERY_RUNTIME.equals(intent.getAction())) {
+                submit(GhostVpnService.this::broadcastCurrentRuntime);
+            }
+        }
+    };
+
     private final ConnectivityManager.NetworkCallback networkCallback =
             new ConnectivityManager.NetworkCallback() {
                 @Override
@@ -190,6 +202,12 @@ public final class GhostVpnService extends VpnService {
             registerUnderlyingNetwork(initial);
         }
         registerPhysicalNetworkCallback();
+        ContextCompat.registerReceiver(
+                this,
+                runtimeQueryReceiver,
+                new IntentFilter(VpnServiceContract.ACTION_QUERY_RUNTIME),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+        );
     }
 
     @Nullable
@@ -222,11 +240,12 @@ public final class GhostVpnService extends VpnService {
                 repositoryBridge.setVpnDesiredConnected(false);
                 handleDisconnect();
             });
-        } else if (VpnServiceContract.ACTION_QUERY_RUNTIME.equals(action)) {
-            submit(() -> handleRuntimeQuery(startId));
-        } else {
+        } else if (intent == null || SERVICE_INTERFACE.equals(action)) {
             startPreparingForeground("Restaurando sesión");
             submit(this::handleSystemRestart);
+        } else {
+            stopSelfResult(startId);
+            return START_NOT_STICKY;
         }
         return START_STICKY;
     }
@@ -242,6 +261,7 @@ public final class GhostVpnService extends VpnService {
     @Override
     public void onDestroy() {
         destroyed = true;
+        unregisterReceiver(runtimeQueryReceiver);
         intentionalDisconnect = true;
         cancelTask(reconnectTask);
         cancelDataPlaneVerification();
@@ -400,21 +420,6 @@ public final class GhostVpnService extends VpnService {
             publishTraffic(emptyTraffic());
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
-        }
-    }
-
-    private void handleRuntimeQuery(int startId) {
-        broadcastCurrentRuntime();
-        if (activeProfile != null
-                || !(VpnRuntimeStateStore.currentConnectionState()
-                instanceof VpnConnectionState.Disconnected)) {
-            return;
-        }
-        if (repositoryBridge.vpnDesiredConnected()) {
-            startPreparingForeground("Recuperando motor VPN");
-            handleSystemRestart();
-        } else {
-            stopSelfResult(startId);
         }
     }
 

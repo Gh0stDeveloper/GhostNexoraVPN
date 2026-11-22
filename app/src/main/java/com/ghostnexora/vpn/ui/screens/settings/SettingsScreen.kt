@@ -94,9 +94,6 @@ fun SettingsScreen(
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshPermissions() }
-    val vpnLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { viewModel.refreshPermissions() }
     val overlayLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { viewModel.refreshPermissions() }
@@ -247,15 +244,6 @@ fun SettingsScreen(
             }
 
             SettingsSection("Permissions and special access") {
-                PermissionAccessRow(
-                    title = "VPN authorization",
-                    description = "Allows Android to create the encrypted system tunnel",
-                    granted = state.permissionStatus.vpn,
-                    onClick = {
-                        PermissionHelper.vpnPermissionIntent(context)?.let(vpnLauncher::launch)
-                            ?: viewModel.refreshPermissions()
-                    }
-                )
                 PermissionAccessRow(
                     title = "Notifications",
                     description = "Required for the persistent VPN status on Android 13+",
