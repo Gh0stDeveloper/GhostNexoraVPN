@@ -396,14 +396,14 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify manual VPN launch on Android
+      - name: Verify Debug and Release launch on Android 16
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 35
+          api-level: 36
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: bash scripts/test-vpn-launch.sh
+          script: bash scripts/test-vpn-launch.sh && bash scripts/test-release-launch.sh
 
       - name: Upload Gradle diagnostics
         if: always()
@@ -416,6 +416,8 @@ jobs:
             gradle-debug.log
             emulator-vpn-launch.log
             emulator-vpn-logcat.log
+            emulator-release-logcat.log
+            emulator-release-window.xml
             gradle-release.log
             dependency-inventory.txt
             debug-apk-contents.txt

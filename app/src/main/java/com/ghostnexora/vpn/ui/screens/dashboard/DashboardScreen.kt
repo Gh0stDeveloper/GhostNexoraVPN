@@ -49,6 +49,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,13 +87,12 @@ import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.ui.theme.backgroundGradient
 import com.ghostnexora.vpn.util.vpnLogLine
 import com.ghostnexora.vpn.util.toSessionTime
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
 fun DashboardScreen(
+    lifecycleOwner: LifecycleOwner,
     onNavigateToProfiles: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
@@ -104,7 +106,7 @@ fun DashboardScreen(
         else viewModel.onVpnPermissionDenied()
     }
 
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME, lifecycleOwner = lifecycleOwner) {
         viewModel.refreshRuntime()
     }
 

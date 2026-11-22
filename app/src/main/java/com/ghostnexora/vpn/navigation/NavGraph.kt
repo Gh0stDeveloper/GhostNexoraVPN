@@ -60,8 +60,9 @@ fun GhostNavHost(
             fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { it / 10 }
         }
     ) {
-        composable(Screen.Dashboard.route) {
+        composable(Screen.Dashboard.route) { entry ->
             DashboardScreen(
+                lifecycleOwner = entry,
                 onNavigateToProfiles = {
                     navController.navigate(Screen.Profiles.route)
                 }
