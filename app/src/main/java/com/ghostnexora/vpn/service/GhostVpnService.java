@@ -991,7 +991,7 @@ public final class GhostVpnService extends VpnService {
         if (connectivityManager == null) {
             return null;
         }
-        for (Network candidate : connectivityManager.getAllNetworks()) {
+        for (Network candidate : availableNetworkSnapshot()) {
             if (isExpectedOwnedVpnNetwork(candidate)) {
                 return candidate;
             }
@@ -1136,12 +1136,19 @@ public final class GhostVpnService extends VpnService {
         if (current != null && !current.equals(excluding) && isUsablePhysicalNetwork(current)) {
             return current;
         }
-        for (Network candidate : connectivityManager.getAllNetworks()) {
+        for (Network candidate : availableNetworkSnapshot()) {
             if (!candidate.equals(excluding) && isUsablePhysicalNetwork(candidate)) {
                 return candidate;
             }
         }
         return null;
+    }
+
+    // The VPN app is excluded from its own routes. Startup needs a snapshot of
+    // all visible networks to recognize its TUN independently of the default route.
+    @SuppressWarnings("deprecation")
+    private Network[] availableNetworkSnapshot() {
+        return connectivityManager.getAllNetworks();
     }
 
     private boolean isUsablePhysicalNetwork(Network network) {

@@ -65,12 +65,14 @@ jobs:
           echo "APKSIGNER=$APKSIGNER_PATH" >> "$GITHUB_ENV"
 
       - name: Download AndroidLibXrayLite
-        uses: robinraju/release-downloader@v1.13
-        with:
-          repository: 2dust/AndroidLibXrayLite
-          tag: ${{ env.XRAY_LIB_TAG }}
-          fileName: libv2ray.aar
-          out-file-path: app/libs/
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          gh release download "$XRAY_LIB_TAG" --repo 2dust/AndroidLibXrayLite \
+            --pattern libv2ray.aar --dir app/libs
 
       - name: Verify native dependencies
         run: |
@@ -395,7 +397,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Verify manual VPN launch on Android
-        uses: reactivecircus/android-emulator-runner@1dcd0090116d15e7c562f8db72807de5e036a4ed # v2.34.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
           arch: x86_64
