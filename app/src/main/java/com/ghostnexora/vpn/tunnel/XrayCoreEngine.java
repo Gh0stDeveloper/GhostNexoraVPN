@@ -99,11 +99,11 @@ public final class XrayCoreEngine {
     public synchronized XrayTrafficDelta drainProxyTraffic() {
         CoreController activeController = controller;
         if (activeController == null || !activeController.getIsRunning()) return new XrayTrafficDelta();
-        long received = 0L;
-        long sent = 0L;
-        try { received = Math.max(0L, activeController.queryStats("proxy", "downlink")); } catch (Throwable ignored) { }
-        try { sent = Math.max(0L, activeController.queryStats("proxy", "uplink")); } catch (Throwable ignored) { }
-        return new XrayTrafficDelta(received, sent);
+        try {
+            return XrayTrafficDelta.fromOutboundStats(activeController.queryAllOutboundTrafficStats());
+        } catch (RuntimeException ignored) {
+            return new XrayTrafficDelta();
+        }
     }
 
     public synchronized void stop() {
