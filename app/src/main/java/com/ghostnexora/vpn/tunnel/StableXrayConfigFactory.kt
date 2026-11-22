@@ -44,6 +44,7 @@ object StableXrayConfigFactory {
             .put(
                 "outbounds",
                 JSONArray()
+                    // The running-core connectivity check uses the default outbound.
                     .put(proxy)
                     .put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
                     .put(directOutbound())

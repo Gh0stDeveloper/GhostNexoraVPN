@@ -26,6 +26,8 @@ jobs:
   build:
     name: Build, test and validate product hardening
     runs-on: ubuntu-24.04
+    env:
+      PERSISTENT_SIGNING: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/agent/fix-vpn-route-qualification') }}
 
     steps:
       - name: Checkout source
@@ -280,8 +282,34 @@ jobs:
           done
           echo "Required native ABIs verified"
 
+      - name: Restore and verify persistent Release keystore
+        if: env.PERSISTENT_SIGNING == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYSTORE_PATH="$RUNNER_TEMP/ghostnexora-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          CERT_SHA256="$(keytool -exportcert -keystore "$KEYSTORE_PATH" \
+            -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" | sha256sum | cut -d ' ' -f 1)"
+          if [[ "$GITHUB_REF" == 'refs/heads/agent/fix-vpn-route-qualification' &&
+                "$CERT_SHA256" != 'f59e75b8c738dd7d027accee21bd05f80901398729938eb86386f96d3a6d6f3c' ]]; then
+            echo "Persistent key differs from the certificate published for Ghost Nexora VPN 1.0.53."
+            exit 1
+          fi
+          echo "KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "EXPECTED_SIGNER_SHA256=$CERT_SHA256" >> "$GITHUB_ENV"
+
       - name: Validate Release R8 and resource shrinking
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        env:
+          KEYSTORE_PASSWORD: ${{ env.PERSISTENT_SIGNING == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ env.PERSISTENT_SIGNING == 'true' && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ env.PERSISTENT_SIGNING == 'true' && secrets.KEY_PASSWORD || '' }}
         shell: bash
         run: |
           set -o pipefail
@@ -299,7 +327,6 @@ jobs:
           echo "No tracked Kotlin/Android deprecation warnings found."
 
       - name: Verify hardened runtime after R8
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
@@ -404,32 +431,12 @@ jobs:
           if-no-files-found: error
 
       - name: Upload R8 validation Release
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        if: env.PERSISTENT_SIGNING != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: GhostNexoraVPN-r8-validation-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-
-      - name: Restore Release keystore
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/ghostnexora-release.jks
-          test -s app/ghostnexora-release.jks
-
-      - name: Verify Release keystore
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          keytool -list -keystore app/ghostnexora-release.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}" >/dev/null
-
-      - name: Build signed Release APK
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew clean assembleRelease --stacktrace --warning-mode all
 
       - name: Prepare Release metadata and checksum
         id: release_meta
@@ -464,6 +471,11 @@ jobs:
             echo "Unable to parse signer SHA-256 digest from apksigner output"
             exit 1
           fi
+          if [[ "$PERSISTENT_SIGNING" == 'true' &&
+                "${SIGNER_SHA256,,}" != "${EXPECTED_SIGNER_SHA256:?Missing keystore certificate digest}" ]]; then
+            echo "APK signer differs from the persistent Release keystore."
+            exit 1
+          fi
           printf '%s  %s\n' "$SHA256" "$(basename "$PUBLISH_APK")" > "${PUBLISH_APK}.sha256"
           echo "apk_path=$PUBLISH_APK" >> "$GITHUB_OUTPUT"
           echo "sha256_path=${PUBLISH_APK}.sha256" >> "$GITHUB_OUTPUT"
@@ -471,6 +483,16 @@ jobs:
           echo "signer_sha256=$SIGNER_SHA256" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified persistently signed Release
+        if: env.PERSISTENT_SIGNING == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: GhostNexoraVPN-signed-release-${{ github.run_number }}
+          path: |
+            ${{ steps.release_meta.outputs.apk_path }}
+            ${{ steps.release_meta.outputs.sha256_path }}
+          if-no-files-found: error
 
       - name: Decide whether to publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

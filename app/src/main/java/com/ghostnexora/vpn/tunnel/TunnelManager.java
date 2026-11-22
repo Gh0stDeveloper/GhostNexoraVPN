@@ -1,7 +1,6 @@
 package com.ghostnexora.vpn.tunnel;
 
 import android.content.Context;
-import android.net.Network;
 
 import com.ghostnexora.vpn.data.model.ConnectionMode;
 import com.ghostnexora.vpn.data.model.NetworkPreferences;
@@ -119,20 +118,15 @@ public final class TunnelManager {
 
     public XrayTrafficDelta drainTraffic() { return xrayEngine.drainProxyTraffic(); }
 
-    public OutboundCheck verifyActiveDataPlane(Network vpnNetwork) {
-        if (!xrayEngine.isRunning()) {
-            throw new IllegalStateException("Xray Core no está activo para validar la ruta de datos");
-        }
-        status("[NETWORK] Validando un único flujo por VPN Android → TUN → Xray → outbound");
+    public OutboundCheck verifyActiveDataPlane() {
+        status("[NETWORK] Validando salida desde el Xray activo → proxy del perfil");
         try {
-            OutboundCheck check = AndroidVpnDataPlaneProbe.verify(vpnNetwork);
-            status("[NETWORK] Ruta de datos bidireccional verificada · HTTP " +
-                    check.getStatusCode() + " · " + check.getLatencyMs() + " ms");
+            OutboundCheck check = xrayEngine.verifyActiveOutbound();
+            status("[NETWORK] Salida del perfil verificada · " + check.getLatencyMs() + " ms");
             return check;
-        } catch (Throwable error) {
+        } catch (Exception error) {
             throw new IllegalStateException(
-                    "La ruta de datos activa no entregó acceso a Internet: " +
-                            shortMessage(error, 180),
+                    "El transporte activo no entregó una respuesta válida: " + shortMessage(error, 180),
                     error
             );
         }

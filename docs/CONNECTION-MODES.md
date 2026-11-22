@@ -72,10 +72,10 @@ A mode reaches the UI `Connected` state after:
 6. one SSH/Xray runtime start;
 7. a successful Xray native-loop startup signal;
 8. a valid TUN descriptor and an Android `TRANSPORT_VPN` network owned by the app;
-9. one HTTPS response over a socket bound to that exact VPN network;
+9. an HTTPS response through the active Xray dispatcher and the selected profile outbound;
 10. connected-state publication and passive health-monitor startup.
 
-The acceptance request reuses the already running VPN/Xray/SSH chain, opens no second login, and has no `1/2` fallback. After acceptance, the health monitor observes only the existing transport/core and Android VPN registration; loss invokes protected reconnection or Kill Switch handling.
+The acceptance check reuses the running Xray/SSH chain and opens no second login. Android TUN registration is checked separately from the remote response. After acceptance, the health monitor observes only the existing transport/core and Android VPN registration; loss invokes protected reconnection or Kill Switch handling.
 
 `Connected` therefore means **transport/core/TUN active, registered by Android, and proven bidirectional by one real response**. Device verification still requires sustained upload/download evidence from real application traffic.
 

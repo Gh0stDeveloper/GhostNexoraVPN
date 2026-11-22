@@ -575,8 +575,7 @@ public final class GhostVpnService extends VpnService {
     ) {
         cancelDataPlaneVerification();
         long generation = ++dataPlaneVerificationGeneration;
-        Network verificationNetwork = activeVpnNetwork;
-        if (verificationNetwork == null) {
+        if (activeVpnNetwork == null) {
             failDataPlaneVerification(
                     profile,
                     expectedRuntime,
@@ -605,7 +604,7 @@ public final class GhostVpnService extends VpnService {
         );
         dataPlaneVerificationTask = scheduler.submit(() -> {
             try {
-                OutboundCheck check = tunnelManager.verifyActiveDataPlane(verificationNetwork);
+                OutboundCheck check = tunnelManager.verifyActiveDataPlane();
                 submit(() -> completeDataPlaneVerification(
                         profile,
                         expectedRuntime,
@@ -684,7 +683,7 @@ public final class GhostVpnService extends VpnService {
                 afterReconnect
                         ? "Ruta de datos restablecida en intento " + reconnectAttempt +
                                 " · estado Conectado publicado"
-                        : "VPN, TUN y ruta de datos real verificados · estado Conectado publicado",
+                        : "Android confirmó el TUN y el proxy del perfil respondió · estado Conectado publicado",
                 profile.getId(), "VPN");
         resetTrafficBaseline(profile);
         startStatsTicker(profile);

@@ -65,12 +65,12 @@ Normal VPN startup has one gated state transition:
 1. Android establishes a valid TUN descriptor.
 2. `CoreController.startLoop()` reports a running Xray loop and the selected transport remains alive.
 3. `ConnectivityManager` exposes an owned `TRANSPORT_VPN` network.
-4. One HTTPS request bound to that exact network returns through the selected Xray outbound.
+4. A bounded HTTPS check from the active Xray dispatcher returns through the selected outbound.
 5. Only then does `GhostVpnService` publish `Connected`.
 
 `Libv2ray.measureOutboundDelay` remains available for the explicit non-destructive diagnostic workflow before TUN creation. The normal connection path does not start that separate preflight runtime; it qualifies the already running data plane once, outside `TunnelManager.start()`.
 
-The normal connection path has no fallback endpoint pair, loopback health-check inbound, or periodic latency socket. Passive health checks observe the existing Xray/transport runtime and Android VPN registration after the single acceptance flow.
+The normal connection path has no fallback endpoint pair, loopback health-check inbound, or periodic latency socket. Passive health checks observe the existing Xray/transport runtime and Android VPN registration after the bounded acceptance check.
 
 A running core by itself is not enough for the UI `Connected` state and is not sufficient evidence for **device verified** compatibility. Qualification still requires sustained real traffic.
 

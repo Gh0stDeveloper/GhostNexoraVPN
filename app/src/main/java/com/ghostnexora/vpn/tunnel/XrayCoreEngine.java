@@ -34,7 +34,7 @@ public final class XrayCoreEngine {
 
     private final Context appContext;
     private final Function1<? super String, Unit> onStatus;
-    private CoreController controller;
+    private volatile CoreController controller;
 
     public XrayCoreEngine(Context context, Function1<? super String, Unit> onStatus) {
         if (context == null) throw new IllegalArgumentException("context == null");
@@ -55,6 +55,25 @@ public final class XrayCoreEngine {
         initializeCore();
         status("[CORE] Verificación nativa sin TUN iniciada");
         return measureAcrossEndpoints(url -> Libv2ray.measureOutboundDelay(config, url));
+    }
+
+    public OutboundCheck verifyActiveOutbound() throws Exception {
+        return verifyActiveOutbound(CONNECTIVITY_TEST_URLS.get(0));
+    }
+
+    OutboundCheck verifyActiveOutbound(String endpoint) throws Exception {
+        CoreController current = controller;
+        if (current == null || !current.getIsRunning()) {
+            throw new IllegalStateException("Xray Core no está activo para validar la salida");
+        }
+        // MeasureDelay dials through this instance's dispatcher. The proxy is
+        // the first/default outbound, so neither the Android UID exclusion nor
+        // a new core instance can send this request over the physical network directly.
+        long latency = current.measureDelay(endpoint);
+        if (latency < 0 || current != controller || !current.getIsRunning()) {
+            throw new IllegalStateException("El motor cambió o la salida no respondió durante la validación");
+        }
+        return new OutboundCheck(Math.max(1L, latency), endpoint);
     }
 
     public synchronized void start(String config, int tunFd) {

@@ -62,7 +62,7 @@ Use a valid UUID. Check that VMess/VLESS was imported into the correct protocol 
 
 ## VPN indicator present but no working route — `ROUTE-DATA-204`
 
-Since 1.0.53 the Dashboard remains in `Connecting` until one request bound to the application's exact VPN network receives a response through TUN, Xray, and the selected outbound. Seeing Android's VPN indicator or Xray's `Started successfully` event alone is not sufficient.
+Since 1.0.56 the Dashboard requires both Android registration of the app's TUN and a valid response from the active Xray outbound. This avoids `EPERM` from attempting to bind the VPN app's own excluded UID to its VPN network. The check covers the outbound path, and Android routing from other apps is verified separately on device.
 
 If qualification fails, the log reports `[ROUTE-DATA-204]`, initial startup closes the TUN, and the UI must not publish `Connected`. For SSH profiles, verify that the account permits `direct-tcpip` forwarding and that the VPS has outbound Internet access.
 
@@ -87,7 +87,7 @@ Version 1.0.53 requires both Android registration and real data-plane evidence. 
 
 ```text
 Android confirmó la VPN propia · dirección TUN y ruta predeterminada activas
-Validando un único flujo por VPN Android → TUN → Xray → outbound
+Validando salida desde el Xray activo → proxy del perfil
 Ruta de datos bidireccional verificada · HTTP …
 VPN, TUN y ruta de datos real verificados · estado Conectado publicado
 ```
