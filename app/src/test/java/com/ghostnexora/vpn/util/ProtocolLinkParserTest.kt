@@ -28,8 +28,12 @@ class ProtocolLinkParserTest {
             assertEquals("dns-out", rules.getJSONObject(0).getString("outboundTag"))
             assertEquals("udp", rules.getJSONObject(1).getString("network"))
             assertEquals("block", rules.getJSONObject(1).getString("outboundTag"))
-            assertTrue(ProtocolLinkParser.parseText(json.replace(""tls"", ""none"")).isEmpty())
-            assertTrue(ProtocolLinkParser.parseText(json.replace(""serverName":", ""allowInsecure":true,"serverName":")).isEmpty())
+            val insecure = JSONObject(json)
+            insecure.getJSONObject("streamSettings").put("security", "none")
+            assertTrue(ProtocolLinkParser.parseText(insecure.toString()).isEmpty())
+            val skipVerify = JSONObject(json)
+            skipVerify.getJSONObject("streamSettings").getJSONObject("tlsSettings").put("allowInsecure", true)
+            assertTrue(ProtocolLinkParser.parseText(skipVerify.toString()).isEmpty())
         }
     }
 
