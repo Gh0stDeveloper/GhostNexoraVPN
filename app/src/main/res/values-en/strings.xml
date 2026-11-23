@@ -171,4 +171,11 @@
     <string name="dashboard_waiting">VPN ready to connect</string>
     <string name="dashboard_rebuilding_route">Recovering transport while keeping TUN active</string>
     <string name="dashboard_connection_title">VPN connection</string>
+    <string name="dashboard_server">Server</string>
+    <string name="dashboard_protocol">Protocol</string>
+    <string name="dashboard_network">Network</string>
+    <string name="dashboard_expand_traffic">Show traffic</string>
+    <string name="dashboard_collapse_traffic">Hide traffic</string>
+    <string name="dashboard_session_duration">%1$s session · %2$d reconnects</string>
+    <string name="dashboard_tunnel_active">Tunnel active</string>
 </resources>

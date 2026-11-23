@@ -6,7 +6,9 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -33,16 +35,19 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -58,6 +63,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -69,12 +75,18 @@ import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -87,7 +99,7 @@ import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
-import com.ghostnexora.vpn.ui.components.HtmlNoteView
+import com.ghostnexora.vpn.ui.components.ProfileNoteContent
 import com.ghostnexora.vpn.ui.components.VpnLogConsole
 import com.ghostnexora.vpn.ui.components.LogPresentation
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
@@ -104,6 +116,7 @@ import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
 import com.ghostnexora.vpn.util.vpnLogLine
 import com.ghostnexora.vpn.util.toSessionTime
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -131,6 +144,8 @@ fun DashboardScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME, lifecycleOwner = lifecycleOwner) {
         viewModel.refreshRuntime()
     }
+
+    val trafficHistory = rememberTrafficHistory(state)
 
     LaunchedEffect(state.snackbarMessage) {
         state.snackbarMessage?.let {
@@ -192,6 +207,7 @@ fun DashboardScreen(
                         OverviewPage(
                             state = state,
                             network = network,
+                            trafficHistory = trafficHistory,
                             onDnsChange = viewModel::setVpnDnsEnabled,
                             onAction = { viewModel.onMainAction { vpnPermission.launch(it) } },
                             onProfiles = onNavigateToProfiles
@@ -272,6 +288,7 @@ private fun DashboardTab(
 private fun OverviewPage(
     state: DashboardUiState,
     network: NetworkPreferences?,
+    trafficHistory: List<TrafficSample>,
     onDnsChange: (Boolean) -> Unit,
     onAction: () -> Unit,
     onProfiles: () -> Unit
@@ -304,8 +321,13 @@ private fun OverviewPage(
             }
         }
 
-        LiveStatsCard(state.traffic, state.sessionElapsed)
+        Text(
+            stringResource(R.string.dashboard_server),
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.titleMedium
+        )
         ActiveProfileCard(state.activeProfile, onProfiles)
+        ConnectionFacts(state)
         if (network != null) {
             val dnsAccessibilityLabel = stringResource(R.string.vpn_dns_enabled)
             GhostCard {
@@ -337,8 +359,17 @@ private fun OverviewPage(
                 )
             }
         }
-        val noteHtml = state.activeProfile?.displayNoteHtml.orEmpty()
-        if (noteHtml.isNotBlank()) HtmlNoteView(html = noteHtml, modifier = Modifier.fillMaxWidth())
+        LiveStatsCard(state.traffic, state.sessionElapsed, trafficHistory)
+        val note = state.activeProfile?.displayNoteHtml.orEmpty()
+        if (note.isNotBlank()) {
+            ProfileNoteContent(
+                note = note,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SurfaceVariant, RoundedCornerShape(16.dp))
+                    .padding(Dimens.SpaceMD)
+            )
+        }
         Spacer(Modifier.height(Dimens.SpaceLG))
     }
 }
@@ -348,163 +379,219 @@ private fun ConnectionHero(state: DashboardUiState, onAction: () -> Unit) {
     val connection = state.connectionState
     val color = stateColor(connection)
     val enabled = connection !is VpnConnectionState.Connecting && connection !is VpnConnectionState.Disconnecting
-    GhostCard(
-        borderColor = color.copy(alpha = 0.28f),
-        backgroundColor = SurfaceVariant,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
+    val action = stringResource(connection.actionLabelRes)
+    val shape = RoundedCornerShape(24.dp)
+
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.12f), SurfaceVariant)))
+            .border(1.dp, color.copy(alpha = 0.28f), shape),
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            Row(
+                modifier = Modifier.background(color.copy(alpha = 0.11f), CircleShape)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(6.dp).background(color, CircleShape))
+                Text(stringResource(connection.labelRes), color = color, style = MaterialTheme.typography.labelLarge)
+            }
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = enabled, role = Role.Button, onClickLabel = action, onClick = onAction)
+                    .padding(horizontal = 16.dp, vertical = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(color))
-                    Text(stringResource(connection.labelRes), color = color, style = MaterialTheme.typography.labelLarge)
+                Box(
+                    modifier = Modifier.size(86.dp)
+                        .border(1.dp, color.copy(alpha = 0.22f), CircleShape)
+                        .padding(7.dp)
+                        .border(2.dp, color.copy(alpha = if (enabled) 0.8f else 0.42f), CircleShape)
+                        .background(color.copy(alpha = 0.12f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.PowerSettingsNew, null, tint = color, modifier = Modifier.size(33.dp))
                 }
-                Text(
-                    stringResource(R.string.dashboard_connection_title),
-                    color = TextPrimary,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-                Text(connectionSubtitle(state), color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text(action, color = TextPrimary, style = MaterialTheme.typography.titleMedium)
             }
-            Box(
-                modifier = Modifier.size(56.dp).clip(CircleShape).background(color.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Security, null, tint = color, modifier = Modifier.size(27.dp))
-            }
+            Text(
+                connectionSubtitle(state),
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
-        Spacer(Modifier.height(Dimens.SpaceMD))
-        Button(
-            onClick = onAction,
-            enabled = enabled,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (state.isConnected) color.copy(alpha = 0.14f) else color,
-                contentColor = if (state.isConnected) color else Color.Black
-            ),
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            Icon(Icons.Filled.PowerSettingsNew, null, modifier = Modifier.size(17.dp))
-            Spacer(Modifier.size(8.dp))
-            Text(stringResource(connection.actionLabelRes))
-        }
-    }
-}
-
-@Composable
-private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long) {
-    GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(R.string.dashboard_session_activity),
-                    color = TextPrimary,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-            ) {
-                Metric(
-                    stringResource(R.string.dashboard_download),
-                    formatRate(stats.downloadBytesPerSecond),
-                    formatBytes(stats.receivedBytes),
-                    modifier = Modifier.weight(1f)
-                )
-                Metric(
-                    stringResource(R.string.dashboard_upload),
-                    formatRate(stats.uploadBytesPerSecond),
-                    formatBytes(stats.sentBytes),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-            ) {
-                Metric(
-                    stringResource(R.string.dashboard_elapsed),
-                    elapsed.toSessionTime(),
-                    stats.networkType,
-                    modifier = Modifier.weight(1f)
-                )
-                Metric(
-                    stringResource(R.string.dashboard_latency),
-                    if (stats.latencyMs > 0) "${stats.latencyMs} ms" else "--",
-                    "${stats.reconnectCount} reconexiones",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun Metric(
-    label: String,
-    value: String,
-    detail: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black.copy(alpha = 0.14f))
-            .padding(Dimens.SpaceMD),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(label, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
-        Text(
-            value,
-            color = TextPrimary,
-            style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
-        )
-        Text(detail, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
-    GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.SignalCellularAlt, null, tint = NeonCyan)
-            Spacer(Modifier.size(Dimens.SpaceMD))
-            Column(Modifier.weight(1f)) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(SurfaceVariant)
+            .border(1.dp, BorderSubtle, shape)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.dashboard_change_profile), onClick = onProfiles)
+            .padding(Dimens.SpaceMD),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+    ) {
+        Box(Modifier.size(42.dp).background(NeonGreen.copy(alpha = 0.11f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Dns, null, tint = NeonGreen, modifier = Modifier.size(23.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                profile?.name ?: stringResource(R.string.dashboard_no_profile),
+                color = TextPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                when {
+                    profile == null -> stringResource(R.string.dashboard_choose_profile)
+                    profile.isLocked -> stringResource(R.string.dashboard_locked)
+                    else -> profile.serverAddress
+                },
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = TextSecondary)
+    }
+}
+
+@Composable
+private fun ConnectionFacts(state: DashboardUiState) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+        ConnectionFact(Icons.Filled.Key, stringResource(R.string.dashboard_protocol),
+            state.activeProfile?.connectionModeLabel ?: "—", Modifier.weight(1f))
+        ConnectionFact(Icons.Filled.SignalCellularAlt, stringResource(R.string.dashboard_network),
+            state.traffic.networkType.takeUnless { it == "--" } ?: "—", Modifier.weight(1f))
+        ConnectionFact(Icons.Filled.Timer, stringResource(R.string.dashboard_latency),
+            if (state.traffic.latencyMs > 0) "${state.traffic.latencyMs} ms" else "—", Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ConnectionFact(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier
+) {
+    Column(
+        modifier = modifier.background(SurfaceVariant, RoundedCornerShape(14.dp)).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, null, tint = NeonGreen, modifier = Modifier.size(17.dp))
+        Text(label, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+        Text(value, color = TextPrimary, style = MaterialTheme.typography.labelMedium,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long, history: List<TrafficSample>) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = { expanded = !expanded }),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
+        ) {
+            Text(stringResource(R.string.dashboard_session_activity), style = MaterialTheme.typography.titleMedium)
+            HorizontalDivider(Modifier.weight(1f), color = BorderSubtle)
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                stringResource(if (expanded) R.string.dashboard_collapse_traffic else R.string.dashboard_expand_traffic)
+            )
+        }
+        if (expanded) {
+            GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
+                    Metric(
+                        stringResource(R.string.dashboard_download), formatRate(stats.downloadBytesPerSecond),
+                        formatBytes(stats.receivedBytes), NeonGreen, Modifier.weight(1f)
+                    )
+                    Metric(
+                        stringResource(R.string.dashboard_upload), formatRate(stats.uploadBytesPerSecond),
+                        formatBytes(stats.sentBytes), TextSecondary, Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(Dimens.SpaceMD))
+                if (history.size >= 2) {
+                    TrafficChart(history)
+                    Spacer(Modifier.height(Dimens.SpaceSM))
+                }
                 Text(
-                    profile?.name ?: stringResource(R.string.dashboard_no_profile),
-                    color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    profile?.let { "${it.serverAddress} · ${it.connectionModeLabel}" }
-                        ?: stringResource(R.string.dashboard_choose_profile),
+                    stringResource(R.string.dashboard_session_duration, elapsed.toSessionTime(), stats.reconnectCount),
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
-                if (profile?.isLocked == true) {
-                    Text(
-                        stringResource(R.string.dashboard_locked),
-                        color = NeonAmber,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
-            IconButton(onClick = onProfiles) {
-                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.dashboard_change_profile), tint = NeonCyan)
             }
         }
+    }
+}
+
+private data class TrafficSample(val download: Long, val upload: Long)
+
+@Composable
+private fun rememberTrafficHistory(state: DashboardUiState): List<TrafficSample> {
+    var history by remember { mutableStateOf(emptyList<TrafficSample>()) }
+    val stats by rememberUpdatedState(state.traffic)
+    LaunchedEffect((state.connectionState as? VpnConnectionState.Connected)?.connectedSince) {
+        history = emptyList()
+        if (state.isConnected) {
+            while (true) {
+                history = (history + TrafficSample(stats.downloadBytesPerSecond, stats.uploadBytesPerSecond)).takeLast(30)
+                delay(1_000)
+            }
+        }
+    }
+    return history
+}
+
+@Composable
+private fun TrafficChart(history: List<TrafficSample>) {
+    val maxRate = history.maxOf { maxOf(it.download, it.upload) }.coerceAtLeast(1L)
+    Canvas(Modifier.fillMaxWidth().height(62.dp)) {
+        for (line in 1..3) {
+            val y = size.height * line / 3
+            drawLine(BorderSubtle, Offset(0f, y), Offset(size.width, y))
+        }
+        fun drawSeries(color: Color, rate: (TrafficSample) -> Long) {
+            val path = Path()
+            history.forEachIndexed { index, sample ->
+                val x = size.width * index / history.lastIndex
+                val y = size.height * (1f - 0.92f * rate(sample).coerceAtLeast(0L) / maxRate)
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, color, style = Stroke(width = 2.dp.toPx()))
+        }
+        drawSeries(TextSecondary, TrafficSample::upload)
+        drawSeries(NeonGreen, TrafficSample::download)
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: String, detail: String, color: Color, modifier: Modifier) {
+    Column(
+        modifier = modifier.background(color.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
+            .padding(Dimens.SpaceSM),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(label, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+        Text(value, color = color, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace))
+        Text(detail, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -559,12 +646,12 @@ private fun stateColor(state: VpnConnectionState): Color = when (state) {
 
 @Composable
 private fun connectionSubtitle(state: DashboardUiState): String = when (val connection = state.connectionState) {
-    is VpnConnectionState.Connected -> "${state.serverIp} · ${state.traffic.protocol}"
+    is VpnConnectionState.Connected -> stringResource(R.string.dashboard_tunnel_active)
     is VpnConnectionState.Reconnecting -> stringResource(R.string.dashboard_rebuilding_route)
     is VpnConnectionState.Connecting -> stringResource(R.string.dashboard_preparing_route)
     is VpnConnectionState.Disconnecting -> stringResource(R.string.dashboard_releasing_route)
     is VpnConnectionState.Error -> connection.message
-    VpnConnectionState.Disconnected -> state.activeProfile?.connectionModeLabel ?: stringResource(R.string.dashboard_waiting)
+    VpnConnectionState.Disconnected -> stringResource(R.string.dashboard_waiting)
 }
 
 private fun formatRate(bytes: Long): String = "${formatBytes(bytes)}/s"

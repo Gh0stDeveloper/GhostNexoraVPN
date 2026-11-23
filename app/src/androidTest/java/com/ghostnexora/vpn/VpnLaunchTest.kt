@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -38,7 +39,13 @@ class VpnLaunchTest {
     fun coldLaunchStaysIdleAndConnectRequestsVpnConsent() {
         val app = instrumentation.targetContext.applicationContext as GhostNexoraApp
         val repository = app.repository
-        val profile = VpnProfile(name = "Emulator SSH fixture", host = "127.0.0.1", port = 22)
+        val plainNote = "Soporte de prueba & red\nLínea 2 < 3"
+        val profile = VpnProfile(
+            name = "Emulator SSH fixture",
+            host = "127.0.0.1",
+            port = 22,
+            noteHtml = plainNote
+        )
         runBlocking {
             repository.saveProfile(profile)
             repository.setActiveProfileId(profile.id)
@@ -54,6 +61,17 @@ class VpnLaunchTest {
                 activity.moveToState(Lifecycle.State.CREATED)
                 activity.moveToState(Lifecycle.State.RESUMED)
                 assertNoVpnService()
+
+                compose.onNodeWithText(plainNote).performScrollTo().assertIsDisplayed()
+                compose.onNodeWithTag("profile-note-html").assertDoesNotExist()
+
+                runBlocking { repository.updateProfile(profile.copy(noteHtml = "<p><strong>Soporte HTML</strong></p>")) }
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(hasTestTag("profile-note-html"))
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithTag("profile-note-html").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithText(profile.name).performScrollTo().assertIsDisplayed()
 
                 compose.onNodeWithContentDescription(app.getString(R.string.vpn_dns_enabled))
                     .performScrollTo().performClick()

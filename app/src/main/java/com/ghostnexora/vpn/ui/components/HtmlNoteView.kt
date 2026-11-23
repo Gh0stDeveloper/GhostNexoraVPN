@@ -7,15 +7,17 @@ import android.graphics.Color
 import android.net.Uri
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,29 +27,51 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import com.ghostnexora.vpn.security.HtmlNoteSanitizer
 import java.io.ByteArrayInputStream
 
+@Composable
+fun ProfileNoteContent(
+    note: String,
+    modifier: Modifier = Modifier,
+    htmlViewportHeight: Dp = 224.dp,
+    textMaxHeight: Dp = Dp.Unspecified
+) {
+    val safeNote = remember(note) { HtmlNoteSanitizer.sanitize(note) }
+    if (safeNote.isBlank()) return
+
+    val hasMarkup = remember(safeNote) { HtmlNoteSanitizer.hasPresentationMarkup(safeNote) }
+    if (hasMarkup) {
+        HtmlNoteView(safeNote, modifier.height(htmlViewportHeight))
+    } else {
+        val textModifier = if (textMaxHeight == Dp.Unspecified) {
+            modifier
+        } else {
+            modifier.heightIn(max = textMaxHeight).verticalScroll(rememberScrollState())
+        }
+        SelectionContainer {
+            Text(safeNote, modifier = textModifier, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun HtmlNoteView(
-    html: String,
+private fun HtmlNoteView(
+    safeHtml: String,
     modifier: Modifier = Modifier
 ) {
-    val safeHtml = remember(html) { HtmlNoteSanitizer.sanitize(html) }
     val document = remember(safeHtml) { noteDocument(safeHtml) }
     val nestedScrollInteropConnection = rememberNestedScrollInteropConnection()
     AndroidView(
-        modifier = modifier.nestedScroll(nestedScrollInteropConnection),
+        modifier = modifier.testTag("profile-note-html").nestedScroll(nestedScrollInteropConnection),
         factory = { context ->
             ScrollableNoteWebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
                 setBackgroundColor(Color.TRANSPARENT)
                 setNetworkAvailable(false)
                 isVerticalScrollBarEnabled = true
@@ -148,14 +172,12 @@ fun HtmlNoteDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
-                HtmlNoteView(
-                    html = html,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(380.dp)
-                )
-            }
+            ProfileNoteContent(
+                note = html,
+                modifier = Modifier.fillMaxWidth(),
+                htmlViewportHeight = 380.dp,
+                textMaxHeight = 380.dp
+            )
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {

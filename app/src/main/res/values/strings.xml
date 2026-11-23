@@ -194,4 +194,11 @@
     <string name="dashboard_waiting">VPN lista para conectar</string>
     <string name="dashboard_rebuilding_route">Recuperando transporte sin liberar el TUN</string>
     <string name="dashboard_connection_title">Conexión VPN</string>
+    <string name="dashboard_server">Servidor</string>
+    <string name="dashboard_protocol">Protocolo</string>
+    <string name="dashboard_network">Red</string>
+    <string name="dashboard_expand_traffic">Mostrar tráfico</string>
+    <string name="dashboard_collapse_traffic">Ocultar tráfico</string>
+    <string name="dashboard_session_duration">%1$s de sesión · %2$d reconexiones</string>
+    <string name="dashboard_tunnel_active">Túnel activo</string>
 </resources>
