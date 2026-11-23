@@ -1,16 +1,13 @@
 package com.ghostnexora.vpn.security
 
 import android.os.Debug
+import java.security.SecureRandom
 
-/**
- * Puente JNI pequeño para operaciones auxiliares de endurecimiento.
- *
- * No contiene claves criptográficas. Las claves reales se generan aleatoriamente
- * o viven dentro de Android Keystore. La capa nativa se usa para separar el AAD
- * de dominio y limpiar buffers sensibles cuando dejan de ser necesarios.
- */
+/** Puente JNI para el sobre GNX4 y el endurecimiento de formatos anteriores. */
 object NativeGuard {
     private const val FALLBACK_DOMAIN = "GhostNexoraVPN|GNX2|secure-config"
+
+    private val exportRandom = SecureRandom()
 
     private val nativeLoaded: Boolean = runCatching {
         System.loadLibrary("ghostguard")
@@ -28,6 +25,23 @@ object NativeGuard {
 
     @JvmStatic
     private external fun nativeRuntimeCompromised(): Boolean
+
+    @JvmStatic
+    private external fun nativeSealGnx4(input: ByteArray, nonce: ByteArray): ByteArray?
+
+    @JvmStatic
+    private external fun nativeOpenGnx4(input: ByteArray): ByteArray?
+
+    fun sealGnx4(input: ByteArray): ByteArray {
+        check(nativeLoaded) { "El módulo de cifrado GNX4 no está disponible" }
+        val nonce = ByteArray(24).also(exportRandom::nextBytes)
+        return checkNotNull(nativeSealGnx4(input, nonce)) { "No se pudo cifrar el archivo GNX4" }
+    }
+
+    fun openGnx4(input: ByteArray): ByteArray {
+        check(nativeLoaded) { "El módulo de cifrado GNX4 no está disponible" }
+        return requireNotNull(nativeOpenGnx4(input)) { "El archivo GNX4 no es válido o fue alterado" }
+    }
 
     fun domainSeparator(): ByteArray = if (nativeLoaded) {
         runCatching { nativeDomainSeparator() }

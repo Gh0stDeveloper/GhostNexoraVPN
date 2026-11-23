@@ -312,6 +312,17 @@ jobs:
           echo "KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "EXPECTED_SIGNER_SHA256=$CERT_SHA256" >> "$GITHUB_ENV"
 
+      - name: Prepare native GNX4 shares for the signed APK
+        if: env.PERSISTENT_SIGNING == 'true'
+        env:
+          GNX4_EXPORT_KEY: ${{ secrets.GNX4_EXPORT_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          GNX4_PRIVATE_SOURCES="$RUNNER_TEMP/gnx4-key-sources"
+          python3 scripts/generate-gnx4-key-shares.py "$GNX4_PRIVATE_SOURCES"
+          echo "GNX4_KEY_SOURCE_DIR=$GNX4_PRIVATE_SOURCES" >> "$GITHUB_ENV"
+
       - name: Validate Release R8 and resource shrinking
         env:
           KEYSTORE_PASSWORD: ${{ env.PERSISTENT_SIGNING == 'true' && secrets.KEYSTORE_PASSWORD || '' }}

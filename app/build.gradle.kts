@@ -8,6 +8,10 @@ plugins {
 
 val releaseKeystorePath = System.getenv("KEYSTORE_FILE")
 val hasReleaseSigning = !releaseKeystorePath.isNullOrBlank()
+val gnx4KeySourceDir = System.getenv("GNX4_KEY_SOURCE_DIR")
+check(!hasReleaseSigning || !gnx4KeySourceDir.isNullOrBlank()) {
+    "Signed builds require GNX4_KEY_SOURCE_DIR with the private GNX4 key shares."
+}
 
 android {
     namespace = "com.ghostnexora.vpn"
@@ -18,8 +22,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 67
-        versionName = "1.0.67"
+        versionCode = 68
+        versionName = "1.0.68"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -53,6 +57,11 @@ android {
             isMinifyEnabled = false
         }
         release {
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DGNX4_KEY_SOURCE_DIR=${gnx4KeySourceDir ?: file("src/main/cpp").absolutePath}"
+                }
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = if (hasReleaseSigning) {

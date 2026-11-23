@@ -40,3 +40,23 @@ Use the Android Gradle project with the required SDK and NDK components. Signing
 ---
 
 **Ghost Nexora VPN — secure configuration and transparent connection behavior.**
+
+## Exportación de perfiles GNX4
+
+Cada exportación individual o por lote produce un archivo binario `.gnx`. La capa
+exterior XChaCha20-Poly1305 se ejecuta en C++ y protege el encabezado. La clave
+interna es fija entre compilaciones de distribución y el nonce es nuevo por
+archivo. La contraseña del usuario y la protección ligada a la instalación
+siguen usando sus capas internas. La importación conserva los formatos anteriores.
+
+Para los APK con firma persistente, configure el secreto `GNX4_EXPORT_KEY` en
+GitHub Actions. Debe contener 32 bytes aleatorios codificados en 64 dígitos
+hexadecimales. Conserve el mismo valor entre versiones para mantener la lectura
+de las exportaciones existentes. En una compilación firmada local, ejecute
+`python3 scripts/generate-gnx4-key-shares.py DIRECTORIO_PRIVADO` con ese secreto
+en el entorno y pase el directorio al build mediante `GNX4_KEY_SOURCE_DIR`.
+Las compilaciones de desarrollo usan fragmentos públicos para las pruebas.
+
+La fragmentación XOR y las secciones nativas dificultan la inspección superficial
+del APK. El cliente distribuido puede reconstruir la clave. Use la contraseña
+opcional cuando necesite que el archivo dependa también de un secreto del usuario.

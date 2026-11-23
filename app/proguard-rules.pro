@@ -16,6 +16,8 @@
     private static native void nativeWipe(byte[]);
     private static native byte[] nativeGnx3KeyFragment();
     private static native boolean nativeRuntimeCompromised();
+    private static native byte[] nativeSealGnx4(byte[], byte[]);
+    private static native byte[] nativeOpenGnx4(byte[]);
 }
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;

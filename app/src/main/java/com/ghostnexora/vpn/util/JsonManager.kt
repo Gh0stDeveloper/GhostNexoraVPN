@@ -140,7 +140,21 @@ class JsonManager @Inject constructor(
 
     private fun parseImportBytes(bytes: ByteArray, passphrase: CharArray?): ImportResult {
         if (bytes.isEmpty()) return ImportResult.Error("El archivo está vacío")
-        return if (DeviceBoundConfigCodec.matches(bytes)) {
+        if (bytes.size >= GNX4_MAGIC.size && GNX4_MAGIC.indices.all { bytes[it] == GNX4_MAGIC[it] }) {
+            val inner = NativeGuard.openGnx4(bytes)
+            try {
+                return parseBinaryEnvelope(inner, passphrase)
+                    ?: ImportResult.Error("Formato interno GNX4 no reconocido")
+            } finally {
+                NativeGuard.wipe(inner)
+            }
+        }
+        return parseBinaryEnvelope(bytes, passphrase)
+            ?: importFromString(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"), passphrase)
+    }
+
+    private fun parseBinaryEnvelope(bytes: ByteArray, passphrase: CharArray?): ImportResult? =
+        if (DeviceBoundConfigCodec.matches(bytes)) {
             val plaintext = deviceBoundCodec.decrypt(bytes)
             try {
                 parseGnx3Bundle(plaintext.toString(Charsets.UTF_8), "GNX · Android Keystore")
@@ -150,12 +164,11 @@ class JsonManager @Inject constructor(
         } else if (Gnx3ConfigCodec.isEncrypted(bytes)) {
             parseGnx3(bytes, passphrase)
         } else if (SecureConfigCodec.isEncrypted(bytes)) {
-            val password = passphrase ?: return ImportResult.PasswordRequired("Este archivo .gnx requiere contraseña")
-            parseEncrypted(bytes, password)
+            passphrase?.let { parseEncrypted(bytes, it) }
+                ?: ImportResult.PasswordRequired("Este archivo .gnx requiere contraseña")
         } else {
-            importFromString(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"), passphrase)
+            null
         }
-    }
 
     private fun parseEncrypted(bytes: ByteArray, passphrase: CharArray): ImportResult {
         return try {
@@ -288,7 +301,7 @@ class JsonManager @Inject constructor(
             }
             return ImportResult.Success(protocolProfiles, source)
         }
-        return ImportResult.Error("Formato GNX3/GNX2, JSON legado o enlace de protocolo no reconocido")
+        return ImportResult.Error("Formato GNX4/GNX3/GNX2, JSON legado o enlace de protocolo no reconocido")
     }
 
     private fun parseJson(jsonString: String): ImportResult? {
@@ -350,8 +363,7 @@ class JsonManager @Inject constructor(
                 }
             }
         }
-        require(encoded.size <= MAX_IMPORT_BYTES) { "El paquete GNX excede el límite de tamaño" }
-        return encoded
+        return sealExport(encoded)
     }
 
     private fun encryptIndividual(
@@ -389,7 +401,7 @@ class JsonManager @Inject constructor(
             profile = exportedProfile.toJson()
         )
         val jsonBytes = gson.toJson(document).toByteArray(Charsets.UTF_8)
-        return try {
+        val encoded = try {
             when (options.protectionMode) {
                 Gnx3ProtectionMode.PASSWORD -> Gnx3ConfigCodec.encrypt(
                     jsonBytes.toString(Charsets.UTF_8),
@@ -412,6 +424,14 @@ class JsonManager @Inject constructor(
         } finally {
             NativeGuard.wipe(jsonBytes)
         }
+        return sealExport(encoded)
+    }
+
+    private fun sealExport(inner: ByteArray): ByteArray = try {
+        require(inner.size <= MAX_IMPORT_BYTES - GNX4_OVERHEAD) { "El paquete GNX excede el límite de tamaño" }
+        NativeGuard.sealGnx4(inner)
+    } finally {
+        NativeGuard.wipe(inner)
     }
 
     private fun exportPlainJson(profiles: List<VpnProfile>): String {
@@ -499,6 +519,8 @@ class JsonManager @Inject constructor(
         error.message?.take(160)?.takeIf(String::isNotBlank) ?: "Operación no disponible"
 
     companion object {
+        private val GNX4_MAGIC = "GNX4".toByteArray(Charsets.US_ASCII)
+        private const val GNX4_OVERHEAD = 4 + 24 + 16
         const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
         const val MAX_IMPORT_TEXT_CHARS = 44 * 1024 * 1024
         const val MIME_GNX = "application/vnd.ghostnexora.gnx"
