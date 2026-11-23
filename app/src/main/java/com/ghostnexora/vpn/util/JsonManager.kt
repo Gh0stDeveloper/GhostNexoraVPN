@@ -520,7 +520,7 @@ class JsonManager @Inject constructor(
 
     companion object {
         private val GNX4_MAGIC = "GNX4".toByteArray(Charsets.US_ASCII)
-        private const val GNX4_OVERHEAD = 4 + 24 + 16
+        private const val GNX4_OVERHEAD = 4 + 16 + 24 + 12 + 1088 + 32 + 2 * 16
         const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
         const val MAX_IMPORT_TEXT_CHARS = 44 * 1024 * 1024
         const val MIME_GNX = "application/vnd.ghostnexora.gnx"

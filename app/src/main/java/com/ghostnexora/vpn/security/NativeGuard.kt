@@ -27,15 +27,21 @@ object NativeGuard {
     private external fun nativeRuntimeCompromised(): Boolean
 
     @JvmStatic
-    private external fun nativeSealGnx4(input: ByteArray, nonce: ByteArray): ByteArray?
+    private external fun nativeSealGnx4(input: ByteArray, randomness: ByteArray): ByteArray?
 
     @JvmStatic
     private external fun nativeOpenGnx4(input: ByteArray): ByteArray?
 
     fun sealGnx4(input: ByteArray): ByteArray {
         check(nativeLoaded) { "El módulo de cifrado GNX4 no está disponible" }
-        val nonce = ByteArray(24).also(exportRandom::nextBytes)
-        return checkNotNull(nativeSealGnx4(input, nonce)) { "No se pudo cifrar el archivo GNX4" }
+        // XChaCha20 nonce, AES-GCM nonce and encapsulation randomness for ML-KEM and X25519.
+        val randomness = ByteArray(24 + 12 + 32 + 32)
+        return try {
+            exportRandom.nextBytes(randomness)
+            checkNotNull(nativeSealGnx4(input, randomness)) { "No se pudo cifrar el archivo GNX4" }
+        } finally {
+            wipe(randomness)
+        }
     }
 
     fun openGnx4(input: ByteArray): ByteArray {

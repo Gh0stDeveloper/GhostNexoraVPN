@@ -43,11 +43,19 @@ Use the Android Gradle project with the required SDK and NDK components. Signing
 
 ## Exportación de perfiles GNX4
 
-Cada exportación individual o por lote produce un archivo binario `.gnx`. La capa
-exterior XChaCha20-Poly1305 se ejecuta en C++ y protege el encabezado. La clave
-interna es fija entre compilaciones de distribución y el nonce es nuevo por
-archivo. La contraseña del usuario y la protección ligada a la instalación
-siguen usando sus capas internas. La importación conserva los formatos anteriores.
+Cada exportación individual o por lote produce un archivo binario `.gnx` con
+el mismo identificador GNX4. El secreto fijo de 32 bytes genera el par de
+claves de la aplicación para el encapsulado híbrido ML-KEM-768 + X25519. Cada
+exportación genera material efímero para el encapsulado y nonces nuevos.
+HKDF-SHA256 deriva dos subclaves a partir del secreto compartido híbrido.
+AES-256-GCM cifra el contenedor completo. XChaCha20-Poly1305 cifra el resultado
+completo de AES-GCM, incluida su etiqueta. Ambas capas autentican el encabezado.
+
+El flujo criptográfico base se ejecuta en código nativo y funciona localmente.
+La contraseña opcional del usuario y el vínculo a la instalación conservan su
+protección adicional. La importación sigue admitiendo GNX4 anterior y los
+formatos históricos. Una compilación anterior solo puede abrir los archivos
+creados con el esquema que conoce.
 
 Para los APK con firma persistente, configure el secreto `GNX4_EXPORT_KEY` en
 GitHub Actions. Debe contener 32 bytes aleatorios codificados en 64 dígitos

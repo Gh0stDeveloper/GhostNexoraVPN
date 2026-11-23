@@ -22,6 +22,10 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ProfileBundleExportTest {
+    private fun assertMultilayerGnx4(bytes: ByteArray) {
+        assertEquals("GNX4GNX-MLKEM768-X25", bytes.copyOfRange(0, 20).toString(Charsets.US_ASCII))
+    }
+
     @Test
     fun roundTripsSingleAndMultipleEncryptedProfilesWithOptionalPassword() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -37,7 +41,7 @@ class ProfileBundleExportTest {
             for (selection in listOf(profiles.take(1), profiles)) {
                 assertTrue(manager.exportToUri(uri, selection, BundleExportOptions(BundleProtection.APP_MANAGED)))
                 val exported = file.readBytes()
-                assertEquals("GNX4", exported.copyOfRange(0, 4).toString(Charsets.US_ASCII))
+                assertMultilayerGnx4(exported)
                 assertFalse(exported.toString(Charsets.ISO_8859_1).contains("first.example"))
                 val imported = manager.importFromUri(uri) as ImportResult.Success
                 assertEquals(selection.map { it.host }, imported.profiles.map { it.host })
@@ -46,15 +50,19 @@ class ProfileBundleExportTest {
 
             assertTrue(manager.exportToUri(uri, profiles, BundleExportOptions(BundleProtection.PASSWORD, password)))
             val protectedFile = file.readBytes()
-            assertEquals("GNX4", protectedFile.copyOfRange(0, 4).toString(Charsets.US_ASCII))
+            assertMultilayerGnx4(protectedFile)
             assertTrue(manager.importFromUri(uri) is ImportResult.PasswordRequired)
             assertTrue(manager.importFromUri(uri, "wrong-password".toCharArray()) is ImportResult.Error)
             val protected = manager.importFromUri(uri, password) as ImportResult.Success
             assertEquals(profiles.map { it.host }, protected.profiles.map { it.host })
 
-            protectedFile[protectedFile.lastIndex] = (protectedFile.last().toInt() xor 1).toByte()
-            file.writeBytes(protectedFile)
-            assertTrue(manager.importFromUri(uri, password) is ImportResult.Error)
+            // Change each KEM component, the outer tag, and the encrypted payload.
+            for (offset in listOf(56, 1144, 1176, protectedFile.lastIndex)) {
+                val altered = protectedFile.copyOf()
+                altered[offset] = (altered[offset].toInt() xor 1).toByte()
+                file.writeBytes(altered)
+                assertTrue(manager.importFromUri(uri, password) is ImportResult.Error)
+            }
 
             val deviceBoundExport = runCatching {
                 manager.exportToUri(uri, profiles, BundleExportOptions(BundleProtection.DEVICE_BOUND))
@@ -62,7 +70,7 @@ class ProfileBundleExportTest {
             val deviceBoundError = deviceBoundExport.exceptionOrNull()
             if (deviceBoundError == null) {
                 assertTrue(deviceBoundExport.getOrThrow())
-                assertEquals("GNX4", file.readBytes().copyOfRange(0, 4).toString(Charsets.US_ASCII))
+                assertMultilayerGnx4(file.readBytes())
                 val deviceBound = manager.importFromUri(uri) as ImportResult.Success
                 assertEquals(profiles.map { it.host }, deviceBound.profiles.map { it.host })
             } else {
@@ -76,7 +84,7 @@ class ProfileBundleExportTest {
                 )
             )
             try {
-                assertEquals("GNX4", single.readBytes().copyOfRange(0, 4).toString(Charsets.US_ASCII))
+                assertMultilayerGnx4(single.readBytes())
                 val imported = manager.importFromUri(Uri.fromFile(single)) as ImportResult.Success
                 assertEquals(profiles.first().host, imported.profiles.single().host)
             } finally {
