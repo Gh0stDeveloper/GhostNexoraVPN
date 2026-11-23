@@ -7,9 +7,15 @@ import com.jcraft.jsch.Session;
 public final class TunnelRuntime {
     private final ConnectionMode mode;
     private final SshTunnelHandle sshHandle;
+    private final DnsTunnelProcess dnsTransport;
 
     TunnelRuntime(ConnectionMode mode, SshTunnelHandle sshHandle) {
+        this(mode, sshHandle, null);
+    }
+
+    TunnelRuntime(ConnectionMode mode, SshTunnelHandle sshHandle, DnsTunnelProcess dnsTransport) {
         this.mode = mode;
+        this.dnsTransport = dnsTransport;
         this.sshHandle = sshHandle;
     }
 
@@ -23,7 +29,12 @@ public final class TunnelRuntime {
         return session != null && session.isConnected();
     }
 
-    void closeSsh() {
+    boolean hasLiveDnsTransport() {
+        return dnsTransport == null || dnsTransport.isAlive();
+    }
+
+    void closeTransport() {
         if (sshHandle != null) sshHandle.close();
+        if (dnsTransport != null) dnsTransport.close();
     }
 }

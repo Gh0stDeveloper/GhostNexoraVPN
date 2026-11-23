@@ -9,4 +9,4 @@ trap 'adb logcat -d -t 1000 > emulator-vpn-logcat.log || true' EXIT
 adb shell am instrument -w -r \
   -e class "$package.VpnLaunchTest,$package.ProfileProtectionTest,$package.ProfileBundleExportTest,$package.tunnel.XrayActiveOutboundTest,$package.tunnel.SshTlsXrayConfigTest" \
   "$package.test/androidx.test.runner.AndroidJUnitRunner" | tee emulator-vpn-launch.log
-grep -Fq 'OK (7 tests)' emulator-vpn-launch.log
+grep -Fq 'OK (8 tests)' emulator-vpn-launch.log

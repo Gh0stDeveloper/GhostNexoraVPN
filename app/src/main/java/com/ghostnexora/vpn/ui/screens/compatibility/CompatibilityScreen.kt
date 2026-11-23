@@ -69,7 +69,7 @@ private val compatibilityEntries = listOf(
     CompatibilityEntry("Xray", "Proxy HTTPS", "HTTP CONNECT sobre TLS", CompatibilityStatus.DEVICE_PENDING, "TCP con validación del certificado del proxy."),
     CompatibilityEntry("Xray", "SOCKS5 + TLS", "SOCKS5 sobre TLS", CompatibilityStatus.DEVICE_PENDING, "TCP con validación del certificado del proxy."),
     CompatibilityEntry("Xray", "Hysteria2", "QUIC · UDP · TLS · obfs", CompatibilityStatus.EXPERIMENTAL, "Transporte QUIC con TLS y ofuscación configurable."),
-    CompatibilityEntry("DNS", "Fast DNS / Slow DNS", "Túnel mediante DNS", CompatibilityStatus.NOT_AVAILABLE, "Se necesita confirmar el protocolo y contar con un perfil y servidor compatibles."),
+    CompatibilityEntry("DNS", "DNSTT + Xray", "UDP DNS · DoT · DoH", CompatibilityStatus.DEVICE_PENDING, "Backend TCP con servidor DNSTT compatible."),
     CompatibilityEntry("Core", "TUN Android", "IPv4 · IPv4 preferido · dual stack", CompatibilityStatus.CI_VERIFIED, "MTU, DNS, rutas y clases runtime se verifican en Debug y Release/R8."),
     CompatibilityEntry("Producto", "Split tunneling", "Todas · solo seleccionadas · excluir", CompatibilityStatus.CI_VERIFIED, "Las reglas se aplican con VpnService.Builder y se validan antes del TUN.")
 )

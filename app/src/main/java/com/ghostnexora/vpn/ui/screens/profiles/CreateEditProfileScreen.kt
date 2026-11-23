@@ -179,6 +179,15 @@ fun CreateEditProfileScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
                     Text("Transporte y seguridad", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
 
+                    if (state.selectedMode == ConnectionMode.DNSTT) {
+                        OutlinedTextField(
+                            value = state.payload,
+                            onValueChange = viewModel::onPayloadChange,
+                            label = { Text("Perfil JSON DNSTT") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 5
+                        )
+                    }
                     if (state.selectedMode == ConnectionMode.SHADOWSOCKS) {
                         var showCiphers by remember { mutableStateOf(false) }
                         Text(stringResource(R.string.shadowsocks_cipher), style = MaterialTheme.typography.labelMedium)

@@ -37,6 +37,7 @@ object ProfileTechnicalSummaries {
         val protocol = when (profile.selectedMode) {
             ConnectionMode.V2RAY -> options["protocol"]?.uppercase()
                 ?: if (profile.tags.any { it.equals("vmess", true) }) "VMESS" else "VLESS"
+            ConnectionMode.DNSTT -> "DNSTT + Xray"
             ConnectionMode.HTTPS_PROXY -> "HTTPS CONNECT"
             ConnectionMode.SOCKS5_TLS -> "SOCKS5 + TLS"
             ConnectionMode.SHADOWSOCKS -> "SHADOWSOCKS"
@@ -45,6 +46,7 @@ object ProfileTechnicalSummaries {
             else -> "SSH"
         }
         val transport = when {
+            profile.selectedMode == ConnectionMode.DNSTT -> "TCP sobre DNSTT"
             profile.selectedMode.isTlsProxy -> "TCP"
             profile.selectedMode == ConnectionMode.SHADOWSOCKS -> "TCP/UDP"
             profile.selectedMode.isSsh && profile.selectedMode.requiresProxy -> "${profile.proxy.type.ifBlank { "http" }.uppercase()} → SSH"

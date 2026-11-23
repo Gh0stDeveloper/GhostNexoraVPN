@@ -1,5 +1,6 @@
 package com.ghostnexora.vpn.util
 
+import org.json.JSONObject
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -252,6 +253,20 @@ class JsonManager @Inject constructor(
     private fun parseImportText(rawText: String): ImportResult {
         if (rawText.isBlank()) return ImportResult.Error("El archivo está vacío")
         val trimmed = rawText.trim()
+        val dnstt = if (trimmed.startsWith("{")) runCatching { JSONObject(trimmed) }.getOrNull() else null
+        if (dnstt?.optString("type") == "gnx-dnstt") {
+            return runCatching {
+                val config = com.ghostnexora.vpn.tunnel.DnsTunnelProfile.parse(trimmed)
+                ImportResult.Success(listOf(VpnProfile(
+                    name = dnstt.optString("name").ifBlank { "DNSTT + ${config.backend.connectionModeLabel}" },
+                    host = config.domain,
+                    port = 53,
+                    connectionMode = ConnectionMode.DNSTT.id,
+                    method = ConnectionMode.DNSTT.family,
+                    payload = trimmed
+                )), "Perfil DNSTT")
+            }.getOrElse { ImportResult.Error("Perfil DNSTT inválido o backend no compatible") }
+        }
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             val xrayProfiles = ProtocolLinkParser.parseXrayJson(trimmed)
             if (xrayProfiles.isNotEmpty()) {

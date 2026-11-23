@@ -154,6 +154,9 @@ class CreateEditViewModel @Inject constructor(
         }
 
         when {
+            mode == ConnectionMode.DNSTT && runCatching {
+                com.ghostnexora.vpn.tunnel.DnsTunnelProfile.parse(s.payload)
+            }.isFailure -> error = "Introduce un perfil JSON DNSTT válido"
             mode.isTlsProxy && s.password.isNotEmpty() && s.username.isBlank() -> error = "Introduce el usuario del proxy"
             mode.isSsh && s.username.isBlank() -> error = "El usuario SSH es obligatorio"
             mode.isSsh && s.password.isBlank() -> error = "La contraseña SSH es obligatoria"

@@ -62,6 +62,18 @@ class SshTlsXrayConfigTest {
         }
     }
 
+    @Test
+    fun bundledDnsttProcessListensAndStops() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val profile = DnsTunnelProfile(
+            "t.example.invalid", "127.0.0.1:53535", "udp", "02" + "00".repeat(31), VpnProfile()
+        )
+        DnsTunnelProcess.start(context, profile).use { transport ->
+            assertTrue(transport.port in 1..65535)
+            assertTrue(transport.isAlive())
+        }
+    }
+
     private fun assertNativeCoreStarts(config: String) {
         val engine = XrayCoreEngine(InstrumentationRegistry.getInstrumentation().targetContext)
         val (coreFd, peerFd) = ParcelFileDescriptor.createSocketPair()

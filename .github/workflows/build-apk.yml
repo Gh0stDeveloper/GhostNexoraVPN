@@ -75,6 +75,9 @@ jobs:
           gh release download "$XRAY_LIB_TAG" --repo 2dust/AndroidLibXrayLite \
             --pattern libv2ray.aar --dir app/libs
 
+      - name: Build DNSTT engine for Android ABIs
+        run: bash scripts/build-dnstt-android.sh
+
       - name: Verify native dependencies
         run: |
           printf '%s  %s\n' "$XRAY_LIB_SHA256" app/libs/libv2ray.aar | sha256sum -c -
@@ -274,6 +277,7 @@ jobs:
           test -s "$APK"
           unzip -l "$APK" > debug-apk-contents.txt
           for abi in arm64-v8a armeabi-v7a x86_64; do
+            grep -Fq "lib/$abi/libgnxdnstt.so" debug-apk-contents.txt
             grep -Fq "lib/$abi/libghostguard.so" debug-apk-contents.txt || {
               echo "Missing libghostguard.so for $abi"
               exit 1

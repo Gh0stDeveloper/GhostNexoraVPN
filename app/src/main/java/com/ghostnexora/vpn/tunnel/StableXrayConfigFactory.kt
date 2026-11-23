@@ -24,6 +24,13 @@ object StableXrayConfigFactory {
         profile: VpnProfile,
         sshSocksPort: Int? = null,
         preferences: NetworkPreferences = NetworkPreferences()
+    ): String = buildConfig(profile, sshSocksPort, preferences, null)
+
+    fun buildDnstt(backend: VpnProfile, localPort: Int, preferences: NetworkPreferences): String =
+        buildConfig(backend, null, preferences, localPort)
+
+    private fun buildConfig(
+        profile: VpnProfile, sshSocksPort: Int?, preferences: NetworkPreferences, dnsttPort: Int?
     ): String {
         val options = parseOptions(profile.payload)
         val isSshBridge = sshSocksPort != null
@@ -37,11 +44,20 @@ object StableXrayConfigFactory {
             profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
             else -> error("No Xray outbound for ${profile.connectionModeLabel}")
         }
+        if (dnsttPort != null) {
+            require(dnsttPort in 1..65535)
+            val settings = proxy.getJSONObject("settings")
+            val endpoint = settings.optJSONArray("vnext")?.getJSONObject(0)
+                ?: settings.optJSONArray("servers")?.getJSONObject(0)
+                ?: settings
+            endpoint.put("address", "127.0.0.1").put("port", dnsttPort)
+        }
+        val tcpOnly = tlsProxy || dnsttPort != null
         val inbounds = JSONArray().put(tunInbound(preferences))
 
         val outbounds = JSONArray().put(proxy)
         if (preferences.vpnDnsEnabled) {
-            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge || tlsProxy))
+            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge || tcpOnly))
         }
         outbounds.put(directOutbound()).put(blockOutbound())
 
@@ -52,7 +68,7 @@ object StableXrayConfigFactory {
             .apply { if (preferences.vpnDnsEnabled) put("dns", protectedDns(preferences)) }
             .put("inbounds", inbounds)
             .put("outbounds", outbounds)
-            .put("routing", routing(isSshBridge || tlsProxy, preferences.vpnDnsEnabled, tlsProxy))
+            .put("routing", routing(isSshBridge || tcpOnly, preferences.vpnDnsEnabled, tcpOnly))
             .toString()
     }
 

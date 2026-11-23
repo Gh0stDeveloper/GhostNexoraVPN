@@ -120,6 +120,13 @@ enum class ConnectionMode(
         usesTls = true,
         requiredFields = listOf("Host/IP", "Puerto")
     ),
+    DNSTT(
+        id = "dnstt",
+        label = "DNSTT + Xray",
+        family = "dnstt",
+        description = "Túnel DNS autenticado con un servidor DNSTT y un backend TCP.",
+        requiredFields = listOf("Dominio", "Resolver", "Clave pública", "Backend TCP")
+    ),
     TROJAN(
         id = "trojan",
         label = "Trojan",

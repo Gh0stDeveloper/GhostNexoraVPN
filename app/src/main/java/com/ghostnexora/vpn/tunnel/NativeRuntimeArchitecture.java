@@ -18,6 +18,10 @@ public final class NativeRuntimeArchitecture {
             return new NativeRuntimePlan(XRAY_TUN, "JSch SSH", "127.0.0.1 SOCKS5 → SSH direct-tcpip", true, false,
                     "TCP por SSH; BadVPN UDP Gateway no está empaquetado");
         }
+        if (mode == ConnectionMode.DNSTT) {
+            return new NativeRuntimePlan(XRAY_TUN, "Xray + DNSTT", "TCP local", true, false,
+                    "DNS por UDP, DoT o DoH; backend TCP");
+        }
         if (mode == ConnectionMode.V2RAY) {
             return new NativeRuntimePlan(XRAY_TUN, "Xray VLESS/VMess", null, true, true,
                     "La compatibilidad exacta depende del transporte admitido por el core incluido");
