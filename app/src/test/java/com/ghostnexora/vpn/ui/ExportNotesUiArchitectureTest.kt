@@ -16,7 +16,9 @@ class ExportNotesUiArchitectureTest {
         assertTrue(source.contains("Cifrado automático por la aplicación"))
         assertTrue(source.contains("Contraseña personalizada"))
         assertTrue(source.contains("RadioButton"))
-        assertTrue(source.contains("nonce/IV aleatorio nuevo en cada exportación"))
+        assertTrue(source.contains("Todos los archivos GNX4 se cifran con la clave de la aplicación"))
+        val nativeExport = sourceFile("src/main/java/com/ghostnexora/vpn/security/NativeGuard.kt")
+        assertTrue(nativeExport.contains("exportRandom.nextBytes(randomness)"))
     }
 
     @Test
