@@ -3,7 +3,11 @@ package com.ghostnexora.vpn
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -77,13 +81,21 @@ class VpnLaunchTest {
                     .performScrollTo().performClick()
                 compose.waitUntil(10_000) { runBlocking { !repository.networkPreferences.first().vpnDnsEnabled } }
 
-                compose.onNodeWithTag("dashboard-log-tab").performClick()
-                compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_expand)).performClick()
+                val expandLogs = app.getString(R.string.dashboard_logs_expand)
+                compose.onNodeWithTag("dashboard-log-tab").performSemanticsAction(SemanticsActions.OnClick)
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(hasContentDescription(expandLogs)).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithContentDescription(expandLogs).performClick()
                 compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).assertIsDisplayed()
                 compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).performClick()
-                compose.onNodeWithTag("dashboard-home-tab").performClick()
+                compose.onNodeWithTag("dashboard-home-tab").performSemanticsAction(SemanticsActions.OnClick)
 
-                compose.onNodeWithText(app.getString(R.string.btn_connect)).performScrollTo().performClick()
+                val connect = app.getString(R.string.btn_connect)
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(hasText(connect)).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText(connect).performScrollTo().performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }
 
                 val serviceInfo = uiAutomation.serviceInfo
