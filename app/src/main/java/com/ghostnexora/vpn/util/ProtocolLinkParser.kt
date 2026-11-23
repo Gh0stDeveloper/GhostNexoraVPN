@@ -386,6 +386,9 @@ object ProtocolLinkParser {
         val security = stream.optString("security").lowercase()
         if (security !in setOf("", "none", "tls", "reality")) return null
         if (protocol == "trojan" && security == "none") return null
+        if (protocol == "http" || protocol == "socks") {
+            return parseTlsProxy(protocol, outbound, settings, stream)
+        }
         if (protocol == "shadowsocks") {
             if (network !in setOf("", "tcp", "raw") || security !in setOf("", "none")) return null
             val server = settings.optJSONArray("servers")?.let { servers ->
@@ -404,6 +407,42 @@ object ProtocolLinkParser {
             "hysteria", "hysteria2" -> parseXrayHysteria(outbound, settings, stream)
             else -> null
         }
+    }
+
+    private fun parseTlsProxy(
+        protocol: String,
+        outbound: JSONObject,
+        settings: JSONObject,
+        stream: JSONObject
+    ): VpnProfile? {
+        // Import only settings the manual editor and outbound builder can preserve.
+        val tls = stream.optJSONObject("tlsSettings") ?: return null
+        if (!stream.optString("security").equals("tls", true) ||
+            stream.optString("network") !in setOf("", "tcp", "raw") ||
+            stream.keys().asSequence().any { it !in setOf("security", "network", "tlsSettings") } ||
+            tls.keys().asSequence().any { it != "serverName" } ||
+            settings.keys().asSequence().any { it !in setOf("address", "port", "user", "pass", "level", "email") } ||
+            outbound.has("proxySettings") || outbound.has("sendThrough") || outbound.has("mux")
+        ) return null
+
+        val host = settings.optString("address").trim()
+        val port = settings.optInt("port")
+        val user = settings.optString("user")
+        val password = settings.optString("pass")
+        if (host.isBlank() || port !in 1..65535 || (password.isNotEmpty() && user.isBlank())) return null
+        val mode = if (protocol == "http") ConnectionMode.HTTPS_PROXY else ConnectionMode.SOCKS5_TLS
+        return VpnProfile(
+            name = outbound.optString("tag").ifBlank { "${mode.label} $host:$port" },
+            host = host,
+            port = port,
+            username = user,
+            password = password,
+            method = mode.family,
+            connectionMode = mode.id,
+            sslEnabled = true,
+            sni = tls.optString("serverName"),
+            enabled = true
+        )
     }
 
     private fun parseXrayVnext(

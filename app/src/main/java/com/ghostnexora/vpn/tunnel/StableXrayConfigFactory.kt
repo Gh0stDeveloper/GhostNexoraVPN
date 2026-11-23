@@ -27,9 +27,11 @@ object StableXrayConfigFactory {
     ): String {
         val options = parseOptions(profile.payload)
         val isSshBridge = sshSocksPort != null
+        val tlsProxy = profile.selectedMode.isTlsProxy
         val proxy = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
             profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options, preferences)
+            tlsProxy -> tlsProxyOutbound(profile, preferences)
             profile.selectedMode == ConnectionMode.SHADOWSOCKS -> shadowsocksOutbound(profile)
             profile.selectedMode == ConnectionMode.TROJAN -> trojanOutbound(profile, options, preferences)
             profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
@@ -39,7 +41,7 @@ object StableXrayConfigFactory {
 
         val outbounds = JSONArray().put(proxy)
         if (preferences.vpnDnsEnabled) {
-            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
+            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge || tlsProxy))
         }
         outbounds.put(directOutbound()).put(blockOutbound())
 
@@ -50,7 +52,7 @@ object StableXrayConfigFactory {
             .apply { if (preferences.vpnDnsEnabled) put("dns", protectedDns(preferences)) }
             .put("inbounds", inbounds)
             .put("outbounds", outbounds)
-            .put("routing", routing(isSshBridge, preferences.vpnDnsEnabled))
+            .put("routing", routing(isSshBridge || tlsProxy, preferences.vpnDnsEnabled, tlsProxy))
             .toString()
     }
 
@@ -171,7 +173,7 @@ object StableXrayConfigFactory {
         .put("protocol", "blackhole")
         .put("settings", JSONObject().put("response", JSONObject().put("type", "none")))
 
-    private fun routing(isSshBridge: Boolean, vpnDnsEnabled: Boolean): JSONObject {
+    private fun routing(resolveRemotely: Boolean, vpnDnsEnabled: Boolean, tcpOnly: Boolean): JSONObject {
         val rules = JSONArray()
         if (vpnDnsEnabled) {
             rules.put(
@@ -182,6 +184,13 @@ object StableXrayConfigFactory {
                     .put("port", "53")
                     .put("outboundTag", "dns-out")
             )
+        }
+        if (tcpOnly) {
+            rules.put(JSONObject()
+                .put("type", "field")
+                .put("inboundTag", JSONArray().put("tun"))
+                .put("network", "udp")
+                .put("outboundTag", "block"))
         }
         rules.put(
             JSONObject()
@@ -194,7 +203,7 @@ object StableXrayConfigFactory {
         return JSONObject()
             // SSH direct-tcpip resolves destination names at the SSH server.
             // Avoid resolving them on the physical Android network first.
-            .put("domainStrategy", if (isSshBridge) "AsIs" else "IPIfNonMatch")
+            .put("domainStrategy", if (resolveRemotely) "AsIs" else "IPIfNonMatch")
             .put("rules", rules)
     }
 
@@ -260,6 +269,24 @@ object StableXrayConfigFactory {
             .put("settings", settings)
             .put("streamSettings", streamSettings(profile, options, preferences))
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
+    }
+
+    private fun tlsProxyOutbound(profile: VpnProfile, preferences: NetworkPreferences): JSONObject {
+        require(profile.host.isNotBlank() && profile.port in 1..65535) { "Invalid proxy endpoint" }
+        require(profile.password.isEmpty() || profile.username.isNotBlank()) { "Proxy username is required" }
+
+        val settings = JSONObject()
+            .put("address", profile.host)
+            .put("port", profile.port)
+            .put("level", 8)
+        if (profile.username.isNotBlank()) {
+            settings.put("user", profile.username).put("pass", profile.password)
+        }
+        return JSONObject()
+            .put("tag", "proxy")
+            .put("protocol", if (profile.selectedMode == ConnectionMode.HTTPS_PROXY) "http" else "socks")
+            .put("settings", settings)
+            .put("streamSettings", streamSettings(profile, emptyMap(), preferences, forceTls = true))
     }
 
     private fun shadowsocksOutbound(profile: VpnProfile): JSONObject {

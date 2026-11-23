@@ -206,4 +206,6 @@
     <string name="network_other">Red activa</string>
     <string name="shadowsocks_cipher">Cifrado Shadowsocks</string>
     <string name="shadowsocks_password">Contraseña Shadowsocks</string>
+    <string name="tls_proxy_username">Usuario del proxy (opcional)</string>
+    <string name="tls_proxy_password">Contraseña del proxy (opcional)</string>
 </resources>

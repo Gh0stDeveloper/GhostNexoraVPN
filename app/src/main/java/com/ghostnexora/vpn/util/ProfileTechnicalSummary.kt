@@ -37,12 +37,15 @@ object ProfileTechnicalSummaries {
         val protocol = when (profile.selectedMode) {
             ConnectionMode.V2RAY -> options["protocol"]?.uppercase()
                 ?: if (profile.tags.any { it.equals("vmess", true) }) "VMESS" else "VLESS"
+            ConnectionMode.HTTPS_PROXY -> "HTTPS CONNECT"
+            ConnectionMode.SOCKS5_TLS -> "SOCKS5 + TLS"
             ConnectionMode.SHADOWSOCKS -> "SHADOWSOCKS"
             ConnectionMode.TROJAN -> "TROJAN"
             ConnectionMode.UDP -> "HYSTERIA2"
             else -> "SSH"
         }
         val transport = when {
+            profile.selectedMode.isTlsProxy -> "TCP"
             profile.selectedMode == ConnectionMode.SHADOWSOCKS -> "TCP/UDP"
             profile.selectedMode.isSsh && profile.selectedMode.requiresProxy -> "${profile.proxy.type.ifBlank { "http" }.uppercase()} → SSH"
             profile.selectedMode.isSsh && profile.selectedMode.requiresPayload -> "HTTP payload → SSH"

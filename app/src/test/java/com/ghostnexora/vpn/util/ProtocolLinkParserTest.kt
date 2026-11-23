@@ -11,6 +11,29 @@ import org.junit.Test
 
 class ProtocolLinkParserTest {
     @Test
+    fun importsTlsProxiesWithoutChangingCertificatePolicy() {
+        for ((protocol, mode) in listOf("http" to ConnectionMode.HTTPS_PROXY, "socks" to ConnectionMode.SOCKS5_TLS)) {
+            val json = """{"protocol":"$protocol","settings":{"address":"proxy.example","port":443,"user":"test","pass":"fixture"},"streamSettings":{"network":"raw","security":"tls","tlsSettings":{"serverName":"proxy.example"}}}"""
+            val profile = ProtocolLinkParser.parseText(json).single()
+            assertEquals(mode, profile.selectedMode)
+            val root = JSONObject(StableXrayConfigFactory.build(profile))
+            val outbounds = root.getJSONArray("outbounds")
+            val proxy = outbounds.getJSONObject(0)
+            assertEquals(protocol, proxy.getString("protocol"))
+            assertEquals("fixture", proxy.getJSONObject("settings").getString("pass"))
+            assertEquals("tls", proxy.getJSONObject("streamSettings").getString("security"))
+            assertEquals("proxy", outbounds.getJSONObject(1).getJSONObject("streamSettings")
+                .getJSONObject("sockopt").getString("dialerProxy"))
+            val rules = root.getJSONObject("routing").getJSONArray("rules")
+            assertEquals("dns-out", rules.getJSONObject(0).getString("outboundTag"))
+            assertEquals("udp", rules.getJSONObject(1).getString("network"))
+            assertEquals("block", rules.getJSONObject(1).getString("outboundTag"))
+            assertTrue(ProtocolLinkParser.parseText(json.replace(""tls"", ""none"")).isEmpty())
+            assertTrue(ProtocolLinkParser.parseText(json.replace(""serverName":", ""allowInsecure":true,"serverName":")).isEmpty())
+        }
+    }
+
+    @Test
     fun shadowsocksImportPreservesCipherPasswordAndEndpoint() {
         val profile = ProtocolLinkParser.parseText(
             "ss://aes-256-gcm:Example%2BSecret%3AWith%40Symbols@[2001:db8::1]:8388#Test%20SS"

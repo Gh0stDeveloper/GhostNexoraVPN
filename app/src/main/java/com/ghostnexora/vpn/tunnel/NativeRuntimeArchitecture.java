@@ -22,6 +22,10 @@ public final class NativeRuntimeArchitecture {
             return new NativeRuntimePlan(XRAY_TUN, "Xray VLESS/VMess", null, true, true,
                     "La compatibilidad exacta depende del transporte admitido por el core incluido");
         }
+        if (mode.isTlsProxy()) {
+            return new NativeRuntimePlan(XRAY_TUN, mode.getLabel(), null, true, false,
+                    "TCP y DNS sobre el proxy TLS; UDP general bloqueado");
+        }
         if (mode == ConnectionMode.SHADOWSOCKS) {
             return new NativeRuntimePlan(XRAY_TUN, "Xray Shadowsocks", null, true, true,
                     "Shadowsocks AEAD y AEAD-2022 sin plugins externos");

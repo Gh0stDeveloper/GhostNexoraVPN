@@ -104,6 +104,22 @@ enum class ConnectionMode(
         description = "Shadowsocks AEAD y AEAD-2022 con Xray para TCP y UDP.",
         requiredFields = listOf("Host/IP", "Puerto", "Cifrado", "Contraseña")
     ),
+    HTTPS_PROXY(
+        id = "https_proxy",
+        label = "Proxy HTTPS",
+        family = "https_proxy",
+        description = "Proxy HTTP CONNECT protegido por TLS. Solo TCP.",
+        usesTls = true,
+        requiredFields = listOf("Host/IP", "Puerto")
+    ),
+    SOCKS5_TLS(
+        id = "socks5_tls",
+        label = "SOCKS5 + TLS",
+        family = "socks5_tls",
+        description = "Proxy SOCKS5 accesible mediante TLS. Solo TCP.",
+        usesTls = true,
+        requiredFields = listOf("Host/IP", "Puerto")
+    ),
     TROJAN(
         id = "trojan",
         label = "Trojan",
@@ -113,6 +129,8 @@ enum class ConnectionMode(
         requiresSni = true,
         requiredFields = listOf("Host/IP", "Puerto", "Password", "SNI")
     );
+
+    val isTlsProxy: Boolean get() = this == HTTPS_PROXY || this == SOCKS5_TLS
 
     val isSsh: Boolean get() = family == "ssh"
 
@@ -125,6 +143,7 @@ enum class ConnectionMode(
             sslEnabled: Boolean? = null
         ): ConnectionMode {
             fromId(storedMode)?.let { return it }
+            fromId(legacyMethod)?.takeIf { it.isTlsProxy }?.let { return it }
             val method = legacyMethod?.lowercase().orEmpty()
             return when {
                 method.contains("v2ray") || method.contains("vless") || method.contains("vmess") -> V2RAY

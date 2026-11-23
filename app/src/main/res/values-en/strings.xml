@@ -183,4 +183,6 @@
     <string name="network_other">Active network</string>
     <string name="shadowsocks_cipher">Shadowsocks cipher</string>
     <string name="shadowsocks_password">Shadowsocks password</string>
+    <string name="tls_proxy_username">Proxy username (optional)</string>
+    <string name="tls_proxy_password">Proxy password (optional)</string>
 </resources>

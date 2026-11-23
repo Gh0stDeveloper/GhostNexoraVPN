@@ -154,6 +154,7 @@ class CreateEditViewModel @Inject constructor(
         }
 
         when {
+            mode.isTlsProxy && s.password.isNotEmpty() && s.username.isBlank() -> error = "Introduce el usuario del proxy"
             mode.isSsh && s.username.isBlank() -> error = "El usuario SSH es obligatorio"
             mode.isSsh && s.password.isBlank() -> error = "La contraseña SSH es obligatoria"
             mode == ConnectionMode.V2RAY && s.username.isBlank() -> error = "V2Ray requiere UUID / User ID"
@@ -221,7 +222,7 @@ class CreateEditViewModel @Inject constructor(
                 host = s.host.trim(),
                 port = s.port.toIntOrNull() ?: 443,
                 username = s.username.trim(),
-                password = if (mode == ConnectionMode.SHADOWSOCKS) s.password else s.password.trim(),
+                password = if (mode == ConnectionMode.SHADOWSOCKS || mode.isTlsProxy) s.password else s.password.trim(),
                 method = mode.family,
                 connectionMode = mode.id,
                 sslEnabled = if (mode == ConnectionMode.V2RAY) s.sslEnabled else mode.usesTls,

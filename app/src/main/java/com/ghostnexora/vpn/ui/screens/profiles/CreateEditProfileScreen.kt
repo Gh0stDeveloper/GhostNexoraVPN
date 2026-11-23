@@ -206,7 +206,7 @@ fun CreateEditProfileScreen(
                         )
                     }
 
-                    if (state.selectedMode.requiresSni || (state.selectedMode == ConnectionMode.V2RAY && state.sslEnabled)) {
+                    if (state.selectedMode.isTlsProxy || state.selectedMode.requiresSni || (state.selectedMode == ConnectionMode.V2RAY && state.sslEnabled)) {
                         OutlinedTextField(
                             value = state.sni,
                             onValueChange = viewModel::onSniChange,
@@ -349,20 +349,25 @@ private fun ProtocolCredentialFields(
 ) {
     val mode = state.selectedMode
 
-    if (mode.isSsh || mode == ConnectionMode.V2RAY) {
+    if (mode.isSsh || mode.isTlsProxy || mode == ConnectionMode.V2RAY) {
         OutlinedTextField(
             value = state.username,
             onValueChange = viewModel::onUsernameChange,
             label = {
-                Text(if (mode == ConnectionMode.V2RAY) "UUID / User ID" else "Usuario SSH")
+                Text(when {
+                    mode.isTlsProxy -> stringResource(R.string.tls_proxy_username)
+                    mode == ConnectionMode.V2RAY -> "UUID / User ID"
+                    else -> "Usuario SSH"
+                })
             },
             modifier = Modifier.fillMaxWidth()
         )
     }
 
-    if (mode.isSsh || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP || mode == ConnectionMode.SHADOWSOCKS) {
+    if (mode.isSsh || mode.isTlsProxy || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP || mode == ConnectionMode.SHADOWSOCKS) {
         val label = when (mode) {
             ConnectionMode.SHADOWSOCKS -> stringResource(R.string.shadowsocks_password)
+            ConnectionMode.HTTPS_PROXY, ConnectionMode.SOCKS5_TLS -> stringResource(R.string.tls_proxy_password)
             ConnectionMode.TROJAN -> "Contraseña Trojan"
             ConnectionMode.UDP -> "Auth / Contraseña Hysteria2"
             else -> "Contraseña SSH"

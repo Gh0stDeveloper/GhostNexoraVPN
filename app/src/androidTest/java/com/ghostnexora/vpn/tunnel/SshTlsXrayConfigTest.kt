@@ -47,6 +47,21 @@ class SshTlsXrayConfigTest {
         }
     }
 
+    @Test
+    fun nativeCoreStartsWithBothTlsProxyModes() {
+        for (mode in listOf(ConnectionMode.HTTPS_PROXY, ConnectionMode.SOCKS5_TLS)) {
+            val profile = VpnProfile(
+                name = "TLS proxy fixture",
+                host = "proxy.example.invalid",
+                port = 443,
+                connectionMode = mode.id,
+                username = "fixture",
+                password = "test-proxy-fixture"
+            )
+            assertNativeCoreStarts(StableXrayConfigFactory.build(profile))
+        }
+    }
+
     private fun assertNativeCoreStarts(config: String) {
         val engine = XrayCoreEngine(InstrumentationRegistry.getInstrumentation().targetContext)
         val (coreFd, peerFd) = ParcelFileDescriptor.createSocketPair()
