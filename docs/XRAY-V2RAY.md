@@ -123,7 +123,7 @@ to the app profile. XHTTP imports selected scalar options and uses the original
 host/path. Full Xray documents with custom routing, balancers, or nested XHTTP
 download transports cannot be replayed through profile import.
 
-The runtime uses [2dust/AndroidLibXrayLite v26.5.19](https://github.com/2dust/AndroidLibXrayLite/tree/v26.5.19),
+The runtime uses [2dust/AndroidLibXrayLite v26.11.9](https://github.com/2dust/AndroidLibXrayLite/tree/v26.11.9),
 a Go mobile binding for Xray core. GhostVpnService, TunnelManager and
 XrayCoreEngine run in Java. Profile import, configuration mapping and Compose
 screens use Kotlin. The C++ JNI helper clears mutable import buffers and

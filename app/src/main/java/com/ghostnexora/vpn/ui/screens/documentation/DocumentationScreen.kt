@@ -56,12 +56,6 @@ fun DocumentationScreen() {
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceLG)
         ) {
             InfoBlock(
-                "Estado real de compatibilidad",
-                "La aplicación separa CI verificado, prueba física pendiente y experimental. Un core iniciado no demuestra que el servidor entregue Internet.",
-                NeonCyan
-            )
-
-            InfoBlock(
                 "Conexión aceptada",
                 "El motor vive en un proceso VPN privado. Activa el TUN en modo fail-closed, inicia una sola sesión SSH/Xray, verifica Internet por la salida activa y recién entonces muestra Conectado. El registro enseña cada etapa en tiempo real.",
                 NeonGreen
@@ -99,14 +93,14 @@ fun DocumentationScreen() {
 
             SectionBlock(
                 title = "Métodos disponibles en el motor",
-                subtitle = "La implementación existe; consulta Compatibilidad para saber qué combinaciones todavía requieren servidor y dispositivo real.",
+                subtitle = "Consulta Compatibilidad para ver los transportes de cada método.",
                 color = NeonCyan,
                 modes = supported
             )
 
             SectionBlock(
                 title = "Métodos pendientes de integración",
-                subtitle = "No se presentan como disponibles hasta tener motor, validación, UI y pruebas.",
+                subtitle = "Estos métodos aún no aparecen en el editor de perfiles.",
                 color = NeonAmber,
                 modes = planned
             )
@@ -156,11 +150,6 @@ private fun SectionBlock(
                         "Campos: ${mode.requiredFields.joinToString(" · ")}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
-                    )
-                    Text(
-                        if (mode.supported) "Estado: implementado; evidencia física según combinación" else "Estado: no implementado",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (mode.supported) NeonCyan else NeonAmber
                     )
                 }
             }

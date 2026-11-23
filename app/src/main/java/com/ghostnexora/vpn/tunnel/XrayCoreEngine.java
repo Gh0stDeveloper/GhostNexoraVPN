@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
+import java.util.Base64;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import go.Seq;
@@ -27,7 +27,7 @@ public final class XrayCoreEngine {
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
     private static final Object INITIALIZATION_LOCK = new Object();
     private static final List<String> REQUIRED_ASSETS = Arrays.asList("geoip.dat", "geosite.dat");
-    private static final List<String> CONNECTIVITY_TEST_URLS = Arrays.asList(
+    static final List<String> CONNECTIVITY_TEST_URLS = Arrays.asList(
             "https://cp.cloudflare.com/generate_204",
             "https://www.gstatic.com/generate_204"
     );
@@ -99,11 +99,11 @@ public final class XrayCoreEngine {
     public synchronized XrayTrafficDelta drainProxyTraffic() {
         CoreController activeController = controller;
         if (activeController == null || !activeController.getIsRunning()) return new XrayTrafficDelta();
-        long received = 0L;
-        long sent = 0L;
-        try { received = Math.max(0L, activeController.queryStats("proxy", "downlink")); } catch (Throwable ignored) { }
-        try { sent = Math.max(0L, activeController.queryStats("proxy", "uplink")); } catch (Throwable ignored) { }
-        return new XrayTrafficDelta(received, sent);
+        try {
+            return XrayTrafficDelta.fromOutboundStats(activeController.queryAllOutboundTrafficStats());
+        } catch (RuntimeException ignored) {
+            return new XrayTrafficDelta();
+        }
     }
 
     public synchronized void stop() {
@@ -199,10 +199,12 @@ public final class XrayCoreEngine {
         if (androidId == null || androidId.trim().isEmpty()) androidId = appContext.getPackageName();
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(
                 (appContext.getPackageName() + ':' + androidId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        StringBuilder result = new StringBuilder(32);
-        for (int i = 0; i < 16; i++) result.append(String.format(Locale.US, "%02x", digest[i] & 0xFF));
-        Arrays.fill(digest, (byte) 0);
-        return result.toString();
+        try {
+            // Xray decodes xray.xudp.basekey as unpadded Base64URL and requires 32 bytes.
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } finally {
+            Arrays.fill(digest, (byte) 0);
+        }
     }
 
     private void status(String message) { onStatus.invoke(message); }

@@ -40,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.ghostnexora.vpn.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -113,10 +115,10 @@ fun ImportScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Importar configuración") },
+                title = { Text(stringResource(R.string.import_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.nav_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -133,7 +135,7 @@ fun ImportScreen(
         ) {
             item {
                 Text(
-                    "Abre un perfil .gnx, un JSON de Xray o una lista de enlaces. Revisa la vista previa antes de guardar.",
+                    stringResource(R.string.import_summary),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
@@ -141,7 +143,7 @@ fun ImportScreen(
 
             item {
                 GhostButton(
-                    text = if (state.isLoading) "Procesando…" else "Seleccionar archivo",
+                    text = if (state.isLoading) stringResource(R.string.import_processing) else stringResource(R.string.import_open),
                     onClick = { picker.launch(arrayOf(JsonManager.MIME_GNX, "application/octet-stream", "application/json", "text/plain", "*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isLoading,
@@ -152,7 +154,7 @@ fun ImportScreen(
 
             item {
                 GhostButton(
-                    text = "Escanear código QR",
+                    text = stringResource(R.string.import_qr),
                     onClick = {
                         qrScanner.startScan()
                             .addOnSuccessListener { barcode ->
@@ -175,7 +177,7 @@ fun ImportScreen(
 
             item {
                 GhostButton(
-                    text = "Importar desde portapapeles",
+                    text = stringResource(R.string.import_paste),
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
@@ -198,8 +200,8 @@ fun ImportScreen(
                         value = state.password,
                         onValueChange = viewModel::setImportPassword,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Contraseña del archivo") },
-                        supportingText = { Text("El creador exige una contraseña para abrir este archivo.") },
+                        label = { Text(stringResource(R.string.import_password_label)) },
+                        supportingText = { Text(stringResource(R.string.import_password_required)) },
                         visualTransformation = PasswordVisualTransformation(),
                         enabled = !state.isLoading,
                         singleLine = true
@@ -207,7 +209,7 @@ fun ImportScreen(
                 }
                 item {
                     GhostButton(
-                        text = "Desbloquear archivo",
+                        text = stringResource(R.string.import_unlock),
                         onClick = viewModel::retryEncryptedImport,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = state.password.length >= 10 && !state.isLoading,
@@ -223,7 +225,7 @@ fun ImportScreen(
                 item {
                     GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
                         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-                            Text(state.fileName.ifBlank { "Contenido importado" }, color = TextPrimary)
+                            Text(state.fileName.takeIf(String::isNotBlank) ?: stringResource(R.string.import_content), color = TextPrimary)
                             Text(state.sourceName, color = TextTertiary, style = MaterialTheme.typography.bodySmall)
                             state.validation?.let {
                                 Text(it.message, color = if (it.isValid) NeonGreen else NeonAmber, style = MaterialTheme.typography.bodySmall)
@@ -241,12 +243,12 @@ fun ImportScreen(
             }
 
             if (state.previewProfiles.isNotEmpty()) {
-                item { Text("Vista previa técnica (${state.previewProfiles.size})", color = TextPrimary, style = MaterialTheme.typography.titleMedium) }
+                item { Text(stringResource(R.string.import_preview_count, state.previewProfiles.size), color = TextPrimary, style = MaterialTheme.typography.titleMedium) }
                 itemsIndexed(state.previewProfiles.take(12), key = { _, profile -> profile.id }) { index, profile ->
                     val summary = state.technicalSummaries.getOrNull(index)
                     GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderNormal) {
                         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)) {
-                            Text(profile.name.ifBlank { "Sin nombre" }, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                            Text(profile.name.takeIf(String::isNotBlank) ?: stringResource(R.string.profile_unnamed), color = TextPrimary, fontWeight = FontWeight.SemiBold)
                             Text("${summary?.protocol ?: profile.connectionModeLabel} · ${summary?.server ?: profile.serverAddress}", color = NeonCyan, style = MaterialTheme.typography.bodySmall)
                             if (profile.isLocked) {
                                 Text(
@@ -274,7 +276,7 @@ fun ImportScreen(
                                             ) to profile.displayNoteHtml
                                     }
                                 ) {
-                                    Text("Ver nota HTML del creador", color = NeonCyan)
+                                    Text(stringResource(R.string.import_creator_note), color = NeonCyan)
                                 }
                             }
                         }
@@ -292,10 +294,10 @@ fun ImportScreen(
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = { viewModel.confirmImport(false) }, enabled = state.canImport) {
-                            Text("Reemplazar", color = NeonAmber)
+                            Text(stringResource(R.string.import_replace), color = NeonAmber)
                         }
                         TextButton(onClick = { viewModel.confirmImport(true) }, enabled = state.canImport) {
-                            Text("Fusionar sin duplicados", color = NeonCyan)
+                            Text(stringResource(R.string.import_merge_unique), color = NeonCyan)
                         }
                     }
                 }

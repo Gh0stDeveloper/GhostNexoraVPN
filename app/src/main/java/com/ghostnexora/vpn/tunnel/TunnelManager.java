@@ -14,11 +14,12 @@ public final class TunnelManager {
     private final Function1<? super String, Unit> onCoreStatus;
     private final SshTunnelEngine sshEngine;
     private final XrayCoreEngine xrayEngine;
+    private final Context appContext;
 
     public TunnelManager(Context context, Function1<? super String, Unit> onCoreStatus) {
         if (context == null) throw new IllegalArgumentException("context == null");
         this.onCoreStatus = onCoreStatus != null ? onCoreStatus : ignored -> Unit.INSTANCE;
-        Context appContext = context.getApplicationContext();
+        this.appContext = context.getApplicationContext();
         this.sshEngine = new SshTunnelEngine(appContext, this.onCoreStatus);
         this.xrayEngine = new XrayCoreEngine(appContext, this.onCoreStatus);
     }
@@ -33,6 +34,18 @@ public final class TunnelManager {
         status("[NETWORK] Preflight iniciado · " + profile.getHost() + ":" + profile.getPort());
         status("[SETTINGS] " + preferences.getIpMode().getLabel() + " · MTU " +
                 preferences.getValidatedMtu() + " · " + preferences.getDnsMode().getLabel());
+        if (profile.getSelectedMode() == ConnectionMode.DNSTT) {
+            DnsTunnelProfile dns = DnsTunnelProfile.Companion.parse(profile.getPayload());
+            if ("udp".equals(dns.getTransport())) {
+                status(DnsTunnelProcess.probeUdp(appContext, dns)
+                        ? "[DNS] El resolver UDP devuelve respuestas DNS"
+                        : "[DNS] Sin respuesta al sondeo UDP; se probará el túnel");
+            }
+            try (DnsTunnelProcess transport = DnsTunnelProcess.start(appContext, dns)) {
+                String config = StableXrayConfigFactory.INSTANCE.buildDnstt(dns.getBackend(), transport.port, preferences);
+                return xrayEngine.verifyOutbound(config);
+            }
+        }
         if (profile.getSelectedMode().isSsh()) {
             prepareSshRuntime(profile);
             SshTunnelHandle sshHandle = sshEngine.connectWithSocks(profile);
@@ -60,6 +73,18 @@ public final class TunnelManager {
         requireSupported(profile);
         reportRuntimePlan(profile.getSelectedMode());
         status("[TUN] Adjuntando descriptor Android al core");
+        if (profile.getSelectedMode() == ConnectionMode.DNSTT) {
+            DnsTunnelProfile dns = DnsTunnelProfile.Companion.parse(profile.getPayload());
+            DnsTunnelProcess transport = DnsTunnelProcess.start(appContext, dns);
+            try {
+                String config = StableXrayConfigFactory.INSTANCE.buildDnstt(dns.getBackend(), transport.port, preferences);
+                return startCore(profile, config, tunFd, null, transport, preferences);
+            } catch (Throwable error) {
+                xrayEngine.stop();
+                transport.close();
+                throw rethrow(error);
+            }
+        }
         if (profile.getSelectedMode().isSsh()) {
             prepareSshRuntime(profile);
             SshTunnelHandle sshHandle = sshEngine.connectWithSocks(profile);
@@ -67,7 +92,7 @@ public final class TunnelManager {
                 status("[SSH] Sesión autenticada y cifrada");
                 status("[SOCKS] Bridge SSH activo · 127.0.0.1:" + sshHandle.getSocksPort());
                 String config = StableXrayConfigFactory.INSTANCE.build(profile, sshHandle.getSocksPort(), preferences);
-                return startCore(profile, config, tunFd, sshHandle, preferences);
+                return startCore(profile, config, tunFd, sshHandle, null, preferences);
             } catch (Throwable error) {
                 xrayEngine.stop();
                 sshHandle.close();
@@ -77,7 +102,7 @@ public final class TunnelManager {
         }
         String config = StableXrayConfigFactory.INSTANCE.build(profile, null, preferences);
         try {
-            return startCore(profile, config, tunFd, null, preferences);
+            return startCore(profile, config, tunFd, null, null, preferences);
         } catch (Throwable error) {
             xrayEngine.stop();
             status("[ERROR] Xray/TUN detenido · " + shortMessage(error, 180));
@@ -86,14 +111,16 @@ public final class TunnelManager {
     }
 
     private TunnelRuntime startCore(VpnProfile profile, String config, int tunFd, SshTunnelHandle sshHandle,
-                                    NetworkPreferences preferences) {
+                                    DnsTunnelProcess dnsTransport, NetworkPreferences preferences) {
         status("[XRAY] " + StableXrayConfigFactory.INSTANCE.summary(profile, preferences));
-        status("[DNS] " + preferences.getDnsMode().getLabel() + " · " + String.join(", ", preferences.dnsServers()));
+        status(preferences.getVpnDnsEnabled()
+                ? "[DNS] " + preferences.getDnsMode().getLabel() + " · " + String.join(", ", preferences.dnsServers())
+                : "[DNS] DNS del sistema · sin resolver configurado por la VPN");
         status("[ROUTING] Regla explícita TUN → proxy · TCP/UDP según capacidad del runtime");
         xrayEngine.start(config, tunFd);
         status("[TUN] Xray Core conectado a la interfaz Android");
         status("[NETWORK] Core activo · pendiente de validar la ruta de datos");
-        return new TunnelRuntime(profile.getSelectedMode(), sshHandle);
+        return new TunnelRuntime(profile.getSelectedMode(), sshHandle, dnsTransport);
     }
 
     private void prepareSshRuntime(VpnProfile profile) {
@@ -118,10 +145,15 @@ public final class TunnelManager {
 
     public XrayTrafficDelta drainTraffic() { return xrayEngine.drainProxyTraffic(); }
 
-    public OutboundCheck verifyActiveDataPlane() {
-        status("[NETWORK] Validando salida desde el Xray activo → proxy del perfil");
+    public OutboundCheck verifyActiveDataPlane(TunnelRuntime runtime) {
+        SshTunnelHandle ssh = runtime.sshHandle();
+        status(ssh == null
+                ? "[NETWORK] Validando salida desde el Xray activo → proxy del perfil"
+                : "[NETWORK] Verificando respuesta HTTPS por el bridge SSH autenticado");
         try {
-            OutboundCheck check = xrayEngine.verifyActiveOutbound();
+            OutboundCheck check = ssh == null
+                    ? xrayEngine.verifyActiveOutbound()
+                    : SshOutboundProbe.verify(ssh.getSocksPort());
             status("[NETWORK] Salida del perfil verificada · " + check.getLatencyMs() + " ms");
             return check;
         } catch (Exception error) {
@@ -136,11 +168,11 @@ public final class TunnelManager {
         if (runtime == null && !xrayEngine.isRunning()) return;
         status("[TUN] Deteniendo core y liberando transporte");
         try { xrayEngine.stop(); } catch (Throwable ignored) { }
-        try { if (runtime != null) runtime.closeSsh(); } catch (Throwable ignored) { }
+        try { if (runtime != null) runtime.closeTransport(); } catch (Throwable ignored) { }
     }
 
     public boolean isAlive(TunnelRuntime runtime) {
-        return runtime != null && xrayEngine.isRunning() && runtime.hasConnectedSshSession();
+        return runtime != null && xrayEngine.isRunning() && runtime.hasConnectedSshSession() && runtime.hasLiveDnsTransport();
     }
 
     public String coreVersion() { return xrayEngine.version(); }

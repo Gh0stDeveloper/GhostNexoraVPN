@@ -6,6 +6,7 @@ import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.security.HtmlNoteSanitizer
 import com.ghostnexora.vpn.util.PayloadEngine
@@ -99,6 +100,12 @@ class CreateEditViewModel @Inject constructor(
                 sslEnabled = if (mode == ConnectionMode.V2RAY) true else mode.usesTls,
                 proxyType = if (mode.requiresProxy && it.proxyType.isBlank()) "http" else it.proxyType,
                 tags = nextTags,
+                payload = when {
+                    mode == it.selectedMode -> it.payload
+                    mode == ConnectionMode.SHADOWSOCKS -> ShadowsocksCipher.AES_256_GCM.id
+                    it.selectedMode == ConnectionMode.SHADOWSOCKS -> ""
+                    else -> it.payload
+                },
                 error = null
             )
         }
@@ -147,9 +154,15 @@ class CreateEditViewModel @Inject constructor(
         }
 
         when {
+            mode == ConnectionMode.DNSTT && runCatching {
+                com.ghostnexora.vpn.tunnel.DnsTunnelProfile.parse(s.payload)
+            }.isFailure -> error = "Introduce un perfil JSON DNSTT válido"
+            mode.isTlsProxy && s.password.isNotEmpty() && s.username.isBlank() -> error = "Introduce el usuario del proxy"
             mode.isSsh && s.username.isBlank() -> error = "El usuario SSH es obligatorio"
             mode.isSsh && s.password.isBlank() -> error = "La contraseña SSH es obligatoria"
             mode == ConnectionMode.V2RAY && s.username.isBlank() -> error = "V2Ray requiere UUID / User ID"
+            mode == ConnectionMode.SHADOWSOCKS && ShadowsocksCipher.fromId(s.payload)?.accepts(s.password) != true ->
+                error = "Shadowsocks requiere un cifrado válido y su contraseña o clave compatible"
             mode == ConnectionMode.TROJAN && s.password.isBlank() -> error = "Trojan requiere contraseña"
             mode == ConnectionMode.UDP && s.password.isBlank() -> error = "UDP/Hysteria2 requiere contraseña o auth"
         }
@@ -212,7 +225,7 @@ class CreateEditViewModel @Inject constructor(
                 host = s.host.trim(),
                 port = s.port.toIntOrNull() ?: 443,
                 username = s.username.trim(),
-                password = s.password.trim(),
+                password = if (mode == ConnectionMode.SHADOWSOCKS || mode.isTlsProxy) s.password else s.password.trim(),
                 method = mode.family,
                 connectionMode = mode.id,
                 sslEnabled = if (mode == ConnectionMode.V2RAY) s.sslEnabled else mode.usesTls,

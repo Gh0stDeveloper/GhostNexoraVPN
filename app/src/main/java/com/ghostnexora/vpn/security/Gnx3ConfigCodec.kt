@@ -94,6 +94,10 @@ object Gnx3ConfigCodec {
         val dataNonce = randomBytes(NONCE_BYTES)
         val dataKey = randomBytes(DATA_KEY_BYTES)
         val plaintext = json.toByteArray(Charsets.UTF_8)
+        if (plaintext.size > MAX_PLAINTEXT_BYTES) {
+            NativeGuard.wipe(dataKey, plaintext)
+            throw Gnx3ConfigException("El contenido excede el límite GNX3")
+        }
         val compressed = gzip(plaintext)
         val derived = derive(key, salt)
         val wrappingKey = derived.copyOfRange(0, 32)

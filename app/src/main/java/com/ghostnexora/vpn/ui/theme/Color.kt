@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.Color
 // ── Fondos ────────────────────────────────────────────────────────────────
 val BackgroundDeep    = Color(0xFF000000)   // Fondo más oscuro (raíz)
 val BackgroundDark    = Color(0xFF000000)   // Fondo principal
-val SurfaceDark       = Color(0xFF101010)   // Superficie base
-val SurfaceVariant    = Color(0xFF191919)   // Tarjetas y contenedores
+val SurfaceDark       = Color(0xFF0D0F0E)   // Superficie base
+val SurfaceVariant    = Color(0xFF101312)   // Tarjetas y contenedores
 val SurfaceElevated   = Color(0xFF242424)   // Tarjetas elevadas
 val SurfaceDim        = Color(0xFF141414)   // Overlay sutil
 
@@ -21,7 +21,7 @@ val NeonCyanDim       = Color(0xFFBDBDBD)   // Cyan apagado
 val NeonCyanGlow      = Color(0x40FFFFFF)   // Cyan con transparencia (glow)
 val NeonBlue          = Color(0xFFD6D6D6)   // Azul claro
 val NeonBlueDark      = Color(0xFF999999)   // Azul oscuro
-val NeonGreen         = Color(0xFF00E676)   // Verde conexión activa
+val NeonGreen         = Color(0xFFA5F3D8)   // Verde conexión activa
 val NeonGreenDim      = Color(0xFF00C853)   // Verde apagado
 val NeonGreenGlow     = Color(0x4000E676)   // Verde glow
 val NeonAmber         = Color(0xFFFFD740)   // Advertencia
@@ -38,7 +38,7 @@ val TextDisabled      = Color(0xFF414141)   // Texto deshabilitado
 val TextOnAccent      = Color(0xFF000000)   // Texto sobre botones neon
 
 // ── Bordes y Divisores ────────────────────────────────────────────────────
-val BorderSubtle      = Color(0xFF292929)   // Borde muy sutil
+val BorderSubtle      = Color(0xFF282E2B)   // Borde muy sutil
 val BorderNormal      = Color(0xFF414141)   // Borde estándar
 val BorderAccent      = Color(0xFFF5F5F5)   // Borde resaltado (neon)
 

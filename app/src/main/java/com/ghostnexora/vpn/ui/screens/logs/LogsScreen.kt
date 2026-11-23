@@ -41,7 +41,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.ghostnexora.vpn.ui.components.HttpInjectorLogConsole
+import com.ghostnexora.vpn.ui.components.VpnLogConsole
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.BorderNormal
 import com.ghostnexora.vpn.ui.theme.Dimens
@@ -175,7 +175,7 @@ fun LogsScreen(
                 )
             )
 
-            HttpInjectorLogConsole(
+            VpnLogConsole(
                 logs = logs,
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 maxHeight = null

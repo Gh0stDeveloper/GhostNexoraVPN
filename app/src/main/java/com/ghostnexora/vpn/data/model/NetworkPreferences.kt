@@ -32,7 +32,8 @@ data class NetworkPreferences(
     val dnsMode: DnsMode = DnsMode.AUTOMATIC,
     val customDnsPrimary: String = "1.1.1.1",
     val customDnsSecondary: String = "8.8.8.8",
-    val reconnectMaxAttempts: Int = 8
+    val reconnectMaxAttempts: Int = 8,
+    val vpnDnsEnabled: Boolean = true
 ) {
     val validatedMtu: Int get() = mtu.coerceIn(MIN_MTU, MAX_MTU)
     val validatedReconnectAttempts: Int get() = reconnectMaxAttempts.coerceIn(1, 12)

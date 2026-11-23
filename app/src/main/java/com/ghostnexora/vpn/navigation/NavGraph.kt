@@ -3,6 +3,8 @@ package com.ghostnexora.vpn.navigation
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -10,10 +12,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,6 +23,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.ghostnexora.vpn.R
 import com.ghostnexora.vpn.ui.screens.about.AboutScreen
 import com.ghostnexora.vpn.ui.screens.approuting.AppRoutingScreen
 import com.ghostnexora.vpn.ui.screens.compatibility.CompatibilityScreen
@@ -40,7 +43,9 @@ import kotlinx.coroutines.launch
 fun GhostNavHost(
     navController: NavHostController,
     onCheckUpdates: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dashboardLogsExpanded: Boolean = false,
+    onDashboardLogsExpanded: (Boolean) -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -59,8 +64,11 @@ fun GhostNavHost(
             fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { it / 10 }
         }
     ) {
-        composable(Screen.Dashboard.route) {
+        composable(Screen.Dashboard.route) { entry ->
             DashboardScreen(
+                lifecycleOwner = entry,
+                logsExpanded = dashboardLogsExpanded,
+                onLogsExpanded = onDashboardLogsExpanded,
                 onNavigateToProfiles = {
                     navController.navigate(Screen.Profiles.route)
                 }
@@ -145,6 +153,7 @@ fun GhostNavHost(
 fun GhostNavigationDrawer(
     navController: NavHostController,
     drawerState: DrawerState,
+    gesturesEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -153,6 +162,7 @@ fun GhostNavigationDrawer(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = gesturesEnabled,
         scrimColor = BackgroundDeep.copy(alpha = 0.7f),
         drawerContent = {
             ModalDrawerSheet(
@@ -160,44 +170,39 @@ fun GhostNavigationDrawer(
                 drawerContainerColor = SurfaceDark,
                 drawerContentColor = TextPrimary
             ) {
-                DrawerHeader()
-
-                NeonDivider(
-                    modifier = Modifier.padding(horizontal = Dimens.SpaceLG),
-                    color = BorderSubtle
-                )
-
-                Spacer(modifier = Modifier.height(Dimens.SpaceSM))
-
-                Screen.drawerItems.forEach { screen ->
-                    if (screen == Screen.Settings) {
-                        Spacer(modifier = Modifier.weight(1f))
-                        NeonDivider(
-                            modifier = Modifier.padding(horizontal = Dimens.SpaceLG),
-                            color = BorderSubtle
-                        )
-                        Spacer(modifier = Modifier.height(Dimens.SpaceXS))
-                    }
-
-                    GhostDrawerItem(
-                        screen = screen,
-                        isSelected = currentRoute == screen.route,
-                        onClick = {
-                            coroutineScope.launch { drawerState.close() }
-                            if (currentRoute != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(Screen.Dashboard.route) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = Dimens.SpaceMD)) {
+                    DrawerHeader(onClose = { coroutineScope.launch { drawerState.close() } })
+                    val groups = listOf(
+                        R.string.drawer_connection to listOf(Screen.Dashboard, Screen.Profiles, Screen.CreateProfile, Screen.AppRouting),
+                        R.string.drawer_files to listOf(Screen.Import, Screen.Export),
+                        R.string.drawer_activity to listOf(Screen.History, Screen.Logs),
+                        R.string.drawer_system to listOf(Screen.Settings, Screen.Compatibility, Screen.Documentation, Screen.About)
                     )
+                    groups.forEach { (label, screens) ->
+                        Text(
+                            stringResource(label),
+                            modifier = Modifier.padding(horizontal = Dimens.SpaceXL, vertical = Dimens.SpaceSM),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextSecondary
+                        )
+                        screens.forEach { screen ->
+                            GhostDrawerItem(
+                                screen = screen,
+                                isSelected = currentRoute == screen.route,
+                                onClick = {
+                                    coroutineScope.launch { drawerState.close() }
+                                    if (currentRoute != screen.route) {
+                                        navController.navigate(screen.route) {
+                                            popUpTo(Screen.Dashboard.route) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
-
-                Spacer(modifier = Modifier.height(Dimens.SpaceMD))
             }
         },
         content = content
@@ -205,54 +210,28 @@ fun GhostNavigationDrawer(
 }
 
 @Composable
-private fun DrawerHeader() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(Dimens.DrawerHeaderHeight)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        NeonCyan.copy(alpha = 0.12f),
-                        SurfaceDark
-                    )
-                )
-            )
-            .padding(Dimens.SpaceXXL),
-        contentAlignment = Alignment.BottomStart
+private fun DrawerHeader(onClose: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(NeonCyan.copy(0.3f), NeonCyanGlow)
-                        )
-                    )
-                    .neonGlow(NeonCyan, radius = 12.dp, alpha = 0.4f),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Shield,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(Dimens.SpaceMD))
-
-            Text(
-                text = "Ghost Nexora VPN",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-            )
+        Box(
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(NeonGreen.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Shield, null, tint = NeonGreen, modifier = Modifier.size(21.dp))
+        }
+        Text(
+            stringResource(R.string.app_name),
+            modifier = Modifier.weight(1f).padding(start = Dimens.SpaceMD),
+            style = MaterialTheme.typography.titleMedium,
+            color = TextPrimary
+        )
+        IconButton(onClick = onClose) {
+            Icon(Icons.Filled.Close, stringResource(R.string.drawer_close))
         }
     }
+    HorizontalDivider(color = BorderSubtle, modifier = Modifier.padding(horizontal = Dimens.SpaceMD))
 }
 
 @Composable
@@ -261,22 +240,22 @@ private fun GhostDrawerItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val bgColor = if (isSelected) NeonCyan.copy(alpha = 0.1f) else TextPrimary.copy(alpha = 0f)
-    val contentColor = if (isSelected) NeonCyan else TextSecondary
+    val bgColor = if (isSelected) NeonGreen.copy(alpha = 0.12f) else TextPrimary.copy(alpha = 0f)
+    val contentColor = if (isSelected) NeonGreen else TextSecondary
     val icon = if (isSelected) screen.iconSelected else screen.icon
 
     NavigationDrawerItem(
         icon = {
             Icon(
                 imageVector = icon,
-                contentDescription = screen.title,
+                contentDescription = null,
                 modifier = Modifier.size(Dimens.DrawerIconSize),
                 tint = contentColor
             )
         },
         label = {
             Text(
-                text = screen.title,
+                text = stringResource(screen.title),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = contentColor,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal

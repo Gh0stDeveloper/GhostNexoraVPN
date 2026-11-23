@@ -4,6 +4,7 @@ import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.DnsMode
 import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,38 +24,59 @@ object StableXrayConfigFactory {
         profile: VpnProfile,
         sshSocksPort: Int? = null,
         preferences: NetworkPreferences = NetworkPreferences()
+    ): String = buildConfig(profile, sshSocksPort, preferences, null)
+
+    fun buildDnstt(backend: VpnProfile, localPort: Int, preferences: NetworkPreferences): String =
+        buildConfig(backend, null, preferences, localPort)
+
+    private fun buildConfig(
+        profile: VpnProfile, sshSocksPort: Int?, preferences: NetworkPreferences, dnsttPort: Int?
     ): String {
         val options = parseOptions(profile.payload)
         val isSshBridge = sshSocksPort != null
+        val tlsProxy = profile.selectedMode.isTlsProxy
         val proxy = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
             profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options, preferences)
+            tlsProxy -> tlsProxyOutbound(profile, preferences)
+            profile.selectedMode == ConnectionMode.SHADOWSOCKS -> shadowsocksOutbound(profile)
             profile.selectedMode == ConnectionMode.TROJAN -> trojanOutbound(profile, options, preferences)
             profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
             else -> error("No Xray outbound for ${profile.connectionModeLabel}")
         }
+        if (dnsttPort != null) {
+            require(dnsttPort in 1..65535)
+            val settings = proxy.getJSONObject("settings")
+            val endpoint = settings.optJSONArray("vnext")?.getJSONObject(0)
+                ?: settings.optJSONArray("servers")?.getJSONObject(0)
+                ?: settings
+            endpoint.put("address", "127.0.0.1").put("port", dnsttPort)
+        }
+        val tcpOnly = tlsProxy || dnsttPort != null
         val inbounds = JSONArray().put(tunInbound(preferences))
+
+        val outbounds = JSONArray().put(proxy)
+        if (preferences.vpnDnsEnabled) {
+            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge || tcpOnly))
+        }
+        outbounds.put(directOutbound()).put(blockOutbound())
 
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning").put("dnsLog", true))
             .put("stats", JSONObject())
             .put("policy", policy())
-            .put("dns", protectedDns(preferences))
+            .apply { if (preferences.vpnDnsEnabled) put("dns", protectedDns(preferences)) }
             .put("inbounds", inbounds)
-            .put(
-                "outbounds",
-                JSONArray()
-                    // The running-core connectivity check uses the default outbound.
-                    .put(proxy)
-                    .put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
-                    .put(directOutbound())
-                    .put(blockOutbound())
-            )
-            .put("routing", routing(isSshBridge))
+            .put("outbounds", outbounds)
+            .put("routing", routing(isSshBridge || tcpOnly, preferences.vpnDnsEnabled, tcpOnly))
             .toString()
     }
 
     fun summary(profile: VpnProfile, preferences: NetworkPreferences = NetworkPreferences()): String {
+        if (profile.selectedMode == ConnectionMode.SHADOWSOCKS) {
+            val cipher = ShadowsocksCipher.fromId(profile.payload)?.id ?: "—"
+            return "Shadowsocks · TCP/UDP · $cipher · ${preferences.ipMode.label} · MTU ${preferences.validatedMtu}"
+        }
         val options = parseOptions(profile.payload)
         val network = normalizeNetwork(options["net"] ?: options["type"] ?: options["network"] ?: "tcp")
         val security = when {
@@ -149,7 +171,10 @@ object StableXrayConfigFactory {
         )
         .apply {
             if (detourThroughProxy) {
-                put("proxySettings", JSONObject().put("tag", "proxy"))
+                put(
+                    "streamSettings",
+                    JSONObject().put("sockopt", JSONObject().put("dialerProxy", "proxy"))
+                )
             }
         }
 
@@ -164,10 +189,10 @@ object StableXrayConfigFactory {
         .put("protocol", "blackhole")
         .put("settings", JSONObject().put("response", JSONObject().put("type", "none")))
 
-    private fun routing(isSshBridge: Boolean): JSONObject {
+    private fun routing(resolveRemotely: Boolean, vpnDnsEnabled: Boolean, tcpOnly: Boolean): JSONObject {
         val rules = JSONArray()
-        rules
-            .put(
+        if (vpnDnsEnabled) {
+            rules.put(
                 JSONObject()
                     .put("type", "field")
                     .put("inboundTag", JSONArray().put("tun"))
@@ -175,18 +200,26 @@ object StableXrayConfigFactory {
                     .put("port", "53")
                     .put("outboundTag", "dns-out")
             )
-            .put(
-                JSONObject()
-                    .put("type", "field")
-                    .put("inboundTag", JSONArray().put("tun"))
-                    .put("network", "tcp,udp")
-                    .put("outboundTag", "proxy")
-            )
+        }
+        if (tcpOnly) {
+            rules.put(JSONObject()
+                .put("type", "field")
+                .put("inboundTag", JSONArray().put("tun"))
+                .put("network", "udp")
+                .put("outboundTag", "block"))
+        }
+        rules.put(
+            JSONObject()
+                .put("type", "field")
+                .put("inboundTag", JSONArray().put("tun"))
+                .put("network", "tcp,udp")
+                .put("outboundTag", "proxy")
+        )
 
         return JSONObject()
             // SSH direct-tcpip resolves destination names at the SSH server.
             // Avoid resolving them on the physical Android network first.
-            .put("domainStrategy", if (isSshBridge) "AsIs" else "IPIfNonMatch")
+            .put("domainStrategy", if (resolveRemotely) "AsIs" else "IPIfNonMatch")
             .put("rules", rules)
     }
 
@@ -252,6 +285,39 @@ object StableXrayConfigFactory {
             .put("settings", settings)
             .put("streamSettings", streamSettings(profile, options, preferences))
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
+    }
+
+    private fun tlsProxyOutbound(profile: VpnProfile, preferences: NetworkPreferences): JSONObject {
+        require(profile.host.isNotBlank() && profile.port in 1..65535) { "Invalid proxy endpoint" }
+        require(profile.password.isEmpty() || profile.username.isNotBlank()) { "Proxy username is required" }
+
+        val settings = JSONObject()
+            .put("address", profile.host)
+            .put("port", profile.port)
+            .put("level", 8)
+        if (profile.username.isNotBlank()) {
+            settings.put("user", profile.username).put("pass", profile.password)
+        }
+        return JSONObject()
+            .put("tag", "proxy")
+            .put("protocol", if (profile.selectedMode == ConnectionMode.HTTPS_PROXY) "http" else "socks")
+            .put("settings", settings)
+            .put("streamSettings", streamSettings(profile, emptyMap(), preferences, forceTls = true))
+    }
+
+    private fun shadowsocksOutbound(profile: VpnProfile): JSONObject {
+        require(profile.host.isNotBlank() && profile.port in 1..65535) { "Invalid Shadowsocks endpoint" }
+        val cipher = requireNotNull(ShadowsocksCipher.fromId(profile.payload)) { "Unsupported Shadowsocks cipher" }
+        require(cipher.accepts(profile.password)) { "Invalid Shadowsocks password or key length" }
+        return JSONObject()
+            .put("tag", "proxy")
+            .put("protocol", "shadowsocks")
+            .put("settings", JSONObject()
+                .put("address", profile.host.trim())
+                .put("port", profile.port)
+                .put("method", cipher.id)
+                .put("password", profile.password)
+                .put("level", 8))
     }
 
     private fun trojanOutbound(profile: VpnProfile, options: Map<String, String>, preferences: NetworkPreferences): JSONObject {

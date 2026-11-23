@@ -47,10 +47,9 @@ class SettingsViewModel @Inject constructor(
                 repository.autoReconnect,
                 repository.killSwitch,
                 repository.floatingWindow,
-                repository.notifications,
-                repository.reconnectOnBoot
-            ) { reconnect, killSwitch, floating, notifications, boot ->
-                SettingsSnapshot(reconnect, killSwitch, floating, notifications, boot)
+                repository.notifications
+            ) { reconnect, killSwitch, floating, notifications ->
+                SettingsSnapshot(reconnect, killSwitch, floating, notifications)
             }.combine(repository.logsMaxEntries) { snapshot, maxLogs ->
                 snapshot to maxLogs
             }.combine(repository.isFirstLaunch) { pair, firstLaunch ->
@@ -62,7 +61,6 @@ class SettingsViewModel @Inject constructor(
                     killSwitch = snapshot.killSwitch,
                     floatingWindow = snapshot.floatingWindow,
                     notifications = snapshot.notifications,
-                    reconnectOnBoot = snapshot.reconnectOnBoot,
                     logsMaxEntries = maxLogs,
                     networkPreferences = networkPreferences,
                     permissionStatus = PermissionHelper.permissionStatus(context),
@@ -82,7 +80,6 @@ class SettingsViewModel @Inject constructor(
     fun toggleKillSwitch() = viewModelScope.launch { repository.setKillSwitch(!_uiState.value.killSwitch) }
     fun toggleFloatingWindow() = viewModelScope.launch { repository.setFloatingWindow(!_uiState.value.floatingWindow) }
     fun toggleNotifications() = viewModelScope.launch { repository.setNotifications(!_uiState.value.notifications) }
-    fun toggleReconnectOnBoot() = viewModelScope.launch { repository.setReconnectOnBoot(!_uiState.value.reconnectOnBoot) }
 
     fun setIpMode(value: IpMode) = viewModelScope.launch {
         repository.setIpMode(value)
@@ -92,6 +89,10 @@ class SettingsViewModel @Inject constructor(
     fun setTunMtu(value: Int) = viewModelScope.launch {
         repository.setTunMtu(value)
         _uiState.update { it.copy(snackbarMessage = "TUN MTU updated to ${value.coerceIn(1280, 1500)}") }
+    }
+
+    fun setVpnDnsEnabled(enabled: Boolean) = viewModelScope.launch {
+        repository.setVpnDnsEnabled(enabled)
     }
 
     fun setDnsMode(value: DnsMode) = viewModelScope.launch {
@@ -207,8 +208,7 @@ private data class SettingsSnapshot(
     val autoReconnect: Boolean,
     val killSwitch: Boolean,
     val floatingWindow: Boolean,
-    val notifications: Boolean,
-    val reconnectOnBoot: Boolean
+    val notifications: Boolean
 )
 
 data class SettingsUiState(
@@ -216,7 +216,6 @@ data class SettingsUiState(
     val killSwitch: Boolean = true,
     val floatingWindow: Boolean = false,
     val notifications: Boolean = true,
-    val reconnectOnBoot: Boolean = false,
     val logsMaxEntries: Int = 500,
     val networkPreferences: NetworkPreferences = NetworkPreferences(),
     val knownHostCount: Int = 0,

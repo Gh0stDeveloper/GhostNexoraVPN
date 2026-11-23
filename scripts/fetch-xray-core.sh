@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-TAG="${XRAY_LIB_TAG:-v26.5.19}"
+TAG="${XRAY_LIB_TAG:-v26.11.9}"
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 DEST_DIR="$ROOT_DIR/app/libs"
 DEST_FILE="$DEST_DIR/libv2ray.aar"

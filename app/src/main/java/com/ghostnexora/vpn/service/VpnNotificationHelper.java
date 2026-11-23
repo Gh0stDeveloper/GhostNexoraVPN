@@ -40,7 +40,7 @@ public final class VpnNotificationHelper {
             title = "VPN protegida";
             body = connected.getProfileName() + " · " + connected.getServerIp();
         } else if (state instanceof VpnConnectionState.Connecting) {
-            title = "Conectando VPN";
+            title = "Verificando VPN";
             body = "Perfil: " + ((VpnConnectionState.Connecting) state).getProfileName();
         } else if (state instanceof VpnConnectionState.Reconnecting) {
             VpnConnectionState.Reconnecting reconnecting = (VpnConnectionState.Reconnecting) state;
@@ -97,6 +97,7 @@ public final class VpnNotificationHelper {
     private static PendingIntent disconnectIntent(Context context) {
         Intent intent = new Intent(context, GhostVpnService.class);
         intent.setAction(GhostVpnService.ACTION_DISCONNECT);
+        intent.putExtra(GhostVpnService.EXTRA_DISCONNECT_SOURCE, "notificación");
         return PendingIntent.getService(
                 context,
                 1,

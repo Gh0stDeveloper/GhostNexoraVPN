@@ -82,6 +82,11 @@ object HtmlNoteSanitizer {
         "z-index", "filter", "backdrop-filter", "content", "behavior", "-moz-binding"
     )
 
+    fun hasPresentationMarkup(raw: String): Boolean =
+        tagPattern.findAll(raw.take(MAX_INPUT_CHARS)).any {
+            it.groupValues[2].lowercase() in allowedTags
+        }
+
     fun sanitize(raw: String): String {
         if (raw.isBlank()) return ""
         return runCatching { sanitizeInternal(raw) }

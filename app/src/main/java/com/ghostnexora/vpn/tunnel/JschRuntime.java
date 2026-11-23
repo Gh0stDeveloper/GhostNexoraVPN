@@ -119,6 +119,9 @@ public final class JschRuntime {
             if (clean.isEmpty()) {
                 return;
             }
+            if ("Connection established".equals(clean)) {
+                clean = "Transporte SSH abierto · pendiente de autenticar";
+            }
             if (clean.length() > 240) {
                 clean = clean.substring(0, 240);
             }

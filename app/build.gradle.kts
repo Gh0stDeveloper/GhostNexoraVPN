@@ -18,8 +18,8 @@ android {
         applicationId = "com.ghostnexora.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 56
-        versionName = "1.0.56"
+        versionCode = 67
+        versionName = "1.0.67"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -93,6 +93,11 @@ android {
         // analyzing valid rememberCoroutineScope launches from event callbacks
         // in DashboardScreen. All other Android/Compose lint checks remain on.
         disable += "CoroutineCreationDuringComposition"
+    }
+
+    sourceSets.getByName("main") {
+        jniLibs.srcDir(layout.buildDirectory.dir("generated/dnstt/jniLibs"))
+        assets.srcDir(layout.buildDirectory.dir("generated/dnstt/licenses"))
     }
 
     packaging {

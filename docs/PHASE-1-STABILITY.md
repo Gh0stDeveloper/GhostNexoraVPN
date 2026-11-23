@@ -175,7 +175,7 @@ A normal connection follows this sequence:
 1. Validate profile fields.
 2. Confirm a physical non-VPN network.
 3. Load IP, DNS, MTU, app-routing and reconnect preferences.
-4. Persist the desired connected state for bounded process recovery.
+4. Keep the connection owned by the running VPN service. A new session after process termination requires Connect.
 5. Apply mandatory self-bypass or the strict only-selected allowlist.
 6. Create fail-closed Android TUN routes.
 7. Start one SSH/Xray runtime against the TUN descriptor.

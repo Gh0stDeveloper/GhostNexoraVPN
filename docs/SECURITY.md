@@ -38,6 +38,26 @@ server-held secret or hardware security module: anyone controlling the APK and
 process can eventually reconstruct it. Creator-password mode provides the
 stronger offline boundary.
 
+## Bundle exports and device-bound backups
+
+The Export screen writes one or more editable profiles as authenticated GNX3
+with either app-managed or password-derived protection. Import still accepts
+the original GNX3 single-profile document and GNX2. GNX3 sharing without a
+password is tied to the signing identity and is portable across compatible app
+installations. This mode does not attest the recipient.
+
+The device-bound GNH1 envelope uses a random AES-256 data key per file.
+Android Keystore wraps that data key with a non-exportable AES-256 key under
+`ghostnexora-gnx-device-v1`. Both layers use GCM with independent 96-bit nonces
+and authenticate the envelope metadata. Encryption and import require a key
+reported by Android as hardware-backed (TEE or StrongBox). Reinstallation,
+deleting app data, resetting the keystore or changing device can make this
+backup unrecoverable. Local KeyInfo is not remote attestation.
+
+Cross-device distribution restricted to independently verified Android hardware
+requires a trusted verifier and release of the file key only to an attested
+recipient key. That service is not part of this version.
+
 ## GNX2 exports
 
 GNX2 uses:

@@ -2,6 +2,7 @@ package com.ghostnexora.vpn.util
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.ProxyConfig
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.json.JSONArray
@@ -67,10 +68,62 @@ object ProtocolLinkParser {
     private fun parseLine(line: String): List<VpnProfile> = when {
         line.startsWith("vmess://", true) -> parseVmess(line)?.let(::listOf).orEmpty()
         line.startsWith("vless://", true) -> parseVless(line)?.let(::listOf).orEmpty()
+        line.startsWith("ss://", true) -> parseShadowsocks(line)?.let(::listOf).orEmpty()
         line.startsWith("trojan://", true) -> parseTrojan(line)?.let(::listOf).orEmpty()
         line.startsWith("hysteria2://", true) || line.startsWith("hy2://", true) -> parseHysteria2(line)?.let(::listOf).orEmpty()
         line.startsWith("ssh://", true) -> parseSsh(line)?.let(::listOf).orEmpty()
         else -> emptyList()
+    }
+
+    private fun parseShadowsocks(link: String): VpnProfile? {
+        val body = link.substringAfter("://").substringBefore('#')
+        val label = decodeUriComponent(link.substringAfter('#', ""))
+        val authority = if ('@' in body) {
+            body
+        } else {
+            decodeBase64ToString(body) ?: return null
+        }
+        val separator = authority.lastIndexOf('@')
+        if (separator < 1) return null
+        val endpoint = runCatching { URI("ss://${authority.substring(separator + 1)}") }.getOrNull()
+            ?: return null
+        val host = endpoint.host?.removePrefix("[")?.removeSuffix("]") ?: return null
+        if (endpoint.rawPath.orEmpty() !in setOf("", "/") ||
+            parseQuery(endpoint.rawQuery, ::decodeUriComponent).containsKey("plugin")
+        ) return null
+        val rawCredentials = authority.substring(0, separator)
+        val explicitMethod = ':' in rawCredentials
+        val credentials = when {
+            '@' !in body -> rawCredentials
+            explicitMethod -> rawCredentials
+            else -> decodeBase64ToString(rawCredentials) ?: return null
+        }
+        val method = credentials.substringBefore(':')
+        val password = credentials.substringAfter(':', "")
+        val percentEncoded = '@' in body && explicitMethod
+        return shadowsocksProfile(
+            label, host, endpoint.port,
+            if (percentEncoded) decodeUriComponent(method) else method,
+            if (percentEncoded) decodeUriComponent(password) else password
+        )
+    }
+
+    private fun shadowsocksProfile(
+        label: String, host: String, port: Int, method: String, password: String
+    ): VpnProfile? {
+        val cipher = ShadowsocksCipher.fromId(method) ?: return null
+        if (host.isBlank() || port !in 1..65535 || !cipher.accepts(password)) return null
+        return VpnProfile(
+            name = label.ifBlank { "Shadowsocks $host:$port" },
+            host = host,
+            port = port,
+            password = password,
+            method = ConnectionMode.SHADOWSOCKS.family,
+            connectionMode = ConnectionMode.SHADOWSOCKS.id,
+            payload = cipher.id,
+            tagsRaw = "shadowsocks",
+            enabled = true
+        )
     }
 
     private fun parseVmess(link: String): VpnProfile? {
@@ -333,12 +386,63 @@ object ProtocolLinkParser {
         val security = stream.optString("security").lowercase()
         if (security !in setOf("", "none", "tls", "reality")) return null
         if (protocol == "trojan" && security == "none") return null
+        if (protocol == "http" || protocol == "socks") {
+            return parseTlsProxy(protocol, outbound, settings, stream)
+        }
+        if (protocol == "shadowsocks") {
+            if (network !in setOf("", "tcp", "raw") || security !in setOf("", "none")) return null
+            val server = settings.optJSONArray("servers")?.let { servers ->
+                if (servers.length() != 1) return null
+                servers.optJSONObject(0) ?: return null
+            } ?: settings
+            if (server.has("uot") && server.optBoolean("uot")) return null
+            return shadowsocksProfile(
+                outbound.optString("tag"), server.optString("address"), server.optInt("port"),
+                server.optString("method"), server.optString("password")
+            )
+        }
         return when (protocol) {
             "vless", "vmess" -> parseXrayVnext(protocol, outbound, settings, stream)
             "trojan" -> parseXrayTrojan(outbound, settings, stream)
             "hysteria", "hysteria2" -> parseXrayHysteria(outbound, settings, stream)
             else -> null
         }
+    }
+
+    private fun parseTlsProxy(
+        protocol: String,
+        outbound: JSONObject,
+        settings: JSONObject,
+        stream: JSONObject
+    ): VpnProfile? {
+        // Import only settings the manual editor and outbound builder can preserve.
+        val tls = stream.optJSONObject("tlsSettings") ?: return null
+        if (!stream.optString("security").equals("tls", true) ||
+            stream.optString("network") !in setOf("", "tcp", "raw") ||
+            stream.keys().asSequence().any { it !in setOf("security", "network", "tlsSettings") } ||
+            tls.keys().asSequence().any { it != "serverName" } ||
+            settings.keys().asSequence().any { it !in setOf("address", "port", "user", "pass", "level", "email") } ||
+            outbound.has("proxySettings") || outbound.has("sendThrough") || outbound.has("mux")
+        ) return null
+
+        val host = settings.optString("address").trim()
+        val port = settings.optInt("port")
+        val user = settings.optString("user")
+        val password = settings.optString("pass")
+        if (host.isBlank() || port !in 1..65535 || (password.isNotEmpty() && user.isBlank())) return null
+        val mode = if (protocol == "http") ConnectionMode.HTTPS_PROXY else ConnectionMode.SOCKS5_TLS
+        return VpnProfile(
+            name = outbound.optString("tag").ifBlank { "${mode.label} $host:$port" },
+            host = host,
+            port = port,
+            username = user,
+            password = password,
+            method = mode.family,
+            connectionMode = mode.id,
+            sslEnabled = true,
+            sni = tls.optString("serverName"),
+            enabled = true
+        )
     }
 
     private fun parseXrayVnext(

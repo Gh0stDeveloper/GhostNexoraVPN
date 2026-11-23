@@ -2,6 +2,8 @@
 
 package com.ghostnexora.vpn.ui.screens.profiles
 
+import com.ghostnexora.vpn.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
@@ -176,6 +179,33 @@ fun CreateEditProfileScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
                     Text("Transporte y seguridad", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
 
+                    if (state.selectedMode == ConnectionMode.DNSTT) {
+                        OutlinedTextField(
+                            value = state.payload,
+                            onValueChange = viewModel::onPayloadChange,
+                            label = { Text("Perfil JSON DNSTT") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 5
+                        )
+                    }
+                    if (state.selectedMode == ConnectionMode.SHADOWSOCKS) {
+                        var showCiphers by remember { mutableStateOf(false) }
+                        Text(stringResource(R.string.shadowsocks_cipher), style = MaterialTheme.typography.labelMedium)
+                        Box {
+                            OutlinedButton(onClick = { showCiphers = true }) {
+                                Text(state.payload)
+                            }
+                            DropdownMenu(expanded = showCiphers, onDismissRequest = { showCiphers = false }) {
+                                ShadowsocksCipher.entries.forEach { cipher ->
+                                    DropdownMenuItem(text = { Text(cipher.id) }, onClick = {
+                                        viewModel.onPayloadChange(cipher.id)
+                                        showCiphers = false
+                                    })
+                                }
+                            }
+                        }
+                    }
+
                     if (state.selectedMode == ConnectionMode.V2RAY) {
                         SwitchRow(
                             title = "Usar TLS",
@@ -185,7 +215,7 @@ fun CreateEditProfileScreen(
                         )
                     }
 
-                    if (state.selectedMode.requiresSni || (state.selectedMode == ConnectionMode.V2RAY && state.sslEnabled)) {
+                    if (state.selectedMode.isTlsProxy || state.selectedMode.requiresSni || (state.selectedMode == ConnectionMode.V2RAY && state.sslEnabled)) {
                         OutlinedTextField(
                             value = state.sni,
                             onValueChange = viewModel::onSniChange,
@@ -208,7 +238,7 @@ fun CreateEditProfileScreen(
 
                     if (state.selectedMode.isSsh && state.selectedMode.usesTls) {
                         SwitchRow(
-                            title = "Compatibilidad SNI tipo HTTP Custom",
+                            title = "Compatibilidad TLS para SSH",
                             subtitle = if (
                                 state.selectedTlsVerificationMode == TlsVerificationMode.CUSTOM_SNI
                             ) {
@@ -328,19 +358,25 @@ private fun ProtocolCredentialFields(
 ) {
     val mode = state.selectedMode
 
-    if (mode.isSsh || mode == ConnectionMode.V2RAY) {
+    if (mode.isSsh || mode.isTlsProxy || mode == ConnectionMode.V2RAY) {
         OutlinedTextField(
             value = state.username,
             onValueChange = viewModel::onUsernameChange,
             label = {
-                Text(if (mode == ConnectionMode.V2RAY) "UUID / User ID" else "Usuario SSH")
+                Text(when {
+                    mode.isTlsProxy -> stringResource(R.string.tls_proxy_username)
+                    mode == ConnectionMode.V2RAY -> "UUID / User ID"
+                    else -> "Usuario SSH"
+                })
             },
             modifier = Modifier.fillMaxWidth()
         )
     }
 
-    if (mode.isSsh || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP) {
+    if (mode.isSsh || mode.isTlsProxy || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP || mode == ConnectionMode.SHADOWSOCKS) {
         val label = when (mode) {
+            ConnectionMode.SHADOWSOCKS -> stringResource(R.string.shadowsocks_password)
+            ConnectionMode.HTTPS_PROXY, ConnectionMode.SOCKS5_TLS -> stringResource(R.string.tls_proxy_password)
             ConnectionMode.TROJAN -> "Contraseña Trojan"
             ConnectionMode.UDP -> "Auth / Contraseña Hysteria2"
             else -> "Contraseña SSH"

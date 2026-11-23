@@ -36,11 +36,15 @@ class ExportNotesUiArchitectureTest {
             "src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardScreen.kt"
         )
         val profileIndex = source.indexOf("ActiveProfileCard(state.activeProfile, onProfiles)")
-        val noteIndex = source.indexOf("CreatorNoteSection(state.activeProfile)")
+        val noteIndex = source.indexOf("val note = state.activeProfile?.displayNoteHtml.orEmpty()")
+        val renderIndex = source.indexOf("ProfileNoteContent(")
         assertTrue(profileIndex >= 0)
         assertTrue(noteIndex > profileIndex)
-        assertTrue(source.contains("HtmlNoteView("))
-        assertTrue(source.contains("profile?.displayNoteHtml.orEmpty()"))
+        assertTrue(renderIndex > noteIndex)
+        val note = source.substring(noteIndex, renderIndex)
+        assertTrue(note.contains("if (note.isNotBlank())"))
+        assertFalse(note.contains("GhostCard("))
+        assertFalse(note.contains("Text("))
     }
 
     @Test
@@ -52,8 +56,13 @@ class ExportNotesUiArchitectureTest {
             "src/main/java/com/ghostnexora/vpn/ui/components/HtmlNoteView.kt"
         )
 
-        assertTrue(dashboard.contains("Contenido completo"))
-        assertTrue(dashboard.contains("Desliza dentro de la nota para leer toda la información"))
+        val overview = dashboard.substringAfter("private fun OverviewPage")
+            .substringBefore("private fun ConnectionHero")
+        assertTrue(overview.contains("verticalScroll(rememberScrollState())"))
+        assertTrue(overview.contains("ProfileNoteContent("))
+        assertTrue(noteView.contains("modifier.height(htmlViewportHeight)"))
+        assertTrue(noteView.contains("Text(safeNote, modifier = textModifier"))
+        assertTrue(noteView.contains("HtmlNoteSanitizer.sanitize(note)"))
         assertTrue(noteView.contains("ScrollableNoteWebView(context)"))
         assertTrue(noteView.contains("rememberNestedScrollInteropConnection()"))
         assertTrue(noteView.contains(".nestedScroll(nestedScrollInteropConnection)"))
@@ -75,7 +84,7 @@ class ExportNotesUiArchitectureTest {
         assertTrue(logSection.contains("maxHeight = null"))
 
         val console = sourceFile(
-            "src/main/java/com/ghostnexora/vpn/ui/components/HttpInjectorLogConsole.kt"
+            "src/main/java/com/ghostnexora/vpn/ui/components/VpnLogConsole.kt"
         )
         assertTrue(console.contains("Surface("))
         assertTrue(console.contains("items(orderedLogs"))

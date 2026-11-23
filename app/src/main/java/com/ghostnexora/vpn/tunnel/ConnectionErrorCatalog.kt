@@ -96,7 +96,7 @@ object ConnectionErrorCatalog {
                 ) {
                     "El modo compatible acepta una CA privada y una diferencia SNI/SAN, pero exige que el servidor presente un certificado vigente. Revisa también la fecha del dispositivo y confirma que la compatibilidad siga activa."
                 } else {
-                    "Usa el SNI indicado por el administrador o activa explícitamente la compatibilidad SNI tipo HTTP Custom para este perfil SSH."
+                    "Usa el SNI indicado por el administrador o activa explícitamente la compatibilidad TLS para SSH para este perfil SSH."
                 }
             )
             profile.selectedMode.isSsh && profile.selectedMode.usesTls && (
@@ -107,7 +107,7 @@ object ConnectionErrorCatalog {
                 "SSH-TLS-502", "SSH",
                 "TLS se estableció, pero el extremo cerró el intercambio SSH",
                 raw,
-                "Comprueba que Host sea el servidor SSH real y que SNI sea solo el dominio TLS usado por esa configuración. Si el mismo perfil funciona en HTTP Injector, conserva exactamente su host, puerto y SNI."
+                "Comprueba que Host sea el servidor SSH real y que SNI sea solo el dominio TLS usado por esa configuración."
             )
             lower.contains("auth fail") || lower.contains("authentication") || lower.contains("autenticación") -> failure(
                 if (profile.selectedMode.isSsh) "SSH-401" else "AUTH-401",

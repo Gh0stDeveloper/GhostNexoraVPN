@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.repository.ProfileRepository
+import com.ghostnexora.vpn.R
+import com.ghostnexora.vpn.util.BundleExportOptions
+import com.ghostnexora.vpn.util.BundleProtection
 import com.ghostnexora.vpn.util.ImportResult
 import com.ghostnexora.vpn.util.JsonManager
 import com.ghostnexora.vpn.util.ProfileFingerprint
@@ -252,52 +255,55 @@ class ImportExportViewModel @Inject constructor(
         }
     }
 
-    fun exportSelected(allProfiles: List<VpnProfile>) {
+    fun setExportProtection(mode: BundleProtection) {
+        _exportState.update { it.copy(protection = mode, password = "", passwordConfirmation = "", error = null) }
+    }
+
+    fun exportSelected(allProfiles: List<VpnProfile>) = export(allProfiles) { selection, options ->
+        jsonManager.exportToDownloads(selection, options) != null
+    }
+
+    fun exportToUri(uri: Uri, allProfiles: List<VpnProfile>) = export(allProfiles) { selection, options ->
+        jsonManager.exportToUri(uri, selection, options)
+    }
+
+    private fun export(
+        allProfiles: List<VpnProfile>,
+        write: (List<VpnProfile>, BundleExportOptions) -> Boolean
+    ) {
+        val state = _exportState.value
+        if (state.isLoading) return
+        val selection = resolveExportSelection(allProfiles)
+        if (selection.isEmpty() || !state.passwordValid) {
+            _exportState.update { it.copy(error = context.getString(R.string.export_invalid_selection)) }
+            return
+        }
+        val password = state.password.takeIf { state.protection == BundleProtection.PASSWORD }?.toCharArray()
+        val options = BundleExportOptions(state.protection, password)
+        _exportState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val selection = resolveExportSelection(allProfiles)
-            val password = validateExport(selection) ?: return@launch
-            _exportState.update { it.copy(isLoading = true, error = null) }
             try {
-                val uri = jsonManager.exportToDownloads(selection, password)
-                if (uri != null) {
+                if (withContext(Dispatchers.IO) { write(selection, options) }) {
                     markExportSuccess(selection.size)
                 } else {
-                    _exportState.update { it.copy(isLoading = false, error = "No se pudo guardar el archivo cifrado") }
+                    exportFailed(context.getString(R.string.export_error))
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                exportFailed(error.message ?: context.getString(R.string.export_error))
             } finally {
-                password.fill('\u0000')
+                password?.fill('\u0000')
             }
         }
     }
 
-    fun exportToUri(uri: Uri, allProfiles: List<VpnProfile>) {
-        viewModelScope.launch {
-            val selection = resolveExportSelection(allProfiles)
-            val password = validateExport(selection) ?: return@launch
-            _exportState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val ok = jsonManager.exportToUri(uri, selection, password)
-                if (ok) markExportSuccess(selection.size)
-                else _exportState.update { it.copy(isLoading = false, error = "No se pudo escribir el archivo cifrado") }
-            } finally {
-                password.fill('\u0000')
-            }
-        }
+    private fun exportFailed(message: String) {
+        _exportState.update { it.copy(isLoading = false, error = message) }
     }
 
     fun clearExportMessage() {
         _exportState.update { it.copy(exportSuccess = false, error = null) }
-    }
-
-    private fun validateExport(selection: List<VpnProfile>): CharArray? {
-        val state = _exportState.value
-        when {
-            selection.isEmpty() -> _exportState.update { it.copy(error = "No hay perfiles para exportar") }
-            state.password.length < 10 -> _exportState.update { it.copy(error = "La contraseña debe tener al menos 10 caracteres") }
-            state.password != state.passwordConfirmation -> _exportState.update { it.copy(error = "Las contraseñas no coinciden") }
-            else -> return state.password.toCharArray()
-        }
-        return null
     }
 
     private fun markExportSuccess(count: Int) {
@@ -352,6 +358,7 @@ data class ImportUiState(
 data class ExportUiState(
     val isLoading: Boolean = false,
     val selectedIds: Set<String> = emptySet(),
+    val protection: BundleProtection = BundleProtection.APP_MANAGED,
     val password: String = "",
     val passwordConfirmation: String = "",
     val exportSuccess: Boolean = false,
@@ -359,5 +366,7 @@ data class ExportUiState(
     val error: String? = null
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
-    val passwordValid: Boolean get() = password.length >= 10 && password == passwordConfirmation
+    val passwordValid: Boolean
+        get() = protection != BundleProtection.PASSWORD ||
+            (password.length >= 10 && password == passwordConfirmation)
 }

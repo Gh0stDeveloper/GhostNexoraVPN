@@ -58,7 +58,7 @@ fun GhostCard(
         modifier = decorated
             .clip(ProfileCardShape)
             .background(backgroundColor)
-            .border(Dimens.BorderNormal, borderColor, ProfileCardShape)
+            .border(1.dp, borderColor, ProfileCardShape)
             .padding(contentPadding),
         content = content
     )

@@ -7,7 +7,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-object HttpInjectorLogFormatter {
+object VpnLogFormatter {
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     fun format(entry: LogEntry): String {
@@ -30,4 +30,4 @@ object HttpInjectorLogFormatter {
     }
 }
 
-fun LogEntry.httpInjectorLine(): String = HttpInjectorLogFormatter.format(this)
+fun LogEntry.vpnLogLine(): String = VpnLogFormatter.format(this)

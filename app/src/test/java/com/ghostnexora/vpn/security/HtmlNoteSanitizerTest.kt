@@ -7,6 +7,14 @@ import java.io.File
 
 class HtmlNoteSanitizerTest {
     @Test
+    fun presentationMarkupDetectionSupportsBothNoteFormats() {
+        val plain = "Servidor de prueba & soporte\nVersión 2 < 3"
+        assertTrue(!HtmlNoteSanitizer.hasPresentationMarkup(plain))
+        assertTrue(HtmlNoteSanitizer.hasPresentationMarkup("<p><strong>Servidor</strong></p>"))
+        assertTrue(!HtmlNoteSanitizer.hasPresentationMarkup("<script>test()</script>"))
+    }
+
+    @Test
     fun removesExecutableElementsEventsAndActiveLinks() {
         val sanitized = HtmlNoteSanitizer.sanitize(
             """
