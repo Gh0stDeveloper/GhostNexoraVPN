@@ -36,11 +36,15 @@ class ExportNotesUiArchitectureTest {
             "src/main/java/com/ghostnexora/vpn/ui/screens/dashboard/DashboardScreen.kt"
         )
         val profileIndex = source.indexOf("ActiveProfileCard(state.activeProfile, onProfiles)")
-        val noteIndex = source.indexOf("CreatorNoteSection(state.activeProfile)")
+        val noteIndex = source.indexOf("val noteHtml = state.activeProfile?.displayNoteHtml.orEmpty()")
+        val renderIndex = source.indexOf("HtmlNoteView(html = noteHtml")
         assertTrue(profileIndex >= 0)
         assertTrue(noteIndex > profileIndex)
-        assertTrue(source.contains("HtmlNoteView("))
-        assertTrue(source.contains("profile?.displayNoteHtml.orEmpty()"))
+        assertTrue(renderIndex > noteIndex)
+        val note = source.substring(noteIndex, renderIndex)
+        assertTrue(note.contains("if (noteHtml.isNotBlank())"))
+        assertFalse(note.contains("GhostCard("))
+        assertFalse(note.contains("Text("))
     }
 
     @Test
@@ -52,8 +56,12 @@ class ExportNotesUiArchitectureTest {
             "src/main/java/com/ghostnexora/vpn/ui/components/HtmlNoteView.kt"
         )
 
-        assertTrue(dashboard.contains("Contenido completo"))
-        assertTrue(dashboard.contains("Desliza dentro de la nota para leer toda la información"))
+        val overview = dashboard.substringAfter("private fun OverviewPage")
+            .substringBefore("private fun ConnectionHero")
+        assertTrue(overview.contains("verticalScroll(rememberScrollState())"))
+        assertTrue(overview.contains("HtmlNoteView(html = noteHtml, modifier = Modifier.fillMaxWidth())"))
+        assertTrue(noteView.contains("ViewGroup.LayoutParams.WRAP_CONTENT"))
+        assertTrue(noteView.contains("HtmlNoteSanitizer.sanitize(html)"))
         assertTrue(noteView.contains("ScrollableNoteWebView(context)"))
         assertTrue(noteView.contains("rememberNestedScrollInteropConnection()"))
         assertTrue(noteView.contains(".nestedScroll(nestedScrollInteropConnection)"))
