@@ -69,7 +69,7 @@ fun DocumentationScreen() {
 
             InfoBlock(
                 "Importación",
-                "Admite perfiles individuales GNX3, GNX2, JSON legado, JSON Xray, vmess://, vless://, trojan://, hysteria2://, hy2:// y ssh://. Los GNX3 bloqueados muestran la nota HTML del creador, pero mantienen ocultos todos los parámetros.",
+                "Admite perfiles GNX4, GNX3, GNX2, JSON legado, JSON Xray, vmess://, vless://, trojan://, hysteria2://, hy2:// y ssh://. Los perfiles bloqueados muestran la nota HTML del creador, pero mantienen ocultos todos los parámetros.",
                 NeonCyan
             )
 
@@ -87,7 +87,7 @@ fun DocumentationScreen() {
 
             InfoBlock(
                 "Privacidad y seguridad",
-                "Perfiles cifrados con Android Keystore, GNX3/GNX2 autenticado, notas HTML/CSS saneadas, parámetros bloqueados enmascarados, TLS estricto o compatibilidad SNI por perfil, fingerprints SSH y logs saneados. Ninguna APK cliente es invulnerable en un dispositivo controlado.",
+                "Perfiles cifrados con Android Keystore, GNX4/GNX3/GNX2 autenticado, notas HTML/CSS saneadas, parámetros bloqueados enmascarados, TLS estricto o compatibilidad SNI por perfil, fingerprints SSH y logs saneados. Ninguna APK cliente es invulnerable en un dispositivo controlado.",
                 NeonGreen
             )
 

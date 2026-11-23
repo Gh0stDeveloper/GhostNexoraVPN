@@ -306,7 +306,7 @@ fun ImportScreen(
             item {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    "Formato recomendado: GNX3 individual o GNX2 de respaldo. Ninguna protección cliente impide de forma absoluta la extracción por un usuario que controla el dispositivo.",
+                    "GNX4 admite perfiles individuales y respaldos. Puedes seguir importando GNX3 y GNX2. Ninguna protección cliente impide de forma absoluta la extracción por un usuario que controla el dispositivo.",
                     color = TextTertiary,
                     style = MaterialTheme.typography.bodySmall
                 )

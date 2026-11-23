@@ -336,12 +336,12 @@ fun SettingsScreen(
             }
 
             SettingsSection("Encrypted configurations") {
-                InfoRow("Individual format", "GNX3")
-                InfoRow("Backup format", "GNX2")
-                InfoRow("Content encryption", "AES-256-GCM")
+                InfoRow("Individual format", "GNX4")
+                InfoRow("Backup format", "GNX4")
+                InfoRow("Content encryption", "XChaCha20-Poly1305 + AES-256-GCM")
                 InfoRow("Password derivation", "PBKDF2-HMAC-SHA256")
                 Text(
-                    "GNX3 can use a creator password or official-app protection and can lock all profile parameters. Plain JSON is accepted only for legacy migration.",
+                    "Every GNX4 export uses app encryption. A creator password can add protection, and individual profiles can be locked. Earlier formats remain importable.",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = Dimens.SpaceMD, vertical = Dimens.SpaceSM)

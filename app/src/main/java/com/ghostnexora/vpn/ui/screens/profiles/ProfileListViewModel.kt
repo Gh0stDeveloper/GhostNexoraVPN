@@ -235,14 +235,14 @@ class ProfileListViewModel @Inject constructor(
                     }
                 } else {
                     val uri = jsonManager.exportIndividualToDownloads(profile, options)
-                    check(uri != null) { "No se pudo guardar el archivo GNX3" }
+                    check(uri != null) { "No se pudo guardar el archivo GNX4" }
                     _uiState.update {
                         it.copy(
                             exportInProgress = false,
                             exportProfile = null,
                             exportPassword = "",
                             exportPasswordConfirmation = "",
-                            snackbarMessage = "Configuración individual GNX3 guardada"
+                            snackbarMessage = "Configuración individual GNX4 guardada"
                         )
                     }
                 }
@@ -251,7 +251,7 @@ class ProfileListViewModel @Inject constructor(
                     it.copy(
                         exportInProgress = false,
                         exportError = error.message?.take(160)
-                            ?: "No se pudo crear la configuración GNX3"
+                            ?: "No se pudo crear la configuración GNX4"
                     )
                 }
             } finally {

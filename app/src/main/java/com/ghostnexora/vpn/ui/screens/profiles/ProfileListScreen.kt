@@ -450,7 +450,7 @@ private fun IndividualExportDialog(
         },
         title = {
             Column {
-                Text("Exportar archivo GNX3")
+                Text("Exportar archivo GNX4")
                 Text(
                     profile.name.ifBlank { "Perfil sin nombre" },
                     style = MaterialTheme.typography.labelMedium,
@@ -548,12 +548,12 @@ private fun IndividualExportDialog(
 
                 Text(
                     "Resultado: ${if (state.exportLocked) "bloqueada" else "editable"} · " +
-                        if (state.exportUsePassword) "protegida con contraseña" else "cifrado automático",
+                        if (state.exportUsePassword) "cifrado de la app y contraseña" else "cifrado de la app",
                     color = NeonAmber,
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
-                    "GNX3 usa AES-GCM autenticado, claves derivadas y un nonce/IV aleatorio nuevo en cada exportación. El IV no se reutiliza ni se guarda como constante fija.",
+                    "Todos los archivos GNX4 se cifran con la clave de la aplicación. Puedes agregar una contraseña para proteger también su importación.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary
                 )
