@@ -97,6 +97,13 @@ enum class ConnectionMode(
         description = "Motor Xray compatible con perfiles VLESS y VMess y transportes modernos.",
         requiredFields = listOf("Host/IP", "Puerto", "UUID / User ID")
     ),
+    SHADOWSOCKS(
+        id = "shadowsocks",
+        label = "Shadowsocks",
+        family = "shadowsocks",
+        description = "Shadowsocks AEAD y AEAD-2022 con Xray para TCP y UDP.",
+        requiredFields = listOf("Host/IP", "Puerto", "Cifrado", "Contraseña")
+    ),
     TROJAN(
         id = "trojan",
         label = "Trojan",
@@ -121,6 +128,7 @@ enum class ConnectionMode(
             val method = legacyMethod?.lowercase().orEmpty()
             return when {
                 method.contains("v2ray") || method.contains("vless") || method.contains("vmess") -> V2RAY
+                method.contains("shadowsocks") -> SHADOWSOCKS
                 method.contains("trojan") -> TROJAN
                 method.contains("udp") || method.contains("hysteria") -> UDP
                 method.contains("payload") && method.contains("proxy") && (method.contains("ssl") || sslEnabled == true) -> SSH_PAYLOAD_PROXY_SSL

@@ -6,6 +6,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -23,6 +26,7 @@ import com.ghostnexora.vpn.data.model.VpnTrafficStats
 import com.ghostnexora.vpn.data.repository.ProfileRepository
 import com.ghostnexora.vpn.service.GhostVpnService
 import com.ghostnexora.vpn.service.VpnServiceContract
+import com.ghostnexora.vpn.util.PhysicalNetworkLabel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -30,9 +34,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -86,6 +92,28 @@ class DashboardViewModel @Inject constructor(
         observeActiveProfile()
         observeAllProfiles()
         observeRecentLogs()
+        observeDefaultNetwork()
+    }
+
+    private fun observeDefaultNetwork() {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+        val defaultLabels = callbackFlow {
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    trySend(PhysicalNetworkLabel.from(context, capabilities))
+                }
+
+                override fun onLost(network: Network) {
+                    trySend(PhysicalNetworkLabel.from(context, null))
+                }
+            }
+            trySend(PhysicalNetworkLabel.from(context, manager.activeNetwork?.let(manager::getNetworkCapabilities)))
+            manager.registerDefaultNetworkCallback(callback)
+            awaitClose { manager.unregisterNetworkCallback(callback) }
+        }
+        viewModelScope.launch {
+            defaultLabels.collectLatest { label -> _uiState.update { it.copy(defaultNetworkLabel = label) } }
+        }
     }
 
     private fun observeActiveProfile() {
@@ -389,6 +417,7 @@ data class DashboardUiState(
     val hasProfiles: Boolean = false,
     val sessionElapsed: Long = 0L,
     val traffic: VpnTrafficStats = VpnTrafficStats(),
+    val defaultNetworkLabel: String = "",
     val snackbarMessage: String? = null,
     val recentLogs: List<LogEntry> = emptyList()
 ) {

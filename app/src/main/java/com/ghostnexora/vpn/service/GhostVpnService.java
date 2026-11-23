@@ -26,6 +26,7 @@ import android.provider.Settings;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
+import com.ghostnexora.vpn.util.PhysicalNetworkLabel;
 import com.ghostnexora.vpn.BuildConfig;
 import com.ghostnexora.vpn.GhostNexoraApp;
 import com.ghostnexora.vpn.core.VpnRuntimeStateStore;
@@ -154,8 +155,10 @@ public final class GhostVpnService extends VpnService {
             new ConnectivityManager.NetworkCallback() {
                 @Override
                 public void onAvailable(Network network) {
-                    registerUnderlyingNetwork(network);
                     submit(() -> {
+                        Network preferred = findUsablePhysicalNetwork(null);
+                        if (preferred == null) return;
+                        registerUnderlyingNetwork(preferred);
                         log(LogLevel.INFO, "Red física disponible: " + physicalNetworkType,
                                 profileId(), "NETWORK");
                         if (VpnRuntimeStateStore.currentConnectionState()
@@ -167,16 +170,11 @@ public final class GhostVpnService extends VpnService {
 
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
-                    if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
-                        return;
-                    }
-                    physicalNetworkAvailable =
-                            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-                    physicalNetworkType = networkType(capabilities);
-                    underlyingNetwork = network;
-                    try {
-                        setUnderlyingNetworks(new Network[]{network});
-                    } catch (Throwable ignored) {
+                    if (network.equals(underlyingNetwork)
+                            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
+                        physicalNetworkAvailable =
+                                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+                        physicalNetworkType = PhysicalNetworkLabel.from(GhostVpnService.this, capabilities);
                     }
                 }
 
@@ -1096,6 +1094,7 @@ public final class GhostVpnService extends VpnService {
     }
 
     private void handlePhysicalNetworkLost(Network lost) {
+        if (underlyingNetwork != null && !lost.equals(underlyingNetwork)) return;
         sleep(300L);
         Network replacement = findUsablePhysicalNetwork(lost);
         if (replacement != null) {
@@ -1129,7 +1128,7 @@ public final class GhostVpnService extends VpnService {
         underlyingNetwork = network;
         physicalNetworkAvailable =
                 capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-        physicalNetworkType = networkType(capabilities);
+        physicalNetworkType = PhysicalNetworkLabel.from(this, capabilities);
         try {
             setUnderlyingNetworks(new Network[]{network});
         } catch (Throwable ignored) {
@@ -1168,19 +1167,6 @@ public final class GhostVpnService extends VpnService {
         return capabilities != null
                 && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
-    }
-
-    private static String networkType(NetworkCapabilities capabilities) {
-        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-            return "Wi-Fi";
-        }
-        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-            return "Datos móviles";
-        }
-        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
-            return "Ethernet";
-        }
-        return "Red física";
     }
 
     private void startPreparingForeground(String label) {

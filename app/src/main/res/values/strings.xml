@@ -201,4 +201,9 @@
     <string name="dashboard_collapse_traffic">Ocultar tráfico</string>
     <string name="dashboard_session_duration">%1$s de sesión · %2$d reconexiones</string>
     <string name="dashboard_tunnel_active">Túnel activo</string>
+    <string name="network_unavailable">Sin red</string>
+    <string name="network_cellular">Datos móviles</string>
+    <string name="network_other">Red activa</string>
+    <string name="shadowsocks_cipher">Cifrado Shadowsocks</string>
+    <string name="shadowsocks_password">Contraseña Shadowsocks</string>
 </resources>

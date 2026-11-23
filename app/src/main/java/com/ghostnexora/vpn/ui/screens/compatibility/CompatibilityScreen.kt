@@ -65,6 +65,7 @@ private val compatibilityEntries = listOf(
     CompatibilityEntry("Xray", "VLESS", "TCP · WS · gRPC · XHTTP · HTTPUpgrade · mKCP", CompatibilityStatus.DEVICE_PENDING, "Admite configuraciones TLS y REALITY."),
     CompatibilityEntry("Xray", "VMess", "TCP · WS · gRPC · TLS", CompatibilityStatus.DEVICE_PENDING, "Transportes TCP, WebSocket y gRPC."),
     CompatibilityEntry("Xray", "Trojan", "TCP/TLS · WS · gRPC", CompatibilityStatus.DEVICE_PENDING, "TLS estricto y SNI obligatorio."),
+    CompatibilityEntry("Xray", "Shadowsocks", "AEAD · AEAD-2022 · ss://", CompatibilityStatus.DEVICE_PENDING, "TCP y UDP sin plugins externos."),
     CompatibilityEntry("Xray", "Hysteria2", "QUIC · UDP · TLS · obfs", CompatibilityStatus.EXPERIMENTAL, "Transporte QUIC con TLS y ofuscación configurable."),
     CompatibilityEntry("DNS", "Fast DNS / Slow DNS", "Túnel mediante DNS", CompatibilityStatus.NOT_AVAILABLE, "Se necesita confirmar el protocolo y contar con un perfil y servidor compatibles."),
     CompatibilityEntry("Core", "TUN Android", "IPv4 · IPv4 preferido · dual stack", CompatibilityStatus.CI_VERIFIED, "MTU, DNS, rutas y clases runtime se verifican en Debug y Release/R8."),

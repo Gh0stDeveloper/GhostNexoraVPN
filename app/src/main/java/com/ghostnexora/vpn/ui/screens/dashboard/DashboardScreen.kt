@@ -474,7 +474,8 @@ private fun ConnectionFacts(state: DashboardUiState) {
         ConnectionFact(Icons.Filled.Key, stringResource(R.string.dashboard_protocol),
             state.activeProfile?.connectionModeLabel ?: "—", Modifier.weight(1f))
         ConnectionFact(Icons.Filled.SignalCellularAlt, stringResource(R.string.dashboard_network),
-            state.traffic.networkType.takeUnless { it == "--" } ?: "—", Modifier.weight(1f))
+            state.traffic.networkType.takeIf { state.isConnected && it != "--" }
+                ?: state.defaultNetworkLabel.ifBlank { "—" }, Modifier.weight(1f))
         ConnectionFact(Icons.Filled.Timer, stringResource(R.string.dashboard_latency),
             if (state.traffic.latencyMs > 0) "${state.traffic.latencyMs} ms" else "—", Modifier.weight(1f))
     }

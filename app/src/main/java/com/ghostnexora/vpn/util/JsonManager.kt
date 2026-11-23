@@ -265,6 +265,7 @@ class JsonManager @Inject constructor(
             val source = when {
                 rawText.contains("vmess://", true) -> "Enlaces VMess"
                 rawText.contains("vless://", true) -> "Enlaces VLESS"
+                rawText.contains("ss://", true) -> "Enlaces Shadowsocks"
                 rawText.contains("trojan://", true) -> "Enlaces Trojan"
                 rawText.contains("hysteria2://", true) || rawText.contains("hy2://", true) -> "Enlaces Hysteria2"
                 rawText.contains("ssh://", true) -> "Enlaces SSH"

@@ -11,6 +11,28 @@ import org.junit.Test
 
 class ProtocolLinkParserTest {
     @Test
+    fun shadowsocksImportPreservesCipherPasswordAndEndpoint() {
+        val profile = ProtocolLinkParser.parseText(
+            "ss://aes-256-gcm:Example%2BSecret%3AWith%40Symbols@[2001:db8::1]:8388#Test%20SS"
+        ).single()
+        assertEquals(ConnectionMode.SHADOWSOCKS, profile.selectedMode)
+        assertEquals("Test SS", profile.name)
+        assertEquals("2001:db8::1", profile.host)
+        assertEquals("Example+Secret:With@Symbols", profile.password)
+        val outbound = JSONObject(StableXrayConfigFactory.build(profile))
+            .getJSONArray("outbounds").getJSONObject(0)
+        assertEquals("shadowsocks", outbound.getString("protocol"))
+        assertEquals("aes-256-gcm", outbound.getJSONObject("settings").getString("method"))
+        assertEquals(profile.password, outbound.getJSONObject("settings").getString("password"))
+
+        val encoded = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("aes-128-gcm:secret".encodeToByteArray())
+        assertEquals("secret", ProtocolLinkParser.parseText("ss://$encoded@ss.example:8388").single().password)
+        assertTrue(ProtocolLinkParser.parseText("ss://$encoded@ss.example:8388/?plugin=v2ray-plugin").isEmpty())
+        assertTrue(ProtocolLinkParser.parseText("ss://2022-blake3-aes-256-gcm:short@ss.example:8388").isEmpty())
+    }
+
+    @Test
     fun parsesSshTlsPayloadProxyLink() {
         val link = "ssh://ghost:secret@ssh.example.com:443?mode=ssl_payload_proxy&sni=cdn.example.com&tlsMode=custom_sni&payload=CONNECT%20%5Bhost_port%5D%20HTTP%2F1.1%5Bcrlf%5D%5Bcrlf%5D&proxyHost=proxy.example.com&proxyPort=8080&proxyType=http#Servidor%20SSH"
         val profile = ProtocolLinkParser.parseText(link).single()

@@ -22,6 +22,10 @@ public final class NativeRuntimeArchitecture {
             return new NativeRuntimePlan(XRAY_TUN, "Xray VLESS/VMess", null, true, true,
                     "La compatibilidad exacta depende del transporte admitido por el core incluido");
         }
+        if (mode == ConnectionMode.SHADOWSOCKS) {
+            return new NativeRuntimePlan(XRAY_TUN, "Xray Shadowsocks", null, true, true,
+                    "Shadowsocks AEAD y AEAD-2022 sin plugins externos");
+        }
         if (mode == ConnectionMode.TROJAN) {
             return new NativeRuntimePlan(XRAY_TUN, "Xray Trojan/TLS", null, true, true,
                     "TLS y credenciales se validan con la configuración del perfil");

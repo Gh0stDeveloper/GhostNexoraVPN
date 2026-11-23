@@ -178,4 +178,9 @@
     <string name="dashboard_collapse_traffic">Hide traffic</string>
     <string name="dashboard_session_duration">%1$s session · %2$d reconnects</string>
     <string name="dashboard_tunnel_active">Tunnel active</string>
+    <string name="network_unavailable">No network</string>
+    <string name="network_cellular">Mobile data</string>
+    <string name="network_other">Active network</string>
+    <string name="shadowsocks_cipher">Shadowsocks cipher</string>
+    <string name="shadowsocks_password">Shadowsocks password</string>
 </resources>

@@ -2,6 +2,8 @@
 
 package com.ghostnexora.vpn.ui.screens.profiles
 
+import com.ghostnexora.vpn.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import com.ghostnexora.vpn.data.model.TlsVerificationMode
 import com.ghostnexora.vpn.ui.components.HtmlNoteDialog
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
@@ -175,6 +178,24 @@ fun CreateEditProfileScreen(
             GhostCard(borderColor = BorderSubtle, contentPadding = PaddingValues(Dimens.SpaceMD)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)) {
                     Text("Transporte y seguridad", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+
+                    if (state.selectedMode == ConnectionMode.SHADOWSOCKS) {
+                        var showCiphers by remember { mutableStateOf(false) }
+                        Text(stringResource(R.string.shadowsocks_cipher), style = MaterialTheme.typography.labelMedium)
+                        Box {
+                            OutlinedButton(onClick = { showCiphers = true }) {
+                                Text(state.payload)
+                            }
+                            DropdownMenu(expanded = showCiphers, onDismissRequest = { showCiphers = false }) {
+                                ShadowsocksCipher.entries.forEach { cipher ->
+                                    DropdownMenuItem(text = { Text(cipher.id) }, onClick = {
+                                        viewModel.onPayloadChange(cipher.id)
+                                        showCiphers = false
+                                    })
+                                }
+                            }
+                        }
+                    }
 
                     if (state.selectedMode == ConnectionMode.V2RAY) {
                         SwitchRow(
@@ -339,8 +360,9 @@ private fun ProtocolCredentialFields(
         )
     }
 
-    if (mode.isSsh || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP) {
+    if (mode.isSsh || mode == ConnectionMode.TROJAN || mode == ConnectionMode.UDP || mode == ConnectionMode.SHADOWSOCKS) {
         val label = when (mode) {
+            ConnectionMode.SHADOWSOCKS -> stringResource(R.string.shadowsocks_password)
             ConnectionMode.TROJAN -> "Contraseña Trojan"
             ConnectionMode.UDP -> "Auth / Contraseña Hysteria2"
             else -> "Contraseña SSH"

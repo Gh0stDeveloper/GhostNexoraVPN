@@ -4,6 +4,7 @@ import com.ghostnexora.vpn.data.model.ConnectionMode
 import com.ghostnexora.vpn.data.model.DnsMode
 import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
+import com.ghostnexora.vpn.data.model.ShadowsocksCipher
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -29,6 +30,7 @@ object StableXrayConfigFactory {
         val proxy = when {
             sshSocksPort != null -> socksOutbound(sshSocksPort)
             profile.selectedMode == ConnectionMode.V2RAY -> v2rayOutbound(profile, options, preferences)
+            profile.selectedMode == ConnectionMode.SHADOWSOCKS -> shadowsocksOutbound(profile)
             profile.selectedMode == ConnectionMode.TROJAN -> trojanOutbound(profile, options, preferences)
             profile.selectedMode == ConnectionMode.UDP -> hysteria2Outbound(profile, options, preferences)
             else -> error("No Xray outbound for ${profile.connectionModeLabel}")
@@ -53,6 +55,10 @@ object StableXrayConfigFactory {
     }
 
     fun summary(profile: VpnProfile, preferences: NetworkPreferences = NetworkPreferences()): String {
+        if (profile.selectedMode == ConnectionMode.SHADOWSOCKS) {
+            val cipher = ShadowsocksCipher.fromId(profile.payload)?.id ?: "—"
+            return "Shadowsocks · TCP/UDP · $cipher · ${preferences.ipMode.label} · MTU ${preferences.validatedMtu}"
+        }
         val options = parseOptions(profile.payload)
         val network = normalizeNetwork(options["net"] ?: options["type"] ?: options["network"] ?: "tcp")
         val security = when {
@@ -254,6 +260,21 @@ object StableXrayConfigFactory {
             .put("settings", settings)
             .put("streamSettings", streamSettings(profile, options, preferences))
             .put("mux", JSONObject().put("enabled", false).put("concurrency", -1))
+    }
+
+    private fun shadowsocksOutbound(profile: VpnProfile): JSONObject {
+        require(profile.host.isNotBlank() && profile.port in 1..65535) { "Invalid Shadowsocks endpoint" }
+        val cipher = requireNotNull(ShadowsocksCipher.fromId(profile.payload)) { "Unsupported Shadowsocks cipher" }
+        require(cipher.accepts(profile.password)) { "Invalid Shadowsocks password or key length" }
+        return JSONObject()
+            .put("tag", "proxy")
+            .put("protocol", "shadowsocks")
+            .put("settings", JSONObject()
+                .put("address", profile.host.trim())
+                .put("port", profile.port)
+                .put("method", cipher.id)
+                .put("password", profile.password)
+                .put("level", 8))
     }
 
     private fun trojanOutbound(profile: VpnProfile, options: Map<String, String>, preferences: NetworkPreferences): JSONObject {
