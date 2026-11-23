@@ -57,15 +57,15 @@ data class CompatibilityEntry(
 )
 
 private val compatibilityEntries = listOf(
-    CompatibilityEntry("SSH", "Conexión directa", "Password · TCP", CompatibilityStatus.DEVICE_PENDING, "Motor JSch y bridge SOCKS presentes; requiere matriz de servidores reales."),
+    CompatibilityEntry("SSH", "Conexión directa", "Password · TCP", CompatibilityStatus.DEVICE_PENDING, "Motor JSch y puente SOCKS por TCP."),
     CompatibilityEntry("SSH", "SSH + SSL", "TLS 1.2/1.3 · SNI estricto/custom", CompatibilityStatus.DEVICE_PENDING, "Permite política estricta o compatibilidad TLS para SSH por perfil."),
     CompatibilityEntry("SSH", "SSH + Payload", "HTTP 200/101 · payload", CompatibilityStatus.DEVICE_PENDING, "Acepta respuesta HTTP válida o banner SSH directo."),
     CompatibilityEntry("SSH", "SSH + SSL + Payload", "TLS → payload → SSH", CompatibilityStatus.DEVICE_PENDING, "TLS con SNI configurable, seguido del payload y la sesión SSH."),
     CompatibilityEntry("SSH", "SSH + Proxy", "HTTP CONNECT · SOCKS5", CompatibilityStatus.DEVICE_PENDING, "Proxy sin autenticación implementado; autenticación queda en roadmap."),
-    CompatibilityEntry("Xray", "VLESS", "TCP · WS · gRPC · XHTTP · HTTPUpgrade · mKCP", CompatibilityStatus.DEVICE_PENDING, "TLS y REALITY se generan; interoperabilidad depende del servidor."),
-    CompatibilityEntry("Xray", "VMess", "TCP · WS · gRPC · TLS", CompatibilityStatus.DEVICE_PENDING, "Estructura y routing verificados por pruebas unitarias."),
+    CompatibilityEntry("Xray", "VLESS", "TCP · WS · gRPC · XHTTP · HTTPUpgrade · mKCP", CompatibilityStatus.DEVICE_PENDING, "Admite configuraciones TLS y REALITY."),
+    CompatibilityEntry("Xray", "VMess", "TCP · WS · gRPC · TLS", CompatibilityStatus.DEVICE_PENDING, "Transportes TCP, WebSocket y gRPC."),
     CompatibilityEntry("Xray", "Trojan", "TCP/TLS · WS · gRPC", CompatibilityStatus.DEVICE_PENDING, "TLS estricto y SNI obligatorio."),
-    CompatibilityEntry("Xray", "Hysteria2", "QUIC · UDP · TLS · obfs", CompatibilityStatus.EXPERIMENTAL, "Requiere pruebas de cambios de red y pérdida de paquetes."),
+    CompatibilityEntry("Xray", "Hysteria2", "QUIC · UDP · TLS · obfs", CompatibilityStatus.EXPERIMENTAL, "Transporte QUIC con TLS y ofuscación configurable."),
     CompatibilityEntry("DNS", "Fast DNS / Slow DNS", "Túnel mediante DNS", CompatibilityStatus.NOT_AVAILABLE, "Se necesita confirmar el protocolo y contar con un perfil y servidor compatibles."),
     CompatibilityEntry("Core", "TUN Android", "IPv4 · IPv4 preferido · dual stack", CompatibilityStatus.CI_VERIFIED, "MTU, DNS, rutas y clases runtime se verifican en Debug y Release/R8."),
     CompatibilityEntry("Producto", "Split tunneling", "Todas · solo seleccionadas · excluir", CompatibilityStatus.CI_VERIFIED, "Las reglas se aplican con VpnService.Builder y se validan antes del TUN.")
@@ -99,29 +99,7 @@ fun CompatibilityScreen(onBack: () -> Unit) {
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
         ) {
-            item {
-                GhostCard(backgroundColor = NeonCyan.copy(alpha = 0.08f), borderColor = NeonCyan) {
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-                    ) {
-                        Icon(Icons.Filled.Info, contentDescription = null, tint = NeonCyan)
-                        Text(
-                            "CI confirma compilación, configuración y empaquetado. Solo una prueba física contra un servidor real puede cambiar una modalidad a interoperabilidad verificada.",
-                            color = TextSecondary,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-
             items(compatibilityEntries) { entry ->
-                val color = when (entry.status) {
-                    CompatibilityStatus.CI_VERIFIED -> NeonGreen
-                    CompatibilityStatus.DEVICE_PENDING -> NeonAmber
-                    CompatibilityStatus.EXPERIMENTAL -> NeonAmber
-                    CompatibilityStatus.NOT_AVAILABLE -> TextSecondary
-                }
                 GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
                         Row(
@@ -130,15 +108,17 @@ fun CompatibilityScreen(onBack: () -> Unit) {
                             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
                         ) {
                             Icon(
-                                imageVector = if (entry.status == CompatibilityStatus.CI_VERIFIED) Icons.Filled.CheckCircle else Icons.Filled.WarningAmber,
+                                imageVector = if (entry.status == CompatibilityStatus.NOT_AVAILABLE) Icons.Filled.Info else Icons.Filled.CheckCircle,
                                 contentDescription = null,
-                                tint = color
+                                tint = TextSecondary
                             )
                             Column(Modifier.weight(1f)) {
                                 Text(entry.mode, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                                 Text(entry.family, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
                             }
-                            Text(entry.status.label, color = color, style = MaterialTheme.typography.labelSmall)
+                            if (entry.status == CompatibilityStatus.NOT_AVAILABLE) {
+                                Text(entry.status.label, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                            }
                         }
                         Text(entry.transports, color = NeonCyan, style = MaterialTheme.typography.bodySmall)
                         Text(entry.note, color = TextSecondary, style = MaterialTheme.typography.bodySmall)

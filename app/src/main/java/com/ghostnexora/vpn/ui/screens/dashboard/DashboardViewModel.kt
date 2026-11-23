@@ -14,6 +14,7 @@ import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ghostnexora.vpn.R
 import com.ghostnexora.vpn.data.model.LogEntry
 import com.ghostnexora.vpn.data.model.LogLevel
 import com.ghostnexora.vpn.data.model.VpnConnectionState
@@ -48,6 +49,7 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+    val networkPreferences = repository.networkPreferences
     private var timerJob: Job? = null
     private var connectJob: Job? = null
     private var sessionStartTime: Long = 0L
@@ -103,6 +105,17 @@ class DashboardViewModel @Inject constructor(
     private fun observeRecentLogs() {
         viewModelScope.launch {
             repository.getRecentLogs(200).collectLatest { logs -> _uiState.update { it.copy(recentLogs = logs) } }
+        }
+    }
+
+    fun setVpnDnsEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setVpnDnsEnabled(enabled) }
+    }
+
+    fun clearLogs() {
+        viewModelScope.launch {
+            repository.clearLogs()
+            _uiState.update { it.copy(snackbarMessage = context.getString(R.string.dashboard_logs_cleared)) }
         }
     }
 

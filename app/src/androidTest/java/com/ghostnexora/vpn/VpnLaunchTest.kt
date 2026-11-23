@@ -3,8 +3,11 @@ package com.ghostnexora.vpn
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
@@ -51,7 +54,17 @@ class VpnLaunchTest {
                 activity.moveToState(Lifecycle.State.RESUMED)
                 assertNoVpnService()
 
-                compose.onNodeWithText(app.getString(R.string.btn_connect)).performClick()
+                compose.onNodeWithContentDescription(app.getString(R.string.vpn_dns_enabled))
+                    .performScrollTo().performClick()
+                compose.waitUntil(10_000) { runBlocking { !repository.networkPreferences.first().vpnDnsEnabled } }
+
+                compose.onNodeWithText(app.getString(R.string.dashboard_log_tab)).performClick()
+                compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_expand)).performClick()
+                compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).assertIsDisplayed()
+                compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).performClick()
+                compose.onNodeWithText(app.getString(R.string.nav_dashboard)).performClick()
+
+                compose.onNodeWithText(app.getString(R.string.btn_connect)).performScrollTo().performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }
 
                 val serviceInfo = uiAutomation.serviceInfo
@@ -70,6 +83,7 @@ class VpnLaunchTest {
             }
         } finally {
             runBlocking {
+                repository.setVpnDnsEnabled(true)
                 repository.setActiveProfileId("")
                 repository.deleteProfile(profile)
             }

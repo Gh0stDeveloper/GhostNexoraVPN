@@ -155,6 +155,7 @@ class ProfileRepository @Inject constructor(
     suspend fun setFirstLaunchDone() = dataStore.setFirstLaunchDone()
     suspend fun setIpMode(value: IpMode) = dataStore.setIpMode(value)
     suspend fun setTunMtu(value: Int) = dataStore.setTunMtu(value)
+    suspend fun setVpnDnsEnabled(enabled: Boolean) = dataStore.setVpnDnsEnabled(enabled)
     suspend fun setDnsMode(value: DnsMode) = dataStore.setDnsMode(value)
     suspend fun setCustomDns(primary: String, secondary: String) = dataStore.setCustomDns(primary, secondary)
     suspend fun setReconnectMaxAttempts(value: Int) = dataStore.setReconnectMaxAttempts(value)

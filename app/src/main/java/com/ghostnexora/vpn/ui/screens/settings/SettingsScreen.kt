@@ -200,8 +200,16 @@ fun SettingsScreen(
             SettingsSection("Connection engine") {
                 ListSetting("IP mode", state.networkPreferences.ipMode.label) { showIpMode = true }
                 ListSetting("TUN MTU", state.networkPreferences.validatedMtu.toString()) { showMtu = true }
-                ListSetting("DNS", state.networkPreferences.dnsMode.label) { showDnsMode = true }
-                if (state.networkPreferences.dnsMode == DnsMode.CUSTOM) {
+                SwitchSetting(
+                    stringResource(R.string.vpn_dns_enabled),
+                    stringResource(R.string.vpn_dns_next_session),
+                    state.networkPreferences.vpnDnsEnabled,
+                    { viewModel.setVpnDnsEnabled(it) }
+                )
+                if (state.networkPreferences.vpnDnsEnabled) {
+                    ListSetting("DNS", state.networkPreferences.dnsMode.label) { showDnsMode = true }
+                }
+                if (state.networkPreferences.vpnDnsEnabled && state.networkPreferences.dnsMode == DnsMode.CUSTOM) {
                     InfoRow("Primary DNS", state.networkPreferences.customDnsPrimary)
                     InfoRow("Secondary DNS", state.networkPreferences.customDnsSecondary.ifBlank { "Not set" })
                 }

@@ -348,7 +348,7 @@ public final class GhostVpnService extends VpnService {
             activeNetworkPreferences = preferences;
             log(LogLevel.INFO,
                     "Red VPN: " + preferences.getIpMode().getLabel() + " · MTU " +
-                            preferences.getValidatedMtu() + " · " + preferences.getDnsMode().getLabel(),
+                            preferences.getValidatedMtu() + " · " + (preferences.getVpnDnsEnabled() ? preferences.getDnsMode().getLabel() : "DNS del sistema"),
                     profile.getId(), "SETTINGS");
             log(LogLevel.INFO, "Iniciando " + profile.getConnectionModeLabel(), profile.getId(), "VPN");
             logConnectionSnapshot(profile);
@@ -464,8 +464,9 @@ public final class GhostVpnService extends VpnService {
             return;
         }
 
-        NetworkPreferences preferences = repositoryBridge.networkPreferences();
-        activeNetworkPreferences = preferences;
+        // The current TUN retains the DNS servers and routes from initial setup.
+        NetworkPreferences preferences = activeNetworkPreferences != null
+                ? activeNetworkPreferences : repositoryBridge.networkPreferences();
         int maxAttempts = preferences.getValidatedReconnectAttempts();
         log(LogLevel.WARNING, reason + " · iniciando reconexión protegida · máximo " + maxAttempts,
                 profile.getId(), "NETWORK");
@@ -940,11 +941,13 @@ public final class GhostVpnService extends VpnService {
                 builder.addAddress("fd00:20::2", 126);
                 builder.addRoute("::", 0);
             }
-            for (String address : preferences.dnsServers()) {
-                if (preferences.getIpMode().getCapturesIpv6() || !address.contains(":")) {
-                    try {
-                        builder.addDnsServer(address);
-                    } catch (Throwable ignored) {
+            if (preferences.getVpnDnsEnabled()) {
+                for (String address : preferences.dnsServers()) {
+                    if (preferences.getIpMode().getCapturesIpv6() || !address.contains(":")) {
+                        try {
+                            builder.addDnsServer(address);
+                        } catch (Throwable ignored) {
+                        }
                     }
                 }
             }

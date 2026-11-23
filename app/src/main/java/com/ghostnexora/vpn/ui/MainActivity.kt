@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -37,6 +37,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,9 +65,7 @@ import com.ghostnexora.vpn.ui.screens.settings.SettingsViewModel
 import com.ghostnexora.vpn.ui.theme.BackgroundDark
 import com.ghostnexora.vpn.ui.theme.GhostNexoraTheme
 import com.ghostnexora.vpn.ui.theme.NeonCyan
-import com.ghostnexora.vpn.ui.theme.SurfaceDark
 import com.ghostnexora.vpn.ui.theme.TextPrimary
-import com.ghostnexora.vpn.ui.theme.neonGlow
 import com.ghostnexora.vpn.update.UpdateViewModel
 import com.ghostnexora.vpn.util.PermissionHelper
 import dagger.hilt.android.AndroidEntryPoint
@@ -101,7 +100,8 @@ private fun GhostNexoraApp() {
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
-    val currentTitle = stringResource(screenTitle(currentRoute))
+    var dashboardLogsExpanded by rememberSaveable { mutableStateOf(false) }
+    val hideTopBar = currentRoute == Screen.Dashboard.route && dashboardLogsExpanded
 
     SensitiveWindowProtection(currentRoute)
 
@@ -146,13 +146,14 @@ private fun GhostNexoraApp() {
 
     GhostNavigationDrawer(
         navController = navController,
-        drawerState = drawerState
+        drawerState = drawerState,
+        gesturesEnabled = !hideTopBar
     ) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                GhostTopBar(
-                    title = currentTitle,
+                if (!hideTopBar) GhostTopBar(
+                    title = stringResource(R.string.app_name),
                     onMenuClick = {
                         coroutineScope.launch {
                             if (drawerState.isClosed) drawerState.open() else drawerState.close()
@@ -171,7 +172,9 @@ private fun GhostNexoraApp() {
             ) {
                 GhostNavHost(
                     navController = navController,
-                    onCheckUpdates = { updateViewModel.checkForUpdates(force = true) }
+                    onCheckUpdates = { updateViewModel.checkForUpdates(force = true) },
+                    dashboardLogsExpanded = dashboardLogsExpanded,
+                    onDashboardLogsExpanded = { dashboardLogsExpanded = it }
                 )
             }
         }
@@ -271,7 +274,7 @@ private fun GhostTopBar(
     title: String,
     onMenuClick: () -> Unit
 ) {
-    CenterAlignedTopAppBar(
+    TopAppBar(
         title = {
             Text(
                 text = title,
@@ -289,19 +292,11 @@ private fun GhostTopBar(
                 )
             }
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = SurfaceDark,
-            scrolledContainerColor = SurfaceDark,
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = BackgroundDark,
+            scrolledContainerColor = BackgroundDark,
             navigationIconContentColor = NeonCyan,
             titleContentColor = TextPrimary
-        ),
-        modifier = Modifier.neonGlow(NeonCyan, radius = 4.dp, alpha = 0.08f)
+        )
     )
-}
-
-private fun screenTitle(route: String?): Int = when {
-    route == null -> R.string.app_name
-    route.startsWith("edit_profile") -> Screen.EditProfile.title
-    route == Screen.Profiles.route -> R.string.profiles_title
-    else -> Screen.drawerItems.firstOrNull { it.route == route }?.title ?: R.string.app_name
 }

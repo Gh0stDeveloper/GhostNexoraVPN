@@ -91,6 +91,10 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(snackbarMessage = "TUN MTU updated to ${value.coerceIn(1280, 1500)}") }
     }
 
+    fun setVpnDnsEnabled(enabled: Boolean) = viewModelScope.launch {
+        repository.setVpnDnsEnabled(enabled)
+    }
+
     fun setDnsMode(value: DnsMode) = viewModelScope.launch {
         repository.setDnsMode(value)
         _uiState.update { it.copy(snackbarMessage = "DNS updated to ${value.label}") }

@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -43,6 +44,10 @@ fun HtmlNoteView(
         modifier = modifier.nestedScroll(nestedScrollInteropConnection),
         factory = { context ->
             ScrollableNoteWebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
                 setBackgroundColor(Color.TRANSPARENT)
                 setNetworkAvailable(false)
                 isVerticalScrollBarEnabled = true

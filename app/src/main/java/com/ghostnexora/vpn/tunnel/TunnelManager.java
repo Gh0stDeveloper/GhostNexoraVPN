@@ -88,7 +88,9 @@ public final class TunnelManager {
     private TunnelRuntime startCore(VpnProfile profile, String config, int tunFd, SshTunnelHandle sshHandle,
                                     NetworkPreferences preferences) {
         status("[XRAY] " + StableXrayConfigFactory.INSTANCE.summary(profile, preferences));
-        status("[DNS] " + preferences.getDnsMode().getLabel() + " · " + String.join(", ", preferences.dnsServers()));
+        status(preferences.getVpnDnsEnabled()
+                ? "[DNS] " + preferences.getDnsMode().getLabel() + " · " + String.join(", ", preferences.dnsServers())
+                : "[DNS] DNS del sistema · sin resolver configurado por la VPN");
         status("[ROUTING] Regla explícita TUN → proxy · TCP/UDP según capacidad del runtime");
         xrayEngine.start(config, tunFd);
         status("[TUN] Xray Core conectado a la interfaz Android");

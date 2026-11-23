@@ -1,9 +1,11 @@
 package com.ghostnexora.vpn.tunnel
 
 import com.ghostnexora.vpn.data.model.ConnectionMode
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnProfile
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -113,6 +115,35 @@ class StableXrayConfigFactoryTest {
             "proxy",
             dns.getJSONObject("streamSettings").getJSONObject("sockopt").getString("dialerProxy")
         )
+    }
+
+    @Test
+    fun disablingManagedDnsLeavesSshProxyRoutingInPlace() {
+        val profile = VpnProfile(
+            name = "SSH without VPN DNS",
+            host = "ssh.example.com",
+            port = 443,
+            username = "user",
+            connectionMode = ConnectionMode.SSL_SNI.id
+        )
+
+        val root = JSONObject(
+            StableXrayConfigFactory.build(
+                profile,
+                preferences = NetworkPreferences(vpnDnsEnabled = false),
+                sshSocksPort = 10808
+            )
+        )
+
+        assertFalse(root.has("dns"))
+        val outbounds = root.getJSONArray("outbounds")
+        assertTrue((0 until outbounds.length()).none {
+            outbounds.getJSONObject(it).getString("tag") == "dns-out"
+        })
+        val rules = root.getJSONObject("routing").getJSONArray("rules")
+        assertEquals(1, rules.length())
+        assertEquals("proxy", rules.getJSONObject(0).getString("outboundTag"))
+        assertFalse(rules.getJSONObject(0).has("port"))
     }
 
     @Test

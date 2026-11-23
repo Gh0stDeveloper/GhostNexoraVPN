@@ -35,22 +35,20 @@ object StableXrayConfigFactory {
         }
         val inbounds = JSONArray().put(tunInbound(preferences))
 
+        val outbounds = JSONArray().put(proxy)
+        if (preferences.vpnDnsEnabled) {
+            outbounds.put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
+        }
+        outbounds.put(directOutbound()).put(blockOutbound())
+
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning").put("dnsLog", true))
             .put("stats", JSONObject())
             .put("policy", policy())
-            .put("dns", protectedDns(preferences))
+            .apply { if (preferences.vpnDnsEnabled) put("dns", protectedDns(preferences)) }
             .put("inbounds", inbounds)
-            .put(
-                "outbounds",
-                JSONArray()
-                    // The running-core connectivity check uses the default outbound.
-                    .put(proxy)
-                    .put(dnsOutbound(preferences, detourThroughProxy = isSshBridge))
-                    .put(directOutbound())
-                    .put(blockOutbound())
-            )
-            .put("routing", routing(isSshBridge))
+            .put("outbounds", outbounds)
+            .put("routing", routing(isSshBridge, preferences.vpnDnsEnabled))
             .toString()
     }
 
@@ -167,24 +165,16 @@ object StableXrayConfigFactory {
         .put("protocol", "blackhole")
         .put("settings", JSONObject().put("response", JSONObject().put("type", "none")))
 
-    private fun routing(isSshBridge: Boolean): JSONObject {
+    private fun routing(isSshBridge: Boolean, vpnDnsEnabled: Boolean): JSONObject {
         val rules = JSONArray()
-        rules
-            .put(
-                JSONObject()
-                    .put("type", "field")
-                    .put("inboundTag", JSONArray().put("tun"))
-                    .put("network", "tcp,udp")
-                    .put("port", "53")
-                    .put("outboundTag", "dns-out")
-            )
-            .put(
-                JSONObject()
-                    .put("type", "field")
-                    .put("inboundTag", JSONArray().put("tun"))
-                    .put("network", "tcp,udp")
-                    .put("outboundTag", "proxy")
-            )
+        if (vpnDnsEnabled) {
+            rules.put(
+            JSONObject()
+                .put("type", "field")
+                .put("inboundTag", JSONArray().put("tun"))
+                .put("network", "tcp,udp")
+                .put("outboundTag", "proxy")
+        )
 
         return JSONObject()
             // SSH direct-tcpip resolves destination names at the SSH server.

@@ -3,12 +3,12 @@
 package com.ghostnexora.vpn.ui.screens.dashboard
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -27,14 +28,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +58,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -56,16 +69,20 @@ import com.ghostnexora.vpn.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ghostnexora.vpn.data.model.LogEntry
+import com.ghostnexora.vpn.data.model.NetworkPreferences
 import com.ghostnexora.vpn.data.model.VpnConnectionState
 import com.ghostnexora.vpn.data.model.VpnProfile
 import com.ghostnexora.vpn.data.model.VpnTrafficStats
@@ -84,7 +101,6 @@ import com.ghostnexora.vpn.ui.theme.SurfaceVariant
 import com.ghostnexora.vpn.ui.theme.TextPrimary
 import com.ghostnexora.vpn.ui.theme.TextSecondary
 import com.ghostnexora.vpn.ui.theme.TextTertiary
-import com.ghostnexora.vpn.ui.theme.backgroundGradient
 import com.ghostnexora.vpn.util.vpnLogLine
 import com.ghostnexora.vpn.util.toSessionTime
 import kotlinx.coroutines.launch
@@ -94,9 +110,14 @@ import java.util.Locale
 fun DashboardScreen(
     lifecycleOwner: LifecycleOwner,
     onNavigateToProfiles: () -> Unit,
+    logsExpanded: Boolean = false,
+    onLogsExpanded: (Boolean) -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val network by viewModel.networkPreferences.collectAsState(initial = null)
+    var showClearLogs by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = logsExpanded) { onLogsExpanded(false) }
     val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -117,48 +138,68 @@ fun DashboardScreen(
         }
     }
 
+    val copiedMessage = stringResource(R.string.dashboard_logs_copied)
+    val copyLogs = {
+        val ordered = state.recentLogs
+            .filterNot { LogPresentation.isLegacyVpsMotd(it.message) }
+            .sortedWith(compareBy<LogEntry> { it.timestamp }.thenBy { it.id })
+        clipboard.setText(AnnotatedString(ordered.joinToString("\n") { it.vpnLogLine() }))
+        scope.launch { snackbar.showSnackbar(copiedMessage) }
+        Unit
+    }
+
+    if (showClearLogs) {
+        AlertDialog(
+            onDismissRequest = { showClearLogs = false },
+            title = { Text(stringResource(R.string.dashboard_logs_clear)) },
+            text = { Text(stringResource(R.string.dashboard_logs_clear_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearLogs = false
+                    viewModel.clearLogs()
+                }) { Text(stringResource(R.string.dashboard_logs_clear), color = NeonRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearLogs = false }) {
+                    Text(stringResource(R.string.btn_cancel_action))
+                }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
-        containerColor = BackgroundDark
+        containerColor = BackgroundDark,
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            if (!logsExpanded) {
+                CompactDashboardTabs(
+                    selectedPage = pager.currentPage,
+                    onSelect = { page -> scope.launch { pager.animateScrollToPage(page) } }
+                )
+            }
+        }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(backgroundGradient())
-                .padding(padding)
-                .padding(horizontal = Dimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
-        ) {
-            CompactDashboardTabs(
-                selectedPage = pager.currentPage,
-                onSelect = { page -> scope.launch { pager.animateScrollToPage(page) } }
-            )
-
-            HorizontalPager(
-                state = pager,
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            ) { page ->
-                if (page == 0) {
-                    OverviewPage(
-                        state = state,
-                        onAction = { viewModel.onMainAction { vpnPermission.launch(it) } },
-                        onProfiles = onNavigateToProfiles
-                    )
-                } else {
-                    LogPage(
-                        logs = state.recentLogs,
-                        onCopy = {
-                            val ordered = state.recentLogs
-                                .filterNot { LogPresentation.isLegacyVpsMotd(it.message) }
-                                .sortedWith(
-                                    compareBy<LogEntry> { it.timestamp }.thenBy { it.id }
-                                )
-                            clipboard.setText(
-                                AnnotatedString(ordered.joinToString("\n") { it.vpnLogLine() })
-                            )
-                            scope.launch { snackbar.showSnackbar("Registro saneado copiado") }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            if (logsExpanded) {
+                LogPage(state.recentLogs, true, copyLogs, { showClearLogs = true }) {
+                    onLogsExpanded(false)
+                }
+            } else {
+                HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                    if (page == 0) {
+                        OverviewPage(
+                            state = state,
+                            network = network,
+                            onDnsChange = viewModel::setVpnDnsEnabled,
+                            onAction = { viewModel.onMainAction { vpnPermission.launch(it) } },
+                            onProfiles = onNavigateToProfiles
+                        )
+                    } else {
+                        LogPage(state.recentLogs, false, copyLogs, { showClearLogs = true }) {
+                            onLogsExpanded(true)
                         }
-                    )
+                    }
                 }
             }
         }
@@ -170,7 +211,8 @@ private fun CompactDashboardTabs(selectedPage: Int, onSelect: (Int) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = Dimens.SpaceXS)
+            .selectableGroup()
+            .padding(horizontal = Dimens.ScreenPadding, vertical = Dimens.SpaceSM)
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceVariant.copy(alpha = 0.82f))
             .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
@@ -180,14 +222,14 @@ private fun CompactDashboardTabs(selectedPage: Int, onSelect: (Int) -> Unit) {
         DashboardTab(
             selected = selectedPage == 0,
             onClick = { onSelect(0) },
-            label = "Inicio",
-            icon = { Icon(Icons.Filled.Security, null, modifier = Modifier.size(17.dp)) },
+            label = stringResource(R.string.nav_dashboard),
+            icon = { Icon(Icons.Filled.Home, null, modifier = Modifier.size(19.dp)) },
             modifier = Modifier.weight(1f)
         )
         DashboardTab(
             selected = selectedPage == 1,
             onClick = { onSelect(1) },
-            label = "Registro",
+            label = stringResource(R.string.dashboard_log_tab),
             icon = { Icon(Icons.AutoMirrored.Filled.Article, null, modifier = Modifier.size(17.dp)) },
             modifier = Modifier.weight(1f)
         )
@@ -205,14 +247,14 @@ private fun DashboardTab(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) NeonCyan.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
+            .background(if (selected) NeonGreen.copy(alpha = 0.14f) else Color.Transparent)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.material3.LocalContentColor provides if (selected) NeonCyan else TextSecondary
+            androidx.compose.material3.LocalContentColor provides if (selected) NeonGreen else TextSecondary
         ) {
             icon()
             Spacer(Modifier.size(6.dp))
@@ -228,11 +270,14 @@ private fun DashboardTab(
 @Composable
 private fun OverviewPage(
     state: DashboardUiState,
+    network: NetworkPreferences?,
+    onDnsChange: (Boolean) -> Unit,
     onAction: () -> Unit,
     onProfiles: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(Dimens.ScreenPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Dimens.SpaceMD)
     ) {
@@ -259,103 +304,94 @@ private fun OverviewPage(
         }
 
         LiveStatsCard(state.traffic, state.sessionElapsed)
-        SecurityStatusCard(state)
         ActiveProfileCard(state.activeProfile, onProfiles)
-        CreatorNoteSection(state.activeProfile)
+        if (network != null) {
+            val dnsAccessibilityLabel = stringResource(R.string.vpn_dns_enabled)
+            GhostCard {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Lock, null, tint = TextSecondary)
+                    Spacer(Modifier.size(Dimens.SpaceMD))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.vpn_dns_enabled), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            stringResource(
+                                if (network.vpnDnsEnabled) R.string.vpn_dns_managed else R.string.vpn_dns_system
+                            ),
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Checkbox(
+                        checked = network.vpnDnsEnabled,
+                        onCheckedChange = onDnsChange,
+                        modifier = Modifier.semantics {
+                            contentDescription = dnsAccessibilityLabel
+                        }
+                    )
+                }
+                Text(
+                    stringResource(R.string.vpn_dns_next_session),
+                    color = TextTertiary,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+        val noteHtml = state.activeProfile?.displayNoteHtml.orEmpty()
+        if (noteHtml.isNotBlank()) HtmlNoteView(html = noteHtml, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.SpaceLG))
     }
 }
 
 @Composable
 private fun ConnectionHero(state: DashboardUiState, onAction: () -> Unit) {
-    val color = stateColor(state.connectionState)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(color.copy(alpha = 0.13f), SurfaceVariant, SurfaceVariant.copy(alpha = 0.84f))
-                )
-            )
-            .border(1.dp, color.copy(alpha = 0.38f), RoundedCornerShape(24.dp))
-            .padding(horizontal = Dimens.SpaceXL, vertical = Dimens.SpaceLG),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
+    val connection = state.connectionState
+    val color = stateColor(connection)
+    val enabled = connection !is VpnConnectionState.Connecting && connection !is VpnConnectionState.Disconnecting
+    GhostCard(
+        borderColor = color.copy(alpha = 0.28f),
+        backgroundColor = SurfaceVariant,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
     ) {
         Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(color.copy(alpha = 0.12f))
-                .padding(horizontal = 11.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-            Text(
-                stringResource(state.connectionState.labelRes).uppercase(Locale.getDefault()),
-                color = color,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Text(
-            text = state.activeProfile?.name ?: "Selecciona un servidor",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = TextPrimary,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = connectionSubtitle(state),
-            color = TextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center
-        )
-        PowerButton(state.connectionState, onAction)
-        Text(
-            text = state.connectionState.actionHint(),
-            color = TextTertiary,
-            style = MaterialTheme.typography.labelSmall,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun PowerButton(state: VpnConnectionState, onAction: () -> Unit) {
-    val color = stateColor(state)
-    Box(
-        modifier = Modifier
-            .size(144.dp)
-            .clip(CircleShape)
-            .background(color.copy(alpha = 0.08f))
-            .border(1.dp, color.copy(alpha = 0.32f), CircleShape)
-            .clickable(
-                enabled = state !is VpnConnectionState.Connecting && state !is VpnConnectionState.Disconnecting,
-                onClick = onAction
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(108.dp)
-                .clip(CircleShape)
-                .background(color.copy(alpha = 0.14f))
-                .border(2.dp, color.copy(alpha = 0.78f), CircleShape),
-            contentAlignment = Alignment.Center
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceMD),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    if (state is VpnConnectionState.Reconnecting) Icons.Filled.Sync else Icons.Filled.PowerSettingsNew,
-                    null,
-                    tint = color,
-                    modifier = Modifier.size(38.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(color))
+                    Text(stringResource(connection.labelRes), color = color, style = MaterialTheme.typography.labelLarge)
+                }
+                Text(
+                    stringResource(R.string.dashboard_connection_title),
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
                 )
-                Text(stringResource(state.actionLabelRes), color = color, style = MaterialTheme.typography.labelLarge)
+                Text(connectionSubtitle(state), color = TextSecondary, style = MaterialTheme.typography.bodySmall)
             }
+            Box(
+                modifier = Modifier.size(56.dp).clip(CircleShape).background(color.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Security, null, tint = color, modifier = Modifier.size(27.dp))
+            }
+        }
+        Spacer(Modifier.height(Dimens.SpaceMD))
+        Button(
+            onClick = onAction,
+            enabled = enabled,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (state.isConnected) color.copy(alpha = 0.14f) else color,
+                contentColor = if (state.isConnected) color else Color.Black
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Icon(Icons.Filled.PowerSettingsNew, null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(connection.actionLabelRes))
         }
     }
 }
@@ -370,25 +406,24 @@ private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    "Actividad de la sesión",
+                    stringResource(R.string.dashboard_session_activity),
                     color = TextPrimary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text("EN VIVO", color = NeonGreen, style = MaterialTheme.typography.labelSmall)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
             ) {
                 Metric(
-                    "Descarga",
+                    stringResource(R.string.dashboard_download),
                     formatRate(stats.downloadBytesPerSecond),
                     formatBytes(stats.receivedBytes),
                     modifier = Modifier.weight(1f)
                 )
                 Metric(
-                    "Subida",
+                    stringResource(R.string.dashboard_upload),
                     formatRate(stats.uploadBytesPerSecond),
                     formatBytes(stats.sentBytes),
                     modifier = Modifier.weight(1f)
@@ -399,13 +434,13 @@ private fun LiveStatsCard(stats: VpnTrafficStats, elapsed: Long) {
                 horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
             ) {
                 Metric(
-                    "Tiempo",
+                    stringResource(R.string.dashboard_elapsed),
                     elapsed.toSessionTime(),
                     stats.networkType,
                     modifier = Modifier.weight(1f)
                 )
                 Metric(
-                    "Latencia",
+                    stringResource(R.string.dashboard_latency),
                     if (stats.latencyMs > 0) "${stats.latencyMs} ms" else "--",
                     "${stats.reconnectCount} reconexiones",
                     modifier = Modifier.weight(1f)
@@ -440,45 +475,6 @@ private fun Metric(
 }
 
 @Composable
-private fun SecurityStatusCard(state: DashboardUiState) {
-    val protected = state.isConnected || state.isReconnecting
-    GhostCard(
-        backgroundColor = if (protected) NeonGreen.copy(alpha = 0.06f) else SurfaceVariant,
-        borderColor = if (protected) NeonGreen else BorderSubtle
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-            ) {
-                Icon(Icons.Filled.Lock, null, tint = if (protected) NeonGreen else TextTertiary)
-                Column {
-                    Text(
-                        if (protected) "Tráfico protegido" else "Protección inactiva",
-                        color = TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        if (state.isReconnecting) {
-                            "El túnel permanece capturando tráfico durante la recuperación"
-                        } else {
-                            state.traffic.protocol
-                        },
-                        color = TextSecondary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-            Text(
-                "IPv4 + IPv6 · DNS dentro del túnel · TLS por perfil",
-                color = TextTertiary,
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
-    }
-}
-
-@Composable
 private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
     GhostCard(backgroundColor = SurfaceVariant, borderColor = BorderSubtle) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -486,95 +482,67 @@ private fun ActiveProfileCard(profile: VpnProfile?, onProfiles: () -> Unit) {
             Spacer(Modifier.size(Dimens.SpaceMD))
             Column(Modifier.weight(1f)) {
                 Text(
-                    profile?.name ?: "Sin perfil activo",
+                    profile?.name ?: stringResource(R.string.dashboard_no_profile),
                     color = TextPrimary,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     profile?.let { "${it.serverAddress} · ${it.connectionModeLabel}" }
-                        ?: "Selecciona una configuración",
+                        ?: stringResource(R.string.dashboard_choose_profile),
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
                 if (profile?.isLocked == true) {
                     Text(
-                        "Parámetros protegidos por el creador",
+                        stringResource(R.string.dashboard_locked),
                         color = NeonAmber,
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
             }
             IconButton(onClick = onProfiles) {
-                Icon(Icons.Filled.Edit, contentDescription = "Cambiar perfil", tint = NeonCyan)
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.dashboard_change_profile), tint = NeonCyan)
             }
         }
     }
 }
 
 @Composable
-private fun CreatorNoteSection(profile: VpnProfile?) {
-    val note = profile?.displayNoteHtml.orEmpty()
-    if (note.isBlank()) return
-
-    GhostCard(
-        backgroundColor = SurfaceVariant,
-        borderColor = NeonAmber.copy(alpha = 0.65f)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Notes, null, tint = NeonAmber)
-                Column {
-                    Text("Nota del creador", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "${profile?.name.orEmpty()} · Contenido completo",
-                        color = TextTertiary,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
-            Text(
-                "Desliza dentro de la nota para leer toda la información",
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
-            HtmlNoteView(
-                html = note,
-                modifier = Modifier.fillMaxWidth().height(420.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun LogPage(logs: List<LogEntry>, onCopy: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXS)
-    ) {
+private fun LogPage(
+    logs: List<LogEntry>,
+    expanded: Boolean,
+    onCopy: () -> Unit,
+    onClear: () -> Unit,
+    onToggleExpanded: () -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(start = Dimens.ScreenPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text("Registro de conexión", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Vista completa · sin credenciales ni tokens",
-                    color = TextTertiary,
-                    style = MaterialTheme.typography.bodySmall
-                )
+            Text(
+                stringResource(R.string.dashboard_log_title),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium
+            )
+            IconButton(onClick = onCopy, enabled = logs.isNotEmpty()) {
+                Icon(Icons.Filled.ContentCopy, stringResource(R.string.dashboard_logs_copy))
             }
-            IconButton(onClick = onCopy) {
-                Icon(Icons.AutoMirrored.Filled.Article, "Copiar registro", tint = NeonCyan)
+            IconButton(onClick = onClear, enabled = logs.isNotEmpty()) {
+                Icon(Icons.Filled.DeleteOutline, stringResource(R.string.dashboard_logs_clear))
+            }
+            IconButton(onClick = onToggleExpanded) {
+                Icon(
+                    if (expanded) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    stringResource(if (expanded) R.string.dashboard_logs_shrink else R.string.dashboard_logs_expand)
+                )
             }
         }
         VpnLogConsole(
             logs = logs,
             modifier = Modifier.fillMaxWidth().weight(1f),
-            maxHeight = null
+            maxHeight = null,
+            embedded = true
         )
     }
 }
@@ -588,22 +556,14 @@ private fun stateColor(state: VpnConnectionState): Color = when (state) {
     VpnConnectionState.Disconnected -> TextTertiary
 }
 
+@Composable
 private fun connectionSubtitle(state: DashboardUiState): String = when (val connection = state.connectionState) {
     is VpnConnectionState.Connected -> "${state.serverIp} · ${state.traffic.protocol}"
-    is VpnConnectionState.Reconnecting -> "Recuperando transporte sin liberar el TUN"
-    is VpnConnectionState.Connecting -> "Verificando el servidor y la ruta de datos"
-    is VpnConnectionState.Disconnecting -> "Cerrando rutas y transporte"
+    is VpnConnectionState.Reconnecting -> stringResource(R.string.dashboard_rebuilding_route)
+    is VpnConnectionState.Connecting -> stringResource(R.string.dashboard_preparing_route)
+    is VpnConnectionState.Disconnecting -> stringResource(R.string.dashboard_releasing_route)
     is VpnConnectionState.Error -> connection.message
-    VpnConnectionState.Disconnected -> state.activeProfile?.connectionModeLabel ?: "VPN lista para conectar"
-}
-
-private fun VpnConnectionState.actionHint(): String = when (this) {
-    is VpnConnectionState.Connected -> "Toca el botón para cerrar el túnel de forma segura"
-    is VpnConnectionState.Connecting -> "Espera a que termine la verificación"
-    is VpnConnectionState.Reconnecting -> "La aplicación mantiene protegida la ruta durante la recuperación"
-    is VpnConnectionState.Disconnecting -> "Liberando la interfaz VPN de Android"
-    is VpnConnectionState.Error -> "Revisa el registro y toca para volver a intentar"
-    VpnConnectionState.Disconnected -> "Toca el botón para activar la VPN del sistema"
+    VpnConnectionState.Disconnected -> state.activeProfile?.connectionModeLabel ?: stringResource(R.string.dashboard_waiting)
 }
 
 private fun formatRate(bytes: Long): String = "${formatBytes(bytes)}/s"

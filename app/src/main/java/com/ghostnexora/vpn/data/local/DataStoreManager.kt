@@ -83,6 +83,7 @@ class DataStoreManager @Inject constructor(
         val DISMISSED_UPDATE_IDENTITY = stringPreferencesKey("dismissed_update_identity")
         val IP_MODE = stringPreferencesKey("network_ip_mode")
         val TUN_MTU = intPreferencesKey("network_tun_mtu")
+        val VPN_DNS_ENABLED = booleanPreferencesKey("vpn_dns_enabled")
         val DNS_MODE = stringPreferencesKey("network_dns_mode")
         val DNS_PRIMARY = stringPreferencesKey("network_dns_primary")
         val DNS_SECONDARY = stringPreferencesKey("network_dns_secondary")
@@ -108,6 +109,7 @@ class DataStoreManager @Inject constructor(
             mtu = (values[TUN_MTU] ?: NetworkPreferences.DEFAULT_MTU)
                 .coerceIn(NetworkPreferences.MIN_MTU, NetworkPreferences.MAX_MTU),
             dnsMode = DnsMode.fromId(values[DNS_MODE]),
+            vpnDnsEnabled = values[VPN_DNS_ENABLED] ?: true,
             customDnsPrimary = values[DNS_PRIMARY] ?: "1.1.1.1",
             customDnsSecondary = values[DNS_SECONDARY] ?: "8.8.8.8",
             reconnectMaxAttempts = (values[RECONNECT_MAX_ATTEMPTS] ?: 8).coerceIn(1, 12)
@@ -138,6 +140,7 @@ class DataStoreManager @Inject constructor(
     suspend fun setTunMtu(value: Int) = edit {
         it[TUN_MTU] = value.coerceIn(NetworkPreferences.MIN_MTU, NetworkPreferences.MAX_MTU)
     }
+    suspend fun setVpnDnsEnabled(enabled: Boolean) = edit { it[VPN_DNS_ENABLED] = enabled }
     suspend fun setDnsMode(value: DnsMode) = edit { it[DNS_MODE] = value.id }
     suspend fun setCustomDns(primary: String, secondary: String) = edit {
         it[DNS_PRIMARY] = primary.trim()

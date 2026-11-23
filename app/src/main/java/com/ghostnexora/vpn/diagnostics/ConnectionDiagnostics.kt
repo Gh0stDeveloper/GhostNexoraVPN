@@ -146,11 +146,12 @@ class ConnectionDiagnosticsEngine(
             )
         }
 
+        val dnsLabel = if (preferences.vpnDnsEnabled) preferences.dnsMode.label else "System DNS"
         record(
             passed(
                 "SETTINGS",
                 "Routing configuration",
-                "${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · ${preferences.dnsMode.label}"
+                "${preferences.ipMode.label} · MTU ${preferences.validatedMtu} · $dnsLabel"
             )
         )
 

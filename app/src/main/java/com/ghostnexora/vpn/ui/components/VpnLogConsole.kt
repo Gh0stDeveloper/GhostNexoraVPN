@@ -72,7 +72,8 @@ import com.ghostnexora.vpn.ui.theme.TextTertiary
 fun VpnLogConsole(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier,
-    maxHeight: Dp? = 460.dp
+    maxHeight: Dp? = 460.dp,
+    embedded: Boolean = false
 ) {
     val listState = rememberLazyListState()
     var filter by remember { mutableStateOf(LogFilter.SUMMARY) }
@@ -104,7 +105,9 @@ fun VpnLogConsole(
         verticalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth()
+                .then(if (embedded) Modifier.padding(horizontal = Dimens.SpaceMD) else Modifier)
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceSM)
         ) {
             LogFilter.entries.forEach { option ->
@@ -139,7 +142,8 @@ fun VpnLogConsole(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth()
+                .then(if (embedded) Modifier.padding(horizontal = Dimens.SpaceMD) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -177,9 +181,9 @@ fun VpnLogConsole(
         }
         Surface(
             modifier = consoleModifier,
-            shape = RoundedCornerShape(18.dp),
-            color = SurfaceDark,
-            border = BorderStroke(1.dp, BorderSubtle),
+            shape = if (embedded) RoundedCornerShape(0.dp) else RoundedCornerShape(18.dp),
+            color = if (embedded) Color.Black else SurfaceDark,
+            border = if (embedded) null else BorderStroke(1.dp, BorderSubtle),
             tonalElevation = 0.dp
         ) {
             if (orderedLogs.isEmpty()) {
