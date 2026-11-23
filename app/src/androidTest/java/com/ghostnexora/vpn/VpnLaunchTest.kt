@@ -5,6 +5,7 @@ import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollTo
@@ -58,11 +59,11 @@ class VpnLaunchTest {
                     .performScrollTo().performClick()
                 compose.waitUntil(10_000) { runBlocking { !repository.networkPreferences.first().vpnDnsEnabled } }
 
-                compose.onNodeWithText(app.getString(R.string.dashboard_log_tab)).performClick()
+                compose.onNodeWithTag("dashboard-log-tab").performClick()
                 compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_expand)).performClick()
                 compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).assertIsDisplayed()
                 compose.onNodeWithContentDescription(app.getString(R.string.dashboard_logs_shrink)).performClick()
-                compose.onNodeWithText(app.getString(R.string.nav_dashboard)).performClick()
+                compose.onNodeWithTag("dashboard-home-tab").performClick()
 
                 compose.onNodeWithText(app.getString(R.string.btn_connect)).performScrollTo().performClick()
                 compose.waitUntil(10_000) { activeWindowPackage() == "com.android.vpndialogs" }

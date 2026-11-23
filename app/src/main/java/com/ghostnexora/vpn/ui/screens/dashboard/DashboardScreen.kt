@@ -71,6 +71,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -224,14 +225,14 @@ private fun CompactDashboardTabs(selectedPage: Int, onSelect: (Int) -> Unit) {
             onClick = { onSelect(0) },
             label = stringResource(R.string.nav_dashboard),
             icon = { Icon(Icons.Filled.Home, null, modifier = Modifier.size(19.dp)) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).testTag("dashboard-home-tab")
         )
         DashboardTab(
             selected = selectedPage == 1,
             onClick = { onSelect(1) },
             label = stringResource(R.string.dashboard_log_tab),
             icon = { Icon(Icons.AutoMirrored.Filled.Article, null, modifier = Modifier.size(17.dp)) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).testTag("dashboard-log-tab")
         )
     }
 }

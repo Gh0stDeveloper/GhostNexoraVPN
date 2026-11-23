@@ -169,6 +169,15 @@ object StableXrayConfigFactory {
         val rules = JSONArray()
         if (vpnDnsEnabled) {
             rules.put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("inboundTag", JSONArray().put("tun"))
+                    .put("network", "tcp,udp")
+                    .put("port", "53")
+                    .put("outboundTag", "dns-out")
+            )
+        }
+        rules.put(
             JSONObject()
                 .put("type", "field")
                 .put("inboundTag", JSONArray().put("tun"))
