@@ -56,10 +56,18 @@ class ProfileBundleExportTest {
             file.writeBytes(protectedFile)
             assertTrue(manager.importFromUri(uri, password) is ImportResult.Error)
 
-            assertTrue(manager.exportToUri(uri, profiles, BundleExportOptions(BundleProtection.DEVICE_BOUND)))
-            assertEquals("GNX4", file.readBytes().copyOfRange(0, 4).toString(Charsets.US_ASCII))
-            val deviceBound = manager.importFromUri(uri) as ImportResult.Success
-            assertEquals(profiles.map { it.host }, deviceBound.profiles.map { it.host })
+            val deviceBoundExport = runCatching {
+                manager.exportToUri(uri, profiles, BundleExportOptions(BundleProtection.DEVICE_BOUND))
+            }
+            val deviceBoundError = deviceBoundExport.exceptionOrNull()
+            if (deviceBoundError == null) {
+                assertTrue(deviceBoundExport.getOrThrow())
+                assertEquals("GNX4", file.readBytes().copyOfRange(0, 4).toString(Charsets.US_ASCII))
+                val deviceBound = manager.importFromUri(uri) as ImportResult.Success
+                assertEquals(profiles.map { it.host }, deviceBound.profiles.map { it.host })
+            } else {
+                assertEquals("Android Keystore hardware is required for this backup", deviceBoundError.message)
+            }
 
             val single = manager.exportIndividualToCache(
                 profiles.first(),
